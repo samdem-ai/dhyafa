@@ -167,19 +167,19 @@ create materialized view public.mv_top_destinations as
 select
   p.wilaya_code,
   p.commune_id,
-  w.window,
+  w.window_days,
   count(*)                       as bookings,
   coalesce(sum(b.total_dzd), 0)  as gmv_dzd
 from public.bookings b
 join public.properties p on p.id = b.property_id
-cross join lateral (values (30), (90)) as w(window)
+cross join lateral (values (30), (90)) as w(window_days)
 where b.status in ('confirmed','checked_in','completed')
-  and b.created_at >= (current_date - (w.window || ' days')::interval)
-group by p.wilaya_code, p.commune_id, w.window;
+  and b.created_at >= (current_date - (w.window_days || ' days')::interval)
+group by p.wilaya_code, p.commune_id, w.window_days;
 
 -- Unique index for CONCURRENTLY. commune_id may be null → coalesce to a sentinel in the index.
 create unique index mv_top_destinations_pk
-  on public.mv_top_destinations(window, wilaya_code, coalesce(commune_id, -1));
+  on public.mv_top_destinations(window_days, wilaya_code, coalesce(commune_id, -1));
 
 -- ===========================================================================
 -- mv_host_performance — per host: active listings, bookings, gmv, avg rating,
@@ -256,7 +256,7 @@ create or replace function public.refresh_analytics()
 returns void
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 begin
   refresh materialized view concurrently public.property_review_stats;

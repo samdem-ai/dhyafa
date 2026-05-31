@@ -79,7 +79,7 @@ create or replace function public.bookings_set_single_unit()
 returns trigger
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 begin
   select (rt.inventory_count = 1) into new.is_single_unit
@@ -155,7 +155,7 @@ create or replace function public.properties_guard_approval()
 returns trigger
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_identity verification_status;
@@ -188,7 +188,7 @@ create or replace function public.payouts_guard_verified()
 returns trigger
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_payout verification_status;
@@ -233,7 +233,7 @@ create or replace function public.reviews_refresh_property_rating()
 returns trigger
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_property_id uuid := coalesce(new.property_id, old.property_id);
@@ -286,7 +286,7 @@ create or replace function public.messages_bump_conversation()
 returns trigger
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 begin
   update public.conversations

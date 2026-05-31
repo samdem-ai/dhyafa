@@ -1,9 +1,9 @@
 -- ============================================================================
 -- 20260531120300_rls.sql
 -- Dyafa (دافة) — Row-Level Security: force RLS + policies (§7 / doc 02).
--- Helper predicates (auth.has_role / is_staff / my_host_id / can_act_on_property)
+-- Helper predicates (public.has_role / is_staff / my_host_id / can_act_on_property)
 -- are defined in the functions migration.
--- Admin/super_admin get a `for all using(auth.is_staff())` bypass per table.
+-- Admin/super_admin get a `for all using(public.is_staff())` bypass per table.
 -- ============================================================================
 
 -- Force RLS so even the table owner is subject to policies.
@@ -56,7 +56,7 @@ begin
     execute format('create policy %I on public.%I for select to anon, authenticated using (true);',
                    t || '_public_read', t);
     execute format($f$create policy %I on public.%I for all to authenticated
-                       using (auth.has_role('super_admin')) with check (auth.has_role('super_admin'));$f$,
+                       using (public.has_role('super_admin')) with check (public.has_role('super_admin'));$f$,
                    t || '_admin_write', t);
   end loop;
 end$$;
@@ -65,13 +65,13 @@ end$$;
 -- profiles — self read/update; admin all.
 -- ===========================================================================
 create policy profiles_self_select on public.profiles
-  for select to authenticated using (id = auth.uid() or auth.is_staff());
+  for select to authenticated using (id = auth.uid() or public.is_staff());
 create policy profiles_self_insert on public.profiles
   for insert to authenticated with check (id = auth.uid());
 create policy profiles_self_update on public.profiles
   for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 create policy profiles_admin_all on public.profiles
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 -- The JWT hook (supabase_auth_admin) does not read profiles, but grant SELECT for safety.
 create policy profiles_auth_admin_read on public.profiles
   as permissive for select to supabase_auth_admin using (true);
@@ -80,7 +80,7 @@ create policy profiles_auth_admin_read on public.profiles
 -- user_roles — self read; writes via RPC (super_admin); auth_admin reads for hook.
 -- ===========================================================================
 create policy user_roles_self_select on public.user_roles
-  for select to authenticated using (user_id = auth.uid() or auth.is_staff());
+  for select to authenticated using (user_id = auth.uid() or public.is_staff());
 create policy user_roles_auth_admin_read on public.user_roles
   as permissive for select to supabase_auth_admin using (true);
 -- No client INSERT/UPDATE/DELETE policy: grant_role() (definer) is the only writer.
@@ -89,13 +89,13 @@ create policy user_roles_auth_admin_read on public.user_roles
 -- host_profiles — self/owner + admin; update owner; auth_admin reads for hook.
 -- ===========================================================================
 create policy host_profiles_self_select on public.host_profiles
-  for select to authenticated using (owner_id = auth.uid() or auth.is_staff());
+  for select to authenticated using (owner_id = auth.uid() or public.is_staff());
 create policy host_profiles_owner_insert on public.host_profiles
   for insert to authenticated with check (owner_id = auth.uid());
 create policy host_profiles_owner_update on public.host_profiles
   for update to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy host_profiles_admin_all on public.host_profiles
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 create policy host_profiles_auth_admin_read on public.host_profiles
   as permissive for select to supabase_auth_admin using (true);
 
@@ -104,16 +104,16 @@ create policy host_profiles_auth_admin_read on public.host_profiles
 -- ===========================================================================
 create policy hotel_staff_owner_select on public.hotel_staff
   for select to authenticated
-  using (host_profile_id = auth.my_host_id() or user_id = auth.uid() or auth.is_staff());
+  using (host_profile_id = public.my_host_id() or user_id = auth.uid() or public.is_staff());
 create policy hotel_staff_owner_insert on public.hotel_staff
-  for insert to authenticated with check (host_profile_id = auth.my_host_id());
+  for insert to authenticated with check (host_profile_id = public.my_host_id());
 create policy hotel_staff_owner_update on public.hotel_staff
   for update to authenticated
-  using (host_profile_id = auth.my_host_id()) with check (host_profile_id = auth.my_host_id());
+  using (host_profile_id = public.my_host_id()) with check (host_profile_id = public.my_host_id());
 create policy hotel_staff_owner_delete on public.hotel_staff
-  for delete to authenticated using (host_profile_id = auth.my_host_id());
+  for delete to authenticated using (host_profile_id = public.my_host_id());
 create policy hotel_staff_admin_all on public.hotel_staff
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 -- ===========================================================================
 -- properties — public sees approved (via view, but base policy also allows it);
@@ -127,7 +127,7 @@ create policy properties_public_read on public.properties
 -- Host / staff / admin read all own (any status).
 create policy properties_host_read on public.properties
   for select to authenticated
-  using (auth.can_act_on_property(id, 'reception'::staff_role) or auth.is_staff());
+  using (public.can_act_on_property(id, 'reception'::staff_role) or public.is_staff());
 -- Guest with a confirmed booking may read the row (exact geo path, §9).
 create policy properties_booked_guest_read on public.properties
   for select to authenticated
@@ -140,18 +140,18 @@ create policy properties_booked_guest_read on public.properties
 create policy properties_host_insert on public.properties
   for insert to authenticated
   with check (
-    host_profile_id = auth.my_host_id()
-    and (auth.has_role('host_individual') or auth.has_role('host_hotel'))
+    host_profile_id = public.my_host_id()
+    and (public.has_role('host_individual') or public.has_role('host_hotel'))
   );
 create policy properties_host_update on public.properties
   for update to authenticated
-  using (auth.can_act_on_property(id, 'manager'::staff_role) and status <> 'suspended')
-  with check (auth.can_act_on_property(id, 'manager'::staff_role));
+  using (public.can_act_on_property(id, 'manager'::staff_role) and status <> 'suspended')
+  with check (public.can_act_on_property(id, 'manager'::staff_role));
 create policy properties_owner_delete on public.properties
   for delete to authenticated
-  using (host_profile_id = auth.my_host_id() and status = 'draft');
+  using (host_profile_id = public.my_host_id() and status = 'draft');
 create policy properties_admin_all on public.properties
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 -- §9 geo privacy — defense in depth. RLS is row-level and cannot mask columns by
 -- row condition, so exact-coordinate columns are protected with COLUMN privileges:
@@ -186,11 +186,11 @@ create policy room_types_public_read on public.room_types
                  where p.id = property_id and p.status = 'approved' and p.deleted_at is null));
 create policy room_types_staff_read on public.room_types
   for select to authenticated
-  using (auth.can_act_on_property(property_id, 'reception'::staff_role) or auth.is_staff());
+  using (public.can_act_on_property(property_id, 'reception'::staff_role) or public.is_staff());
 create policy room_types_manager_write on public.room_types
   for all to authenticated
-  using (auth.can_act_on_property(property_id, 'manager'::staff_role))
-  with check (auth.can_act_on_property(property_id, 'manager'::staff_role));
+  using (public.can_act_on_property(property_id, 'manager'::staff_role))
+  with check (public.can_act_on_property(property_id, 'manager'::staff_role));
 
 -- ===========================================================================
 -- availability — read via parent; write reception (block/unblock dates, not pricing).
@@ -204,12 +204,12 @@ create policy availability_reception_write on public.availability
   for all to authenticated
   using (exists (select 1 from public.room_types rt
                  where rt.id = availability.room_type_id
-                   and auth.can_act_on_property(rt.property_id, 'reception'::staff_role)))
+                   and public.can_act_on_property(rt.property_id, 'reception'::staff_role)))
   with check (exists (select 1 from public.room_types rt
                  where rt.id = availability.room_type_id
-                   and auth.can_act_on_property(rt.property_id, 'reception'::staff_role)));
+                   and public.can_act_on_property(rt.property_id, 'reception'::staff_role)));
 create policy availability_admin_all on public.availability
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 -- ===========================================================================
 -- rate_plans — read via parent; write manager.
@@ -223,10 +223,10 @@ create policy rate_plans_manager_write on public.rate_plans
   for all to authenticated
   using (exists (select 1 from public.room_types rt
                  where rt.id = rate_plans.room_type_id
-                   and auth.can_act_on_property(rt.property_id, 'manager'::staff_role)))
+                   and public.can_act_on_property(rt.property_id, 'manager'::staff_role)))
   with check (exists (select 1 from public.room_types rt
                  where rt.id = rate_plans.room_type_id
-                   and auth.can_act_on_property(rt.property_id, 'manager'::staff_role)));
+                   and public.can_act_on_property(rt.property_id, 'manager'::staff_role)));
 
 -- ===========================================================================
 -- property_photos / property_amenities / room_amenities — write manager; read via parent.
@@ -235,21 +235,21 @@ create policy property_photos_public_read on public.property_photos
   for select to anon, authenticated
   using (exists (select 1 from public.properties p
                  where p.id = property_id and p.status = 'approved' and p.deleted_at is null)
-         or auth.can_act_on_property(property_id, 'reception'::staff_role) or auth.is_staff());
+         or public.can_act_on_property(property_id, 'reception'::staff_role) or public.is_staff());
 create policy property_photos_manager_write on public.property_photos
   for all to authenticated
-  using (auth.can_act_on_property(property_id, 'manager'::staff_role))
-  with check (auth.can_act_on_property(property_id, 'manager'::staff_role));
+  using (public.can_act_on_property(property_id, 'manager'::staff_role))
+  with check (public.can_act_on_property(property_id, 'manager'::staff_role));
 
 create policy property_amenities_public_read on public.property_amenities
   for select to anon, authenticated
   using (exists (select 1 from public.properties p
                  where p.id = property_id and p.status = 'approved' and p.deleted_at is null)
-         or auth.can_act_on_property(property_id, 'reception'::staff_role) or auth.is_staff());
+         or public.can_act_on_property(property_id, 'reception'::staff_role) or public.is_staff());
 create policy property_amenities_manager_write on public.property_amenities
   for all to authenticated
-  using (auth.can_act_on_property(property_id, 'manager'::staff_role))
-  with check (auth.can_act_on_property(property_id, 'manager'::staff_role));
+  using (public.can_act_on_property(property_id, 'manager'::staff_role))
+  with check (public.can_act_on_property(property_id, 'manager'::staff_role));
 
 create policy room_amenities_public_read on public.room_amenities
   for select to anon, authenticated
@@ -259,15 +259,15 @@ create policy room_amenities_public_read on public.room_amenities
                    and p.status = 'approved' and p.deleted_at is null)
          or exists (select 1 from public.room_types rt
                  where rt.id = room_amenities.room_type_id
-                   and (auth.can_act_on_property(rt.property_id, 'reception'::staff_role) or auth.is_staff())));
+                   and (public.can_act_on_property(rt.property_id, 'reception'::staff_role) or public.is_staff())));
 create policy room_amenities_manager_write on public.room_amenities
   for all to authenticated
   using (exists (select 1 from public.room_types rt
                  where rt.id = room_amenities.room_type_id
-                   and auth.can_act_on_property(rt.property_id, 'manager'::staff_role)))
+                   and public.can_act_on_property(rt.property_id, 'manager'::staff_role)))
   with check (exists (select 1 from public.room_types rt
                  where rt.id = room_amenities.room_type_id
-                   and auth.can_act_on_property(rt.property_id, 'manager'::staff_role)));
+                   and public.can_act_on_property(rt.property_id, 'manager'::staff_role)));
 
 -- ===========================================================================
 -- bookings — guest or property reception read; INSERT blocked (RPC only);
@@ -276,26 +276,26 @@ create policy room_amenities_manager_write on public.room_amenities
 create policy bookings_select on public.bookings
   for select to authenticated
   using (guest_id = auth.uid()
-         or auth.can_act_on_property(property_id, 'reception'::staff_role)
-         or auth.is_staff());
+         or public.can_act_on_property(property_id, 'reception'::staff_role)
+         or public.is_staff());
 create policy bookings_no_client_insert on public.bookings
   for insert to authenticated with check (false);   -- create_booking RPC only
 create policy bookings_update on public.bookings
   for update to authenticated
   using (guest_id = auth.uid()
-         or auth.can_act_on_property(property_id, 'reception'::staff_role)
-         or auth.is_staff())
+         or public.can_act_on_property(property_id, 'reception'::staff_role)
+         or public.is_staff())
   with check (guest_id = auth.uid()
-         or auth.can_act_on_property(property_id, 'reception'::staff_role)
-         or auth.is_staff());
+         or public.can_act_on_property(property_id, 'reception'::staff_role)
+         or public.is_staff());
 create policy bookings_admin_all on public.bookings
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 -- ===========================================================================
 -- inventory_holds — no client access (managed by RPC / service role); admin read.
 -- ===========================================================================
 create policy inventory_holds_admin_read on public.inventory_holds
-  for select to authenticated using (auth.is_staff());
+  for select to authenticated using (public.is_staff());
 -- No client write policy; create_booking/expire_holds run as definer.
 
 -- ===========================================================================
@@ -310,18 +310,18 @@ create policy transactions_select on public.transactions
             where b.id = transactions.booking_id and b.guest_id = auth.uid())
     or exists (select 1 from public.bookings b
             where b.id = transactions.booking_id
-              and auth.can_act_on_property(b.property_id, 'manager'::staff_role))
-    or auth.is_staff()
+              and public.can_act_on_property(b.property_id, 'manager'::staff_role))
+    or public.is_staff()
   );
 create policy transactions_no_client_write on public.transactions
   for insert to authenticated with check (false);
 
 create policy webhook_events_admin_read on public.webhook_events
-  for select to authenticated using (auth.is_staff());
+  for select to authenticated using (public.is_staff());
 
 create policy payouts_select on public.payouts
   for select to authenticated
-  using (host_profile_id = auth.my_host_id() or auth.is_staff());
+  using (host_profile_id = public.my_host_id() or public.is_staff());
 create policy payouts_no_client_write on public.payouts
   for insert to authenticated with check (false);
 
@@ -329,7 +329,7 @@ create policy payout_items_select on public.payout_items
   for select to authenticated
   using (exists (select 1 from public.payouts p
                  where p.id = payout_items.payout_id
-                   and (p.host_profile_id = auth.my_host_id() or auth.is_staff())));
+                   and (p.host_profile_id = public.my_host_id() or public.is_staff())));
 
 -- ===========================================================================
 -- reviews — public read for approved properties; guest insert w/ completed booking;
@@ -341,7 +341,7 @@ create policy reviews_public_read on public.reviews
           and exists (select 1 from public.properties p
                       where p.id = reviews.property_id and p.status = 'approved'))
          or author_id = auth.uid()
-         or auth.is_staff());
+         or public.is_staff());
 create policy reviews_guest_insert on public.reviews
   for insert to authenticated
   with check (author_id = auth.uid()
@@ -354,7 +354,7 @@ create policy reviews_author_update on public.reviews
 create policy reviews_author_delete on public.reviews
   for delete to authenticated using (author_id = auth.uid());
 create policy reviews_admin_all on public.reviews
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 -- ===========================================================================
 -- review_replies — host/manager insert/update (one per review); public read.
@@ -363,17 +363,17 @@ create policy review_replies_public_read on public.review_replies
   for select to anon, authenticated using (true);
 create policy review_replies_host_insert on public.review_replies
   for insert to authenticated
-  with check (host_profile_id = auth.my_host_id()
+  with check (host_profile_id = public.my_host_id()
               and exists (select 1 from public.reviews r
                           join public.properties p on p.id = r.property_id
                           where r.id = review_id
-                            and auth.can_act_on_property(p.id, 'manager'::staff_role)));
+                            and public.can_act_on_property(p.id, 'manager'::staff_role)));
 create policy review_replies_host_update on public.review_replies
   for update to authenticated
-  using (host_profile_id = auth.my_host_id())
-  with check (host_profile_id = auth.my_host_id());
+  using (host_profile_id = public.my_host_id())
+  with check (host_profile_id = public.my_host_id());
 create policy review_replies_admin_all on public.review_replies
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 -- ===========================================================================
 -- conversations / messages — participant-scoped.
@@ -381,36 +381,36 @@ create policy review_replies_admin_all on public.review_replies
 create policy conversations_select on public.conversations
   for select to authenticated
   using (guest_id = auth.uid()
-         or host_profile_id = auth.my_host_id()
+         or host_profile_id = public.my_host_id()
          or exists (select 1 from public.hotel_staff hs
                     where hs.host_profile_id = conversations.host_profile_id
                       and hs.user_id = auth.uid() and hs.is_active)
-         or auth.is_staff());
+         or public.is_staff());
 create policy conversations_insert on public.conversations
   for insert to authenticated
-  with check (guest_id = auth.uid() or host_profile_id = auth.my_host_id());
+  with check (guest_id = auth.uid() or host_profile_id = public.my_host_id());
 create policy conversations_update on public.conversations
   for update to authenticated
-  using (guest_id = auth.uid() or host_profile_id = auth.my_host_id())
-  with check (guest_id = auth.uid() or host_profile_id = auth.my_host_id());
+  using (guest_id = auth.uid() or host_profile_id = public.my_host_id())
+  with check (guest_id = auth.uid() or host_profile_id = public.my_host_id());
 
 create policy messages_select on public.messages
   for select to authenticated
   using (exists (select 1 from public.conversations c
                  where c.id = conversation_id
                    and (c.guest_id = auth.uid()
-                        or c.host_profile_id = auth.my_host_id()
+                        or c.host_profile_id = public.my_host_id()
                         or exists (select 1 from public.hotel_staff hs
                                    where hs.host_profile_id = c.host_profile_id
                                      and hs.user_id = auth.uid() and hs.is_active)
-                        or auth.is_staff())));
+                        or public.is_staff())));
 create policy messages_insert on public.messages
   for insert to authenticated
   with check (sender_id = auth.uid()
               and exists (select 1 from public.conversations c
                           where c.id = conversation_id
                             and (c.guest_id = auth.uid()
-                                 or c.host_profile_id = auth.my_host_id()
+                                 or c.host_profile_id = public.my_host_id()
                                  or exists (select 1 from public.hotel_staff hs
                                             where hs.host_profile_id = c.host_profile_id
                                               and hs.user_id = auth.uid() and hs.is_active))));
@@ -419,7 +419,7 @@ create policy messages_update on public.messages
   for update to authenticated
   using (exists (select 1 from public.conversations c
                  where c.id = conversation_id
-                   and (c.guest_id = auth.uid() or c.host_profile_id = auth.my_host_id()
+                   and (c.guest_id = auth.uid() or c.host_profile_id = public.my_host_id()
                         or exists (select 1 from public.hotel_staff hs
                                    where hs.host_profile_id = c.host_profile_id
                                      and hs.user_id = auth.uid() and hs.is_active))))
@@ -441,26 +441,26 @@ create policy wishlist_items_owner_all on public.wishlist_items
 create policy featured_collections_public_read on public.featured_collections
   for select to anon, authenticated
   using (is_active and (starts_at is null or starts_at <= now()) and (ends_at is null or ends_at >= now())
-         or auth.is_staff());
+         or public.is_staff());
 create policy featured_collections_admin_write on public.featured_collections
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 create policy collection_items_public_read on public.collection_items
   for select to anon, authenticated using (true);
 create policy collection_items_admin_write on public.collection_items
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 create policy promo_banners_public_read on public.promo_banners
   for select to anon, authenticated
   using (is_active and (starts_at is null or starts_at <= now()) and (ends_at is null or ends_at >= now())
-         or auth.is_staff());
+         or public.is_staff());
 create policy promo_banners_admin_write on public.promo_banners
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 create policy home_rails_public_read on public.home_rails
-  for select to anon, authenticated using (is_active or auth.is_staff());
+  for select to anon, authenticated using (is_active or public.is_staff());
 create policy home_rails_admin_write on public.home_rails
-  for all to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
 -- ===========================================================================
 -- disputes / dispute_messages — connected parties insert; opener+admin read;
@@ -469,20 +469,20 @@ create policy home_rails_admin_write on public.home_rails
 create policy disputes_insert on public.disputes
   for insert to authenticated with check (opened_by = auth.uid());
 create policy disputes_select on public.disputes
-  for select to authenticated using (opened_by = auth.uid() or auth.is_staff());
+  for select to authenticated using (opened_by = auth.uid() or public.is_staff());
 create policy disputes_admin_update on public.disputes
-  for update to authenticated using (auth.is_staff()) with check (auth.is_staff());
+  for update to authenticated using (public.is_staff()) with check (public.is_staff());
 
 create policy dispute_messages_insert on public.dispute_messages
   for insert to authenticated
   with check (sender_id = auth.uid()
               and exists (select 1 from public.disputes d
                           where d.id = dispute_id
-                            and (d.opened_by = auth.uid() or auth.is_staff())));
+                            and (d.opened_by = auth.uid() or public.is_staff())));
 create policy dispute_messages_select on public.dispute_messages
   for select to authenticated
   using (exists (select 1 from public.disputes d
-                 where d.id = dispute_id and (d.opened_by = auth.uid() or auth.is_staff())));
+                 where d.id = dispute_id and (d.opened_by = auth.uid() or public.is_staff())));
 
 -- ===========================================================================
 -- notifications — per-user read; update only read_at; inserts via definer/Edge.
@@ -497,7 +497,7 @@ create policy notifications_update on public.notifications
 -- audit_log — staff read only; no client write (definer-only); reject trigger in triggers migration.
 -- ===========================================================================
 create policy audit_log_staff_read on public.audit_log
-  for select to authenticated using (auth.is_staff());
+  for select to authenticated using (public.is_staff());
 
 -- ===========================================================================
 -- platform_settings — authenticated read; super_admin update (audited).
@@ -506,7 +506,7 @@ create policy platform_settings_read on public.platform_settings
   for select to authenticated using (true);
 create policy platform_settings_super_update on public.platform_settings
   for update to authenticated
-  using (auth.has_role('super_admin')) with check (auth.has_role('super_admin'));
+  using (public.has_role('super_admin')) with check (public.has_role('super_admin'));
 
 -- ===========================================================================
 -- Realtime publication (§7): messages, bookings, notifications, availability.
@@ -550,17 +550,17 @@ create policy "listing photos host upload" on storage.objects
   for insert to authenticated
   with check (
     bucket_id in ('listing-photos','property-photos')
-    and (storage.foldername(name))[1] = auth.my_host_id()::text
-    and (auth.has_role('host_individual') or auth.has_role('host_hotel') or auth.has_role('hotel_staff'))
+    and (storage.foldername(name))[1] = public.my_host_id()::text
+    and (public.has_role('host_individual') or public.has_role('host_hotel') or public.has_role('hotel_staff'))
   );
 create policy "listing photos host update" on storage.objects
   for update to authenticated
   using (bucket_id in ('listing-photos','property-photos')
-         and (storage.foldername(name))[1] = auth.my_host_id()::text);
+         and (storage.foldername(name))[1] = public.my_host_id()::text);
 create policy "listing photos host delete" on storage.objects
   for delete to authenticated
   using (bucket_id in ('listing-photos','property-photos')
-         and (storage.foldername(name))[1] = auth.my_host_id()::text);
+         and (storage.foldername(name))[1] = public.my_host_id()::text);
 
 -- avatars: INSERT into own user folder (path[1] = uid). Public read covered above.
 create policy "avatars own upload" on storage.objects
@@ -579,10 +579,10 @@ create policy "kyc upload own" on storage.objects
   with check (bucket_id = 'kyc-docs' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "kyc staff read" on storage.objects
   for select to authenticated
-  using (bucket_id = 'kyc-docs' and auth.is_staff());
+  using (bucket_id = 'kyc-docs' and public.is_staff());
 
 -- payout-statements: private. Written by service role; SELECT owner host / admin.
 create policy "payout statements owner read" on storage.objects
   for select to authenticated
   using (bucket_id = 'payout-statements'
-         and ((storage.foldername(name))[1] = auth.my_host_id()::text or auth.is_staff()));
+         and ((storage.foldername(name))[1] = public.my_host_id()::text or public.is_staff()));

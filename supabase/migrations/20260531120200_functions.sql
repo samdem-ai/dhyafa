@@ -21,32 +21,32 @@ $$;
 -- JWT helper predicates (auth schema, SECURITY DEFINER, search_path='', stable)
 -- Read claims injected by custom_access_token_hook: app_roles text[], host_id uuid.
 -- ---------------------------------------------------------------------------
-create or replace function auth.has_role(r text)
+create or replace function public.has_role(r text)
 returns boolean
 language sql
 stable
 security definer
-set search_path = ''
+set search_path = public
 as $$
   select coalesce(auth.jwt() -> 'app_roles' ? r, false);
 $$;
 
-create or replace function auth.is_staff()
+create or replace function public.is_staff()
 returns boolean
 language sql
 stable
 security definer
-set search_path = ''
+set search_path = public
 as $$
-  select auth.has_role('admin') or auth.has_role('super_admin');
+  select public.has_role('admin') or public.has_role('super_admin');
 $$;
 
-create or replace function auth.my_host_id()
+create or replace function public.my_host_id()
 returns uuid
 language sql
 stable
 security definer
-set search_path = ''
+set search_path = public
 as $$
   select nullif(auth.jwt() ->> 'host_id', 'null')::uuid;
 $$;
@@ -54,12 +54,12 @@ $$;
 -- Single capability helper consumed by all dashboards (§7).
 -- True if caller owns the property's host_profile, OR is an active hotel_staff row
 -- for that host_profile whose staff_role >= p_min_role (manager > reception).
-create or replace function auth.can_act_on_property(p_property_id uuid, p_min_role staff_role)
+create or replace function public.can_act_on_property(p_property_id uuid, p_min_role staff_role)
 returns boolean
 language sql
 stable
 security definer
-set search_path = ''
+set search_path = public
 as $$
   select exists (
     select 1
@@ -67,7 +67,7 @@ as $$
     where pr.id = p_property_id
       and (
         -- Owner of the host_profile that owns the property.
-        pr.host_profile_id = auth.my_host_id()
+        pr.host_profile_id = public.my_host_id()
         -- OR active staff for that host_profile with sufficient capability.
         or exists (
           select 1
@@ -85,14 +85,14 @@ as $$
 $$;
 
 -- text overload (spec names can_act_on_property(uuid, staff_role/text)).
-create or replace function auth.can_act_on_property(p_property_id uuid, p_min_role text)
+create or replace function public.can_act_on_property(p_property_id uuid, p_min_role text)
 returns boolean
 language sql
 stable
 security definer
-set search_path = ''
+set search_path = public
 as $$
-  select auth.can_act_on_property(p_property_id, p_min_role::public.staff_role);
+  select public.can_act_on_property(p_property_id, p_min_role::public.staff_role);
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -141,7 +141,7 @@ returns integer
 language plpgsql
 stable
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_override   integer;
@@ -202,7 +202,7 @@ returns integer
 language sql
 stable
 security definer
-set search_path = ''
+set search_path = public
 as $$
   select
     coalesce(
@@ -245,7 +245,7 @@ create or replace function public.create_booking(
 returns uuid
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_guest_id        uuid := auth.uid();
@@ -412,7 +412,7 @@ create or replace function public.accept_booking_request(p_booking_id uuid)
 returns void
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_booking  public.bookings%rowtype;
@@ -423,7 +423,7 @@ begin
   if v_booking.id is null then
     raise exception 'NOT_FOUND: booking %', p_booking_id using errcode = 'P0002';
   end if;
-  if not (auth.can_act_on_property(v_booking.property_id, 'manager'::public.staff_role) or auth.is_staff()) then
+  if not (public.can_act_on_property(v_booking.property_id, 'manager'::public.staff_role) or public.is_staff()) then
     raise exception 'FORBIDDEN: only host/manager may accept' using errcode = '42501';
   end if;
   if v_booking.status <> 'requested' then
@@ -451,7 +451,7 @@ create or replace function public.decline_booking_request(p_booking_id uuid, p_r
 returns void
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_booking public.bookings%rowtype;
@@ -460,7 +460,7 @@ begin
   if v_booking.id is null then
     raise exception 'NOT_FOUND' using errcode = 'P0002';
   end if;
-  if not (auth.can_act_on_property(v_booking.property_id, 'manager'::public.staff_role) or auth.is_staff()) then
+  if not (public.can_act_on_property(v_booking.property_id, 'manager'::public.staff_role) or public.is_staff()) then
     raise exception 'FORBIDDEN' using errcode = '42501';
   end if;
   if v_booking.status <> 'requested' then
@@ -486,7 +486,7 @@ returns integer
 language plpgsql
 stable
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_booking   public.bookings%rowtype;
@@ -537,14 +537,14 @@ create or replace function public.cancel_booking(p_booking_id uuid, p_reason tex
 returns integer
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_booking   public.bookings%rowtype;
   v_uid       uuid := auth.uid();
   v_is_guest  boolean;
   v_is_host_mgr boolean;
-  v_is_admin  boolean := auth.is_staff();
+  v_is_admin  boolean := public.is_staff();
   v_refund    integer := 0;
   v_parent_txn public.transactions%rowtype;
 begin
@@ -554,7 +554,7 @@ begin
   end if;
 
   v_is_guest    := (v_booking.guest_id = v_uid);
-  v_is_host_mgr := auth.can_act_on_property(v_booking.property_id, 'manager'::public.staff_role);
+  v_is_host_mgr := public.can_act_on_property(v_booking.property_id, 'manager'::public.staff_role);
 
   if not (v_is_guest or v_is_host_mgr or v_is_admin) then
     raise exception 'FORBIDDEN: not permitted to cancel this booking' using errcode = '42501';
@@ -623,7 +623,7 @@ create or replace function public.expire_holds()
 returns integer
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_count integer := 0;
@@ -661,7 +661,7 @@ create or replace function public.complete_stays()
 returns integer
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_count integer := 0;
@@ -693,7 +693,7 @@ create or replace function public.apply_payment_event(
 returns text
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 declare
   v_txn     public.transactions%rowtype;
@@ -774,10 +774,10 @@ create or replace function public.grant_role(p_user_id uuid, p_role app_role)
 returns void
 language plpgsql
 security definer
-set search_path = ''
+set search_path = public
 as $$
 begin
-  if not auth.has_role('super_admin') then
+  if not public.has_role('super_admin') then
     raise exception 'FORBIDDEN: super_admin only' using errcode = '42501';
   end if;
   insert into public.user_roles (user_id, role, granted_by)

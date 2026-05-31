@@ -110,7 +110,9 @@ enabled = true
 uri = "pg-functions://postgres/public/custom_access_token_hook"
 
 [edge_runtime]
-enabled = true
+# Disabled for local dev until M2 — Edge Function (Deno) code is not written yet, and
+# the runtime needs network access to fetch deno.land imports. Re-enable when functions land.
+enabled = false
 policy = "oneshot"
 inspector_port = 8083
 

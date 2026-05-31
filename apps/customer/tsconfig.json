@@ -5,6 +5,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "declaration": false,
     "moduleResolution": "bundler",
     "module": "ESNext",
     "jsx": "react-native",
