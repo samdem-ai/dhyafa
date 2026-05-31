@@ -131,6 +131,8 @@ export default function RootLayout() {
               presentation: 'modal',
             }}
           />
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="host" options={{ headerShown: false }} />
         </Stack>
       </View>
     </I18nextProvider>

@@ -9,6 +9,7 @@
  *  - A map stub View (Mapbox wired in M1+ with EAS dev client)
  */
 
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -17,12 +18,71 @@ import {
   TextInput,
   SafeAreaView,
   I18nManager,
+  Pressable,
+  ActivityIndicator,
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatDZD, type Locale } from '@dyafa/i18n';
 import { theme } from '@/theme';
 import { RN_FONTS } from '@/lib/fonts';
+import { useSession } from '@/lib/auth';
+import { becomeHost } from '@/lib/listings';
+
+const HOST_CTA = {
+  label: { ar: 'انتقل إلى وضع الاستضافة', fr: 'Passer en mode hôte', en: 'Switch to Hosting' },
+  failed: {
+    ar: 'تعذّر فتح وضع الاستضافة. حاول مرة أخرى.',
+    fr: "Impossible d'ouvrir le mode hôte. Réessayez.",
+    en: 'Could not open Hosting. Please try again.',
+  },
+} as const;
+
+function pickCta(m: { ar: string; fr: string; en: string }, l: Locale): string {
+  return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
+}
+
+/** Auth-gated entry into Hosting: signs in if needed, else become_host → /host. */
+function HostEntryButton({ locale }: { locale: Locale }) {
+  const { user, loading: sessionLoading } = useSession();
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onPress() {
+    if (!user) {
+      router.push({ pathname: '/(auth)/sign-in', params: { next: 'host' } });
+      return;
+    }
+    setWorking(true);
+    setError(null);
+    try {
+      await becomeHost();
+      router.push('/host');
+    } catch {
+      setError(pickCta(HOST_CTA.failed, locale));
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <View style={styles.hostCtaWrap}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => void onPress()}
+        disabled={working || sessionLoading}
+        style={({ pressed }) => [styles.hostCta, pressed && styles.hostCtaPressed]}
+      >
+        {working ? (
+          <ActivityIndicator color={theme.color.textOnPrimary} />
+        ) : (
+          <Text style={styles.hostCtaText}>🏡 {pickCta(HOST_CTA.label, locale)}</Text>
+        )}
+      </Pressable>
+      {error ? <Text style={styles.hostCtaError}>{error}</Text> : null}
+    </View>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Placeholder property data (replaces live DB in M0)
@@ -173,6 +233,9 @@ export default function HomeScreen() {
           properties={BEACHFRONT_PROPERTIES}
           locale={locale}
         />
+
+        {/* Host mode entry */}
+        <HostEntryButton locale={locale} />
 
         {/* Dev navigation shortcut to language picker */}
         <View style={styles.devLinks}>
@@ -380,6 +443,34 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.caption,
     fontWeight: '600',
     color: theme.color.text,
+  },
+
+  // Host CTA
+  hostCtaWrap: {
+    marginHorizontal: theme.space.xl,
+    marginTop: theme.space.md,
+  },
+  hostCta: {
+    backgroundColor: theme.color.primary,
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.space.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...theme.shadow.card,
+  },
+  hostCtaPressed: { opacity: 0.85 },
+  hostCtaText: {
+    fontFamily: RN_FONTS.arabicSemiBold,
+    fontSize: theme.fontSize.body,
+    fontWeight: '600',
+    color: theme.color.textOnPrimary,
+  },
+  hostCtaError: {
+    fontFamily: RN_FONTS.arabicRegular,
+    fontSize: theme.fontSize.caption,
+    color: theme.color.error,
+    textAlign: 'center',
+    marginTop: theme.space.sm,
   },
 
   // Dev

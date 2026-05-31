@@ -148,7 +148,7 @@ export default function AdminOverviewPage() {
           </div>
         </section>
 
-        {/* ── Moderation queue stub ─────────────────────────────────────── */}
+        {/* ── Moderation queue ──────────────────────────────────────────── */}
         <section>
           <div className="flex items-center justify-between mb-lg">
             <h2 className="font-display text-heading-2 font-semibold text-primary">
@@ -166,13 +166,16 @@ export default function AdminOverviewPage() {
               ))}
             </ul>
           </div>
-          <p className="mt-md text-body-sm text-text-muted">
+          <a
+            href="/moderation"
+            className="mt-md inline-flex items-center gap-xs text-body-sm font-semibold text-accent hover:opacity-80 transition-opacity duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 rounded-sm"
+          >
             {locale === 'ar'
-              ? '→ الصفحة الكاملة: /admin/listings?status=pending'
+              ? 'فتح طابور المراجعة ←'
               : locale === 'fr'
-              ? '→ Page complète : /admin/listings?status=pending'
-              : '→ Full page: /admin/listings?status=pending'}
-          </p>
+              ? 'Ouvrir la file de modération →'
+              : 'Open moderation queue →'}
+          </a>
         </section>
 
         {/* ── Nav grid (quick links to all admin sections) ──────────────── */}
@@ -183,7 +186,7 @@ export default function AdminOverviewPage() {
           <div className="grid grid-cols-2 gap-md sm:grid-cols-3 lg:grid-cols-4">
             {[
               { href: '/admin/users', ar: 'المستخدمون', fr: 'Utilisateurs', en: 'Users' },
-              { href: '/admin/listings', ar: 'الإعلانات', fr: 'Annonces', en: 'Listings' },
+              { href: '/moderation', ar: 'الإعلانات', fr: 'Annonces', en: 'Listings' },
               { href: '/admin/bookings', ar: 'الحجوزات', fr: 'Réservations', en: 'Bookings' },
               { href: '/admin/payments', ar: 'المدفوعات', fr: 'Paiements', en: 'Payments' },
               { href: '/admin/payouts', ar: 'المدفوعات للمضيفين', fr: 'Virements', en: 'Payouts' },

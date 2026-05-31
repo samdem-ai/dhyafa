@@ -2525,6 +2525,7 @@ export type Database = {
         }
         Returns: string
       }
+      become_host: { Args: { p_display_name?: string }; Returns: string }
       can_act_on_property:
         | {
             Args: {
@@ -2580,6 +2581,59 @@ export type Database = {
       resolve_nightly_price_dzd: {
         Args: { p_date: string; p_room_type_id: string }
         Returns: number
+      }
+      submit_property_for_review: {
+        Args: { p_property_id: string }
+        Returns: {
+          address_line: string | null
+          approved_at: string | null
+          cancellation_tier: Database["public"]["Enums"]["cancellation_tier"]
+          checkin_time: string
+          checkout_time: string
+          commune_id: number | null
+          cover_photo_path: string | null
+          created_at: string
+          currency: string
+          deleted_at: string | null
+          description_ar: string | null
+          description_en: string | null
+          description_fr: string | null
+          geo: unknown
+          geo_fuzzed: unknown
+          host_profile_id: string
+          house_rules_ar: string | null
+          house_rules_en: string | null
+          house_rules_fr: string | null
+          id: string
+          instant_book: boolean
+          lat: number | null
+          listing_kind: Database["public"]["Enums"]["listing_kind"]
+          lng: number | null
+          max_nights: number | null
+          min_nights: number
+          property_type_id: number
+          published_at: string | null
+          rating_avg: number
+          rejection_note: string | null
+          rejection_reason:
+            | Database["public"]["Enums"]["rejection_reason"]
+            | null
+          review_count: number
+          reviewed_by: string | null
+          status: Database["public"]["Enums"]["property_status"]
+          submitted_at: string | null
+          title_ar: string | null
+          title_en: string | null
+          title_fr: string | null
+          updated_at: string
+          wilaya_code: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "properties"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {
