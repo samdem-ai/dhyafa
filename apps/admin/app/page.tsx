@@ -139,7 +139,7 @@ export default function AdminOverviewPage() {
         {/* ── KPI tiles ─────────────────────────────────────────────────── */}
         <section>
           <h1 className="font-display text-heading-1 font-semibold text-primary mb-xl">
-            {locale === 'ar' ? 'نظرة عامة' : locale === 'fr' ? 'Vue d'ensemble' : 'Overview'}
+            {locale === 'ar' ? 'نظرة عامة' : locale === 'fr' ? "Vue d'ensemble" : 'Overview'}
           </h1>
           <div className="grid grid-cols-1 gap-lg sm:grid-cols-2 lg:grid-cols-4">
             {kpis.map((k) => (

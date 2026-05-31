@@ -10,7 +10,8 @@ import './globals.css';
 
 const fraunces = Fraunces({
   subsets: ['latin'],
-  axes: ['opsz', 'wght'],
+  // `wght` is the default axis (implicit for variable fonts) — listing it is a type error.
+  axes: ['opsz'],
   style: ['normal', 'italic'],
   display: 'swap',
   variable: '--font-display',

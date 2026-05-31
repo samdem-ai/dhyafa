@@ -132,11 +132,13 @@ const preset: Partial<Config> = {
       },
 
       fontFamily: {
-        display: fontFamily.display,
-        body: fontFamily.body,
-        arabic: fontFamily.arabic,
-        sans: fontFamily.body,      // override Tailwind default
-        serif: fontFamily.display,
+        // Spread to mutable string[] — token arrays are `as const` (readonly),
+        // but Tailwind's fontFamily type expects a mutable array.
+        display: [...fontFamily.display],
+        body: [...fontFamily.body],
+        arabic: [...fontFamily.arabic],
+        sans: [...fontFamily.body], // override Tailwind default
+        serif: [...fontFamily.display],
       },
 
       fontSize: Object.fromEntries(

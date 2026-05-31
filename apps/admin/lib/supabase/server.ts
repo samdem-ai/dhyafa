@@ -7,7 +7,7 @@
  *
  * Use only inside:
  *   - Server Actions ('use server')
- *   - Route Handlers (app/api/**/route.ts)
+ *   - Route Handlers (app/api/.../route.ts)
  *   - Server Components that perform privileged reads
  *
  * Every Server Action that uses this client must re-verify the caller's
