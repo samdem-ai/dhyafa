@@ -1,0 +1,51 @@
+{
+  "book_now": "Réserver maintenant",
+  "request_to_book": "Faire une demande",
+  "confirm_and_pay": "Confirmer et payer",
+  "instant_book": "Réservation instantanée",
+  "free_cancellation": "Annulation gratuite",
+  "price_breakdown": {
+    "title": "Détail du prix",
+    "nights": "{{amount}} × {{count}} nuit",
+    "nights_other": "{{amount}} × {{count}} nuits",
+    "cleaning_fee": "Frais de ménage",
+    "service_fee": "Frais de service",
+    "total": "Total",
+    "total_before_taxes": "Total avant taxes"
+  },
+  "dates": {
+    "check_in": "Arrivée",
+    "check_out": "Départ",
+    "add_dates": "Ajouter des dates",
+    "nights_count_one": "1 nuit",
+    "nights_count_other": "{{count}} nuits"
+  },
+  "guests": {
+    "label": "Voyageurs",
+    "adults": "Adultes",
+    "children": "Enfants",
+    "infants": "Bébés",
+    "total_one": "{{count}} voyageur",
+    "total_other": "{{count}} voyageurs"
+  },
+  "cancellation": {
+    "flexible": "Politique d'annulation flexible",
+    "moderate": "Politique d'annulation modérée",
+    "strict": "Politique d'annulation stricte",
+    "free_until": "Annulation gratuite jusqu'au {{date}}"
+  },
+  "status": {
+    "pending": "En attente",
+    "confirmed": "Confirmée",
+    "cancelled": "Annulée",
+    "completed": "Terminée"
+  },
+  "payment": {
+    "select_method": "Choisir un moyen de paiement",
+    "baridi_pay": "Baridi Mob",
+    "chargily": "Payer via Chargily (Edahabia / CIB)",
+    "processing": "Traitement du paiement en cours…",
+    "success": "Paiement effectué avec succès",
+    "failed": "Échec du paiement"
+  }
+}

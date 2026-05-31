@@ -1,0 +1,62 @@
+# @dyafa/hotel — Hotel & Property-Manager Dashboard
+
+Next.js 14 (App Router) dashboard for hotel owners, individual hosts, and their staff.
+
+- **Port:** 3002 (`next dev -p 3002`)
+- **Primary locale:** Arabic (RTL default)
+- **Auth:** Supabase — host role + `host_team_members` scoping (owner / manager / reception)
+
+## Setup
+
+### 1. Install dependencies (from the monorepo root)
+
+```bash
+pnpm install
+```
+
+> Builds all `@dyafa/*` workspace packages as a prerequisite (Turborepo handles the order).
+
+### 2. Environment variables
+
+Copy `.env.example` from the monorepo root to `.env` and fill in the values:
+
+```bash
+cp .env.example .env
+```
+
+Required for this app:
+
+| Variable | Where used |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Browser client (anon, RLS-gated) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser client |
+| `SUPABASE_URL` | Server-only client (service-role) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only — **never expose to browser** |
+
+### 3. Run the dev server
+
+```bash
+# From monorepo root (Turborepo):
+pnpm --filter @dyafa/hotel dev
+
+# Or directly from apps/hotel:
+pnpm dev
+```
+
+App starts at **http://localhost:3002**
+
+### 4. Build for production
+
+```bash
+pnpm --filter @dyafa/hotel build
+pnpm --filter @dyafa/hotel start
+```
+
+## Architecture notes
+
+- `lib/supabase/client.ts` — browser client (anon key). Import in `'use client'` components only.
+- `lib/supabase/server.ts` — service-role client. Import **only** in Server Actions / Route Handlers.
+- `lib/i18n.ts` — per-request locale resolution + `getI18n()` helper for Server Components.
+- Locale is stored in the `dyafa_locale` cookie; defaults to `ar` (RTL).
+- Tailwind uses logical utilities (`ps-*`, `pe-*`, `ms-*`, `me-*`) so RTL mirrors automatically.
+- Staff capability scoping (owner / manager / reception) is enforced inside `rpc_host_*` RPCs, not just the UI.

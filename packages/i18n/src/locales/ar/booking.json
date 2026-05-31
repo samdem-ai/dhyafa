@@ -1,0 +1,51 @@
+{
+  "book_now": "احجز الآن",
+  "request_to_book": "اطلب الحجز",
+  "confirm_and_pay": "تأكيد الدفع",
+  "instant_book": "حجز فوري",
+  "free_cancellation": "إلغاء مجاني",
+  "price_breakdown": {
+    "title": "تفاصيل السعر",
+    "nights": "{{amount}} × {{count}} ليلة",
+    "nights_other": "{{amount}} × {{count}} ليالٍ",
+    "cleaning_fee": "رسوم التنظيف",
+    "service_fee": "رسوم الخدمة",
+    "total": "الإجمالي",
+    "total_before_taxes": "الإجمالي قبل الضرائب"
+  },
+  "dates": {
+    "check_in": "تاريخ الوصول",
+    "check_out": "تاريخ المغادرة",
+    "add_dates": "أضف التواريخ",
+    "nights_count_one": "ليلة واحدة",
+    "nights_count_other": "{{count}} ليالٍ"
+  },
+  "guests": {
+    "label": "الضيوف",
+    "adults": "البالغون",
+    "children": "الأطفال",
+    "infants": "الرضّع",
+    "total_one": "{{count}} ضيف",
+    "total_other": "{{count}} ضيوف"
+  },
+  "cancellation": {
+    "flexible": "سياسة إلغاء مرنة",
+    "moderate": "سياسة إلغاء معتدلة",
+    "strict": "سياسة إلغاء صارمة",
+    "free_until": "إلغاء مجاني حتى {{date}}"
+  },
+  "status": {
+    "pending": "قيد الانتظار",
+    "confirmed": "مؤكّد",
+    "cancelled": "ملغى",
+    "completed": "مكتمل"
+  },
+  "payment": {
+    "select_method": "اختر طريقة الدفع",
+    "baridi_pay": "بريدي موب",
+    "chargily": "دفع عبر Chargily (Edahabia / CIB)",
+    "processing": "جارٍ معالجة الدفع…",
+    "success": "تمّت عملية الدفع بنجاح",
+    "failed": "فشلت عملية الدفع"
+  }
+}

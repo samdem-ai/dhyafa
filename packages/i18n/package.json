@@ -1,0 +1,25 @@
+{
+  "name": "@dyafa/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"(lint) @dyafa/i18n — no linter configured yet\""
+  },
+  "dependencies": {
+    "i18next": "^23.16.8"
+  }
+}

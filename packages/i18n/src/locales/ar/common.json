@@ -1,0 +1,38 @@
+{
+  "app_name": "ضيافة",
+  "tagline": "اكتشف أجمل الوجهات في الجزائر",
+  "nav": {
+    "home": "الرئيسية",
+    "explore": "استكشف",
+    "trips": "رحلاتي",
+    "wishlists": "المفضلة",
+    "inbox": "الرسائل",
+    "profile": "ملفي"
+  },
+  "actions": {
+    "continue": "متابعة",
+    "cancel": "إلغاء",
+    "save": "حفظ",
+    "retry": "إعادة المحاولة",
+    "close": "إغلاق",
+    "confirm": "تأكيد",
+    "edit": "تعديل",
+    "delete": "حذف",
+    "share": "مشاركة",
+    "see_all": "عرض الكل",
+    "go_back": "رجوع"
+  },
+  "status": {
+    "loading": "جارٍ التحميل…",
+    "error_generic": "حدث خطأ، يرجى المحاولة مجدداً",
+    "offline": "لا يوجد اتصال بالإنترنت",
+    "reconnecting": "جارٍ إعادة الاتصال…"
+  },
+  "per_night": "/ ليلة",
+  "from_price": "ابتداءً من",
+  "rating": "{{value}} ({{count}} تقييم)",
+  "superhost": "مضيف مميز",
+  "verified": "موثّق",
+  "night_one": "{{count}} ليلة",
+  "night_other": "{{count}} ليالٍ"
+}

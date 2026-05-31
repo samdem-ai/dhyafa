@@ -1,0 +1,51 @@
+{
+  "book_now": "Book now",
+  "request_to_book": "Request to book",
+  "confirm_and_pay": "Confirm and pay",
+  "instant_book": "Instant book",
+  "free_cancellation": "Free cancellation",
+  "price_breakdown": {
+    "title": "Price breakdown",
+    "nights": "{{amount}} × {{count}} night",
+    "nights_other": "{{amount}} × {{count}} nights",
+    "cleaning_fee": "Cleaning fee",
+    "service_fee": "Service fee",
+    "total": "Total",
+    "total_before_taxes": "Total before taxes"
+  },
+  "dates": {
+    "check_in": "Check-in",
+    "check_out": "Check-out",
+    "add_dates": "Add dates",
+    "nights_count_one": "1 night",
+    "nights_count_other": "{{count}} nights"
+  },
+  "guests": {
+    "label": "Guests",
+    "adults": "Adults",
+    "children": "Children",
+    "infants": "Infants",
+    "total_one": "{{count}} guest",
+    "total_other": "{{count}} guests"
+  },
+  "cancellation": {
+    "flexible": "Flexible cancellation policy",
+    "moderate": "Moderate cancellation policy",
+    "strict": "Strict cancellation policy",
+    "free_until": "Free cancellation until {{date}}"
+  },
+  "status": {
+    "pending": "Pending",
+    "confirmed": "Confirmed",
+    "cancelled": "Cancelled",
+    "completed": "Completed"
+  },
+  "payment": {
+    "select_method": "Select payment method",
+    "baridi_pay": "Baridi Mob",
+    "chargily": "Pay via Chargily (Edahabia / CIB)",
+    "processing": "Processing payment…",
+    "success": "Payment successful",
+    "failed": "Payment failed"
+  }
+}

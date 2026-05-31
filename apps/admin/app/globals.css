@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Font family CSS variables — set by next/font in layout.tsx */
+    --font-display: 'Fraunces', serif;
+    --font-body: 'Plus Jakarta Sans', sans-serif;
+    --font-arabic: 'IBM Plex Sans Arabic', sans-serif;
+  }
+
+  html {
+    /* App canvas — bone-200 from design tokens */
+    background-color: theme('colors.bg');
+    color: theme('colors.text-default');
+    /* Body stack (Latin). Arabic locale overrides via [lang="ar"] */
+    font-family: var(--font-body), system-ui, sans-serif;
+  }
+
+  /* Auto-switch to Arabic typeface when locale is Arabic */
+  :root[lang='ar'],
+  html[lang='ar'] {
+    font-family: var(--font-arabic), system-ui, sans-serif;
+  }
+
+  /* Ensure price/numeric columns align */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}

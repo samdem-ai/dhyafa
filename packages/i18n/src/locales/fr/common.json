@@ -1,0 +1,38 @@
+{
+  "app_name": "Dyafa",
+  "tagline": "Découvrez les plus belles destinations d'Algérie",
+  "nav": {
+    "home": "Accueil",
+    "explore": "Explorer",
+    "trips": "Voyages",
+    "wishlists": "Favoris",
+    "inbox": "Messages",
+    "profile": "Profil"
+  },
+  "actions": {
+    "continue": "Continuer",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "retry": "Réessayer",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "share": "Partager",
+    "see_all": "Voir tout",
+    "go_back": "Retour"
+  },
+  "status": {
+    "loading": "Chargement…",
+    "error_generic": "Une erreur s'est produite, veuillez réessayer",
+    "offline": "Pas de connexion Internet",
+    "reconnecting": "Reconnexion en cours…"
+  },
+  "per_night": "/ nuit",
+  "from_price": "À partir de",
+  "rating": "{{value}} ({{count}} avis)",
+  "superhost": "Superhôte",
+  "verified": "Vérifié",
+  "night_one": "{{count}} nuit",
+  "night_other": "{{count}} nuits"
+}
