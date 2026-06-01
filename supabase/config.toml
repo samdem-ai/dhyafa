@@ -24,6 +24,13 @@ pool_mode = "transaction"
 default_pool_size = 20
 max_client_conn = 100
 
+# Seed files applied (in order) by `supabase db reset`. seed.sql sets up
+# reference data + demo users/hosts; seed_listings.sql adds demo listings,
+# room types, photos, amenities, and a few completed bookings + reviews.
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql", "./seed_listings.sql"]
+
 [realtime]
 enabled = true
 

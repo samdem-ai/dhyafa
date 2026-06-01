@@ -123,6 +123,7 @@ export default function RootLayout() {
         >
           {/* Screens registered by expo-router via the app/ directory */}
           <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen
             name="onboarding"
             options={{
@@ -133,6 +134,9 @@ export default function RootLayout() {
           />
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
           <Stack.Screen name="host" options={{ headerShown: false }} />
+          <Stack.Screen name="search" options={{ headerShown: false }} />
+          <Stack.Screen name="property" options={{ headerShown: false }} />
+          <Stack.Screen name="booking" options={{ headerShown: false }} />
         </Stack>
       </View>
     </I18nextProvider>
