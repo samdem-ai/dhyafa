@@ -2561,6 +2561,7 @@ export type Database = {
         Args: { p_booking_id: string; p_reason?: string }
         Returns: undefined
       }
+      dev_simulate_payment: { Args: { p_booking_id: string }; Returns: string }
       effective_units: {
         Args: { p_date: string; p_room_type_id: string }
         Returns: number
