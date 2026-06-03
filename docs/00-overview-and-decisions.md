@@ -1,7 +1,7 @@
 # {{PLATFORM_NAME}} — Architecture Plan & Decisions
 
-> **Status:** Planning. No application code yet. This folder is the design + decisions record you approve **before** any build starts.
-> **Generated:** 2026-05-31, via an 8-agent parallel design pass + 1 adversarial critic.
+> **Status:** Built — milestones **M0–M7 complete** (monorepo, Supabase backend, customer/host/hotel/admin apps). Verified by full `turbo typecheck` (11/11), DB smoke tests, and an admin `next build`. Real Chargily round-trip + on-device visual QA are the remaining follow-ups (see `12-demo-runbook.md`).
+> **Origin:** design generated 2026-05-31 via an 8-agent parallel pass + adversarial critic; implementation M0→M7 followed.
 
 ---
 
@@ -36,6 +36,7 @@
 | **10** | [**Canonical spec**](10-canonical-spec.md) | **The single buildable source of truth — overrides 01–08. Start here for schema/enums/RLS/RPCs.** |
 | 10v | [Canonical verification](10-verification.md) | Adversarial check: 13/13 contradictions resolved + 5 nits triaged |
 | 11 | [Milestones](11-milestones.md) | MVP-first build sequence (M0→M7) mapped to deliverables |
+| 12 | [Demo runbook](12-demo-runbook.md) | **How to run everything + demo script + accounts + follow-ups** |
 
 ## 3. Critical finding — these 8 docs are NOT yet one schema
 
