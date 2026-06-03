@@ -2567,6 +2567,10 @@ export type Database = {
         Returns: number
       }
       expire_holds: { Args: never; Returns: number }
+      get_or_create_conversation: {
+        Args: { p_booking_id: string }
+        Returns: string
+      }
       grant_role: {
         Args: {
           p_role: Database["public"]["Enums"]["app_role"]
@@ -2575,13 +2579,27 @@ export type Database = {
         Returns: undefined
       }
       has_role: { Args: { r: string }; Returns: boolean }
+      host_reply_review: {
+        Args: { p_body: string; p_review_id: string }
+        Returns: string
+      }
+      is_host_member: { Args: { p_host_profile_id: string }; Returns: boolean }
       is_staff: { Args: never; Returns: boolean }
+      mark_notifications_read: { Args: { p_ids?: string[] }; Returns: number }
       my_host_id: { Args: never; Returns: string }
       quote_refund: { Args: { p_booking_id: string }; Returns: number }
       refresh_analytics: { Args: never; Returns: undefined }
+      report_review: {
+        Args: { p_reason: string; p_review_id: string }
+        Returns: string
+      }
       resolve_nightly_price_dzd: {
         Args: { p_date: string; p_room_type_id: string }
         Returns: number
+      }
+      send_message: {
+        Args: { p_body: string; p_conversation_id: string }
+        Returns: string
       }
       submit_property_for_review: {
         Args: { p_property_id: string }
@@ -2635,6 +2653,20 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      submit_review: {
+        Args: {
+          p_accuracy: number
+          p_booking_id: string
+          p_checkin: number
+          p_cleanliness: number
+          p_comment?: string
+          p_communication: number
+          p_location: number
+          p_overall?: number
+          p_value: number
+        }
+        Returns: string
       }
     }
     Enums: {
