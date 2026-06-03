@@ -19,6 +19,7 @@ import {
   ScrollView,
   Pressable,
   SafeAreaView,
+  TextInput,
   useWindowDimensions,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
@@ -41,13 +42,24 @@ import {
   toDateParam,
   type PriceQuote,
 } from '@/lib/bookings';
+import {
+  listReviewsForProperty,
+  categoryAverage,
+  overallAverage,
+  reportReview,
+  REVIEW_CATEGORIES,
+  type ReviewWithReply,
+  type ReviewCategory,
+} from '@/lib/reviews';
+import { findMyBookingForProperty, getOrCreateConversation } from '@/lib/messaging';
 import { RemoteImage } from '@/components/RemoteImage';
 import { RatingRow, GuestStepperRow, PriceBreakdown } from '@/components/discovery';
+import { StarRating } from '@/components/StarRating';
 import { DateRangePicker } from '@/components/Calendar';
 import { Skeleton, ErrorState, PrimaryButton } from '@/components/ui';
 import { L, pick } from '@/lib/copy';
 import { fromParams, parseDate } from '@/lib/searchParams';
-import { formatRange, formatTime } from '@/lib/dateFormat';
+import { formatRange, formatTime, formatDateTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
 import { RN_FONTS } from '@/lib/fonts';
 
@@ -79,6 +91,8 @@ export default function PropertyDetailScreen() {
   const [children, setChildren] = useState<number>(searchState.children ?? 0);
   const [roomTypeId, setRoomTypeId] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
+  const [messaging, setMessaging] = useState(false);
+  const [messageNote, setMessageNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -172,6 +186,26 @@ export default function PropertyDetailScreen() {
 
   const nightlyForWidget = selectedRoom?.base_price_dzd ?? detail.from_price_dzd ?? 0;
 
+  async function onMessageHost() {
+    if (!detail) return;
+    setMessaging(true);
+    setMessageNote(null);
+    try {
+      const bookingId = await findMyBookingForProperty(detail.id);
+      if (!bookingId) {
+        // Messaging needs a booking context; nudge the guest to book first.
+        setMessageNote(pick(L.messageHostNeedsBooking, locale));
+        return;
+      }
+      const conversationId = await getOrCreateConversation(bookingId);
+      router.push(`/conversation/${conversationId}`);
+    } catch {
+      setMessageNote(pick(L.conversationFailed, locale));
+    } finally {
+      setMessaging(false);
+    }
+  }
+
   function onContinue() {
     if (!checkIn || !checkOut || nights <= 0 || !selectedRoom) {
       setOverlay('dates');
@@ -215,6 +249,18 @@ export default function PropertyDetailScreen() {
               <Text style={styles.paragraph}>{description}</Text>
             </Section>
           ) : null}
+
+          {/* Message host */}
+          <View style={styles.messageHostWrap}>
+            <PrimaryButton
+              label={pick(L.messageHost, locale)}
+              variant="secondary"
+              onPress={() => void onMessageHost()}
+              loading={messaging}
+              disabled={messaging}
+            />
+            {messageNote ? <Text style={styles.messageHostNote}>{messageNote}</Text> : null}
+          </View>
 
           {/* Room types (multi-room) */}
           {isMultiRoom ? (
@@ -281,7 +327,12 @@ export default function PropertyDetailScreen() {
               detail.review_count > 0 ? ` · ${formatNumber(detail.review_count, locale)}` : ''
             }`}
           >
-            <ReviewsSummary detail={detail} locale={locale} />
+            <ReviewsSummary
+              propertyId={detail.id}
+              ratingAvg={detail.rating_avg}
+              reviewCount={detail.review_count}
+              locale={locale}
+            />
           </Section>
         </View>
       </ScrollView>
@@ -446,68 +497,201 @@ function RoomOption({
 }
 
 // ── Reviews summary ─────────────────────────────────────────────────────────
-function ReviewsSummary({ detail, locale }: { detail: PropertyDetail; locale: Locale }) {
-  const reviews = detail.reviews;
-  if (detail.review_count === 0 || reviews.length === 0) {
+const REVIEW_CAT_LABEL: Record<ReviewCategory, keyof typeof L> = {
+  cleanliness: 'reviewCleanliness',
+  accuracy: 'reviewAccuracy',
+  communication: 'reviewCommunication',
+  location: 'reviewLocation',
+  value: 'reviewValue',
+  checkin: 'reviewCheckin',
+};
+
+function ReviewsSummary({
+  propertyId,
+  ratingAvg,
+  reviewCount,
+  locale,
+}: {
+  propertyId: string;
+  ratingAvg: number;
+  reviewCount: number;
+  locale: Locale;
+}) {
+  const [reviews, setReviews] = useState<ReviewWithReply[] | null>(null);
+  const [reportingId, setReportingId] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      listReviewsForProperty(propertyId)
+        .then((rows) => {
+          if (mounted) setReviews(rows);
+        })
+        .catch(() => {
+          if (mounted) setReviews([]);
+        });
+      return () => {
+        mounted = false;
+      };
+    }, [propertyId]),
+  );
+
+  if (reviewCount === 0) {
     return <Text style={styles.paragraph}>{pick(L.noReviews, locale)}</Text>;
   }
-
-  // Category averages (only categories with at least one value).
-  const cats: { key: keyof typeof L; field: keyof (typeof reviews)[number] }[] = [
-    { key: 'reviewCleanliness', field: 'cleanliness' },
-    { key: 'reviewAccuracy', field: 'accuracy' },
-    { key: 'reviewLocation', field: 'location' },
-    { key: 'reviewValue', field: 'value' },
-    { key: 'reviewCheckin', field: 'checkin' },
-    { key: 'reviewCommunication', field: 'communication' },
-  ];
-
-  function avg(field: keyof (typeof reviews)[number]): number | null {
-    const vals = reviews.map((r) => r[field]).filter((v): v is number => typeof v === 'number');
-    if (vals.length === 0) return null;
-    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  if (reviews === null) {
+    return <Skeleton style={styles.reviewSkeleton} />;
   }
+
+  // Prefer the server's headline rating/count; fall back to fetched rows.
+  const headlineScore = ratingAvg > 0 ? ratingAvg : overallAverage(reviews);
+  const headlineCount = reviewCount > 0 ? reviewCount : reviews.length;
 
   return (
     <View style={styles.reviewsWrap}>
       <View style={styles.reviewHeadline}>
         <Text style={styles.reviewBigStar}>★</Text>
-        <Text style={styles.reviewBigScore}>{formatNumber(detail.rating_avg, locale)}</Text>
+        <Text style={styles.reviewBigScore}>{formatNumber(headlineScore, locale)}</Text>
         <Text style={styles.reviewBigCount}>
           {' · '}
-          {formatNumber(detail.review_count, locale)}{' '}
-          {detail.review_count === 1 ? pick(L.reviewsCount, locale) : pick(L.reviewsCountPlural, locale)}
+          {formatNumber(headlineCount, locale)}{' '}
+          {headlineCount === 1 ? pick(L.reviewsCount, locale) : pick(L.reviewsCountPlural, locale)}
         </Text>
       </View>
 
+      {/* Category averages */}
       <View style={styles.catGrid}>
-        {cats.map((c) => {
-          const a = avg(c.field);
+        {REVIEW_CATEGORIES.map((cat) => {
+          const a = categoryAverage(reviews, cat);
           if (a == null) return null;
           return (
-            <View key={String(c.field)} style={styles.catRow}>
-              <Text style={styles.catLabel}>{pick(L[c.key], locale)}</Text>
+            <View key={cat} style={styles.catRow}>
+              <Text style={styles.catLabel}>{pick(L[REVIEW_CAT_LABEL[cat]], locale)}</Text>
               <Text style={styles.catValue}>{formatNumber(a, locale)}</Text>
             </View>
           );
         })}
       </View>
 
-      {/* A couple of recent comments */}
-      {reviews
-        .filter((r) => (r.comment_text ?? '').trim().length > 0)
-        .slice(0, 2)
-        .map((r) => (
-          <View key={r.id} style={styles.reviewItem}>
+      {/* Individual reviews (with any host reply + a report affordance) */}
+      {reviews.slice(0, 6).map((r) => (
+        <View key={r.id} style={styles.reviewItem}>
+          <View style={styles.reviewItemTop}>
             <View style={styles.reviewItemHeader}>
               <Text style={styles.reviewItemStar}>★</Text>
               <Text style={styles.reviewItemScore}>{formatNumber(r.overall, locale)}</Text>
+              {r.author?.display_name ? (
+                <Text style={styles.reviewAuthor} numberOfLines={1}>
+                  {' · '}
+                  {r.author.display_name}
+                </Text>
+              ) : null}
             </View>
-            <Text style={styles.reviewItemText} numberOfLines={4}>
-              {r.comment_text}
-            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={pick(L.reportReview, locale)}
+              onPress={() => setReportingId(r.id)}
+              hitSlop={6}
+            >
+              <Text style={styles.reportLink}>{pick(L.reportReview, locale)}</Text>
+            </Pressable>
           </View>
-        ))}
+          {(r.comment_text ?? '').trim().length > 0 ? (
+            <Text style={styles.reviewItemText}>{r.comment_text}</Text>
+          ) : null}
+          <Text style={styles.reviewDate}>{formatDateTime(r.created_at, locale)}</Text>
+
+          {r.reply ? (
+            <View style={styles.replyBox}>
+              <Text style={styles.replyLabel}>{pick(L.hostReply, locale)}</Text>
+              <Text style={styles.replyText}>{r.reply.body}</Text>
+            </View>
+          ) : null}
+        </View>
+      ))}
+
+      {reportingId ? (
+        <ReportReviewSheet
+          reviewId={reportingId}
+          locale={locale}
+          onClose={() => setReportingId(null)}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+// ── Report review sheet ───────────────────────────────────────────────────────
+function ReportReviewSheet({
+  reviewId,
+  locale,
+  onClose,
+}: {
+  reviewId: string;
+  locale: Locale;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmit() {
+    const text = reason.trim();
+    if (!text) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await reportReview(reviewId, text);
+      setDone(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : pick(L.reportFailed, locale));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.overlayBackdrop}>
+      <Pressable style={styles.overlayDismiss} onPress={onClose} accessibilityLabel={pick(L.done, locale)} />
+      <View style={styles.overlaySheet}>
+        <View style={styles.overlayHeader}>
+          <Text style={styles.overlayTitle}>{pick(L.reportReviewTitle, locale)}</Text>
+          <Pressable accessibilityRole="button" onPress={onClose} hitSlop={8}>
+            <Text style={styles.overlayClose}>✕</Text>
+          </Pressable>
+        </View>
+        {done ? (
+          <>
+            <Text style={styles.reportThanks}>{pick(L.reportThanks, locale)}</Text>
+            <View style={styles.overlayFooter}>
+              <PrimaryButton label={pick(L.done, locale)} onPress={onClose} />
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.reportHint}>{pick(L.reportReviewHint, locale)}</Text>
+            <TextInput
+              style={[styles.reportInput, { textAlign }]}
+              value={reason}
+              onChangeText={setReason}
+              placeholder={pick(L.reportReviewHint, locale)}
+              placeholderTextColor={theme.color.textMuted}
+              multiline
+              accessibilityLabel={pick(L.reportReviewTitle, locale)}
+            />
+            {error ? <Text style={styles.reportError}>{error}</Text> : null}
+            <View style={styles.overlayFooter}>
+              <PrimaryButton
+                label={pick(L.reportSubmit, locale)}
+                onPress={() => void onSubmit()}
+                loading={busy}
+                disabled={busy || reason.trim().length === 0}
+              />
+            </View>
+          </>
+        )}
+      </View>
     </View>
   );
 }
@@ -785,6 +969,98 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize['body-sm'],
     color: theme.color.text,
     lineHeight: theme.lineHeight['body-sm'],
+    textAlign,
+  },
+  reviewSkeleton: { height: 120, width: '100%', borderRadius: theme.radius.card },
+  reviewItemTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.space.sm,
+  },
+  reviewAuthor: {
+    flexShrink: 1,
+    fontFamily: RN_FONTS.arabicRegular,
+    fontSize: theme.fontSize['body-sm'],
+    color: theme.color.textMuted,
+  },
+  reportLink: {
+    fontFamily: RN_FONTS.arabicMedium,
+    fontSize: theme.fontSize.caption,
+    color: theme.color.textMuted,
+    textDecorationLine: 'underline',
+  },
+  reviewDate: {
+    fontFamily: RN_FONTS.bodyRegular,
+    fontSize: theme.fontSize.overline,
+    color: theme.color.textMuted,
+    textAlign,
+  },
+  replyBox: {
+    marginTop: theme.space.sm,
+    padding: theme.space.md,
+    backgroundColor: theme.color.surfaceSunken,
+    borderRadius: theme.radius.md,
+    gap: 2,
+  },
+  replyLabel: {
+    fontFamily: RN_FONTS.arabicSemiBold,
+    fontSize: theme.fontSize.caption,
+    fontWeight: '600',
+    color: theme.color.primary,
+    textAlign,
+  },
+  replyText: {
+    fontFamily: RN_FONTS.arabicRegular,
+    fontSize: theme.fontSize['body-sm'],
+    color: theme.color.text,
+    lineHeight: theme.lineHeight['body-sm'],
+    textAlign,
+  },
+
+  // Message host
+  messageHostWrap: { marginTop: theme.space.md, gap: theme.space.xs },
+  messageHostNote: {
+    fontFamily: RN_FONTS.arabicRegular,
+    fontSize: theme.fontSize['body-sm'],
+    color: theme.color.textMuted,
+    textAlign,
+  },
+
+  // Report sheet
+  reportHint: {
+    fontFamily: RN_FONTS.arabicRegular,
+    fontSize: theme.fontSize.body,
+    color: theme.color.textMuted,
+    lineHeight: theme.lineHeight.body,
+    textAlign,
+    marginBottom: theme.space.md,
+  },
+  reportInput: {
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.md,
+    borderWidth: 1.5,
+    borderColor: theme.color.border,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.space.md,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    fontFamily: RN_FONTS.arabicRegular,
+    fontSize: theme.fontSize.body,
+    color: theme.color.text,
+  },
+  reportError: {
+    fontFamily: RN_FONTS.arabicMedium,
+    fontSize: theme.fontSize['body-sm'],
+    color: theme.color.error,
+    textAlign,
+    marginTop: theme.space.sm,
+  },
+  reportThanks: {
+    fontFamily: RN_FONTS.arabicRegular,
+    fontSize: theme.fontSize.body,
+    color: theme.color.text,
+    lineHeight: theme.lineHeight.body,
     textAlign,
   },
 

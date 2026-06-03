@@ -246,6 +246,111 @@ export const L = {
   wishlists: { ar: 'المفضلة', fr: 'Favoris', en: 'Wishlists' },
   wishlistsSoon: { ar: 'قريبًا', fr: 'Bientôt', en: 'Coming soon' },
 
+  // ── Reviews (write) ───────────────────────────────────────────────────────
+  leaveReview: { ar: 'اكتب تقييمًا', fr: 'Laisser un avis', en: 'Leave a review' },
+  rateYourStay: { ar: 'قيّم إقامتك', fr: 'Évaluez votre séjour', en: 'Rate your stay' },
+  reviewIntro: {
+    ar: 'شارك تجربتك لمساعدة الضيوف الآخرين والمضيف.',
+    fr: 'Partagez votre expérience pour aider les autres voyageurs et l’hôte.',
+    en: 'Share your experience to help other guests and the host.',
+  },
+  reviewComment: { ar: 'تعليقك (اختياري)', fr: 'Votre commentaire (facultatif)', en: 'Your comment (optional)' },
+  reviewCommentHint: {
+    ar: 'ما الذي أعجبك؟ بمَ تنصح الضيوف القادمين؟',
+    fr: 'Qu’avez-vous aimé ? Que conseillez-vous aux prochains voyageurs ?',
+    en: 'What did you like? Any tips for future guests?',
+  },
+  submitReview: { ar: 'إرسال التقييم', fr: 'Envoyer l’avis', en: 'Submit review' },
+  reviewThanksTitle: { ar: 'شكرًا لتقييمك!', fr: 'Merci pour votre avis !', en: 'Thanks for your review!' },
+  reviewThanksBody: {
+    ar: 'تم نشر تقييمك. نقدّر مساهمتك في مجتمع ضيافة.',
+    fr: 'Votre avis a été publié. Merci de contribuer à la communauté Dyafa.',
+    en: 'Your review has been posted. Thanks for contributing to the Dyafa community.',
+  },
+  reviewFailed: { ar: 'تعذّر إرسال التقييم', fr: 'Échec de l’envoi de l’avis', en: 'Could not submit review' },
+  reviewNotEligibleTitle: { ar: 'لا يمكن التقييم', fr: 'Avis indisponible', en: 'Review unavailable' },
+  reviewNotEligibleBody: {
+    ar: 'يمكن تقييم الإقامات المكتملة فقط، ومرة واحدة لكل حجز.',
+    fr: 'Seuls les séjours terminés peuvent être évalués, une fois par réservation.',
+    en: 'Only completed stays can be reviewed, once per booking.',
+  },
+  reviewSelectAll: {
+    ar: 'يرجى تقييم كل الفئات.',
+    fr: 'Veuillez noter toutes les catégories.',
+    en: 'Please rate every category.',
+  },
+  alreadyReviewed: { ar: 'تم التقييم', fr: 'Déjà évalué', en: 'Reviewed' },
+  hostReply: { ar: 'رد المضيف', fr: 'Réponse de l’hôte', en: 'Host reply' },
+  reportReview: { ar: 'إبلاغ', fr: 'Signaler', en: 'Report' },
+  reportReviewTitle: { ar: 'الإبلاغ عن تقييم', fr: 'Signaler un avis', en: 'Report review' },
+  reportReviewHint: {
+    ar: 'أخبرنا بسبب الإبلاغ عن هذا التقييم.',
+    fr: 'Indiquez pourquoi vous signalez cet avis.',
+    en: 'Tell us why you’re reporting this review.',
+  },
+  reportSubmit: { ar: 'إرسال البلاغ', fr: 'Envoyer le signalement', en: 'Submit report' },
+  reportThanks: { ar: 'تم استلام بلاغك. شكرًا لك.', fr: 'Votre signalement a été reçu. Merci.', en: 'Your report was received. Thank you.' },
+  reportFailed: { ar: 'تعذّر إرسال البلاغ', fr: 'Échec du signalement', en: 'Could not submit report' },
+
+  // ── Host reviews ──────────────────────────────────────────────────────────
+  hostReviewsTitle: { ar: 'تقييمات ضيوفي', fr: 'Avis des voyageurs', en: 'Guest reviews' },
+  hostReviewsEmptyTitle: { ar: 'لا توجد تقييمات بعد', fr: 'Aucun avis', en: 'No reviews yet' },
+  hostReviewsEmptyBody: {
+    ar: 'ستظهر تقييمات ضيوفك هنا بعد انتهاء إقاماتهم.',
+    fr: 'Les avis de vos voyageurs apparaîtront ici après leur séjour.',
+    en: 'Your guests’ reviews will appear here after their stays.',
+  },
+  reply: { ar: 'رد', fr: 'Répondre', en: 'Reply' },
+  replyPlaceholder: { ar: 'اكتب ردًا عامًا…', fr: 'Rédigez une réponse publique…', en: 'Write a public reply…' },
+  replySubmit: { ar: 'نشر الرد', fr: 'Publier la réponse', en: 'Post reply' },
+  replyFailed: { ar: 'تعذّر نشر الرد', fr: 'Échec de la publication', en: 'Could not post reply' },
+  reviewsLink: { ar: 'التقييمات', fr: 'Avis', en: 'Reviews' },
+
+  // ── Messaging ─────────────────────────────────────────────────────────────
+  inbox: { ar: 'الرسائل', fr: 'Messages', en: 'Inbox' },
+  messageHost: { ar: 'مراسلة المضيف', fr: 'Contacter l’hôte', en: 'Message host' },
+  messages: { ar: 'الرسائل', fr: 'Messages', en: 'Messages' },
+  inboxEmptyTitle: { ar: 'لا توجد رسائل', fr: 'Aucun message', en: 'No messages' },
+  inboxEmptyBody: {
+    ar: 'محادثاتك مع المضيفين والضيوف ستظهر هنا.',
+    fr: 'Vos conversations avec les hôtes et voyageurs apparaîtront ici.',
+    en: 'Your conversations with hosts and guests will show up here.',
+  },
+  signInToSeeInbox: {
+    ar: 'سجّل الدخول لعرض رسائلك.',
+    fr: 'Connectez-vous pour voir vos messages.',
+    en: 'Sign in to see your messages.',
+  },
+  messagePlaceholder: { ar: 'اكتب رسالة…', fr: 'Écrire un message…', en: 'Write a message…' },
+  send: { ar: 'إرسال', fr: 'Envoyer', en: 'Send' },
+  noMessagesYet: {
+    ar: 'لا توجد رسائل بعد. ابدأ المحادثة.',
+    fr: 'Aucun message pour l’instant. Démarrez la conversation.',
+    en: 'No messages yet. Start the conversation.',
+  },
+  messageFailed: { ar: 'تعذّر إرسال الرسالة', fr: 'Échec de l’envoi', en: 'Could not send message' },
+  conversationFailed: { ar: 'تعذّر فتح المحادثة', fr: 'Impossible d’ouvrir la conversation', en: 'Could not open the conversation' },
+  messageHostNeedsBooking: {
+    ar: 'احجز هذه الإقامة لبدء محادثة مع المضيف.',
+    fr: 'Réservez ce logement pour discuter avec l’hôte.',
+    en: 'Book this stay to start a conversation with the host.',
+  },
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  notifications: { ar: 'الإشعارات', fr: 'Notifications', en: 'Notifications' },
+  notificationsEmptyTitle: { ar: 'لا توجد إشعارات', fr: 'Aucune notification', en: 'No notifications' },
+  notificationsEmptyBody: {
+    ar: 'ستظهر التحديثات حول حجوزاتك ورسائلك وتقييماتك هنا.',
+    fr: 'Les mises à jour sur vos réservations, messages et avis apparaîtront ici.',
+    en: 'Updates about your bookings, messages and reviews will appear here.',
+  },
+  markAllRead: { ar: 'تحديد الكل كمقروء', fr: 'Tout marquer comme lu', en: 'Mark all read' },
+  signInToSeeNotifications: {
+    ar: 'سجّل الدخول لعرض الإشعارات.',
+    fr: 'Connectez-vous pour voir vos notifications.',
+    en: 'Sign in to see your notifications.',
+  },
+
   // ── Booking status labels ─────────────────────────────────────────────────
   st_requested: { ar: 'بانتظار رد المضيف', fr: 'En attente de l’hôte', en: 'Requested' },
   st_declined: { ar: 'مرفوض', fr: 'Refusé', en: 'Declined' },

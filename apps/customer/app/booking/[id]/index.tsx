@@ -26,6 +26,7 @@ import {
   type BookingWithProperty,
 } from '@/lib/bookings';
 import { localizedName } from '@/lib/discovery';
+import { getOrCreateConversation } from '@/lib/messaging';
 import { RemoteImage } from '@/components/RemoteImage';
 import { BookingStatusBadge, PriceBreakdown, type PriceLine } from '@/components/discovery';
 import { Skeleton, ErrorState, EmptyState, PrimaryButton } from '@/components/ui';
@@ -45,6 +46,22 @@ export default function BookingDetailScreen() {
 
   const [booking, setBooking] = useState<BookingWithProperty | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [messaging, setMessaging] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const onMessageHost = useCallback(async () => {
+    if (!id) return;
+    setMessaging(true);
+    setActionError(null);
+    try {
+      const conversationId = await getOrCreateConversation(id);
+      router.push(`/conversation/${conversationId}`);
+    } catch {
+      setActionError(pick(L.conversationFailed, locale));
+    } finally {
+      setMessaging(false);
+    }
+  }, [id, locale]);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -170,6 +187,24 @@ export default function BookingDetailScreen() {
         <View style={styles.priceCard}>
           <Text style={styles.sectionTitle}>{pick(L.total, locale)}</Text>
           <PriceBreakdown lines={lines} totalLabel={pick(L.total, locale)} totalDzd={booking.total_dzd} locale={locale} />
+        </View>
+
+        {/* Actions: message host, and review when the stay is completed */}
+        <View style={styles.actions}>
+          {booking.status === 'completed' ? (
+            <PrimaryButton
+              label={pick(L.leaveReview, locale)}
+              onPress={() => router.push(`/review/${booking.id}`)}
+            />
+          ) : null}
+          <PrimaryButton
+            label={pick(L.messageHost, locale)}
+            variant="secondary"
+            onPress={() => void onMessageHost()}
+            loading={messaging}
+            disabled={messaging}
+          />
+          {actionError ? <Text style={styles.actionError}>{actionError}</Text> : null}
         </View>
 
         {/* Booking code */}
@@ -336,6 +371,14 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize['heading-3'],
     fontWeight: '600',
     color: theme.color.text,
+    textAlign,
+  },
+
+  actions: { gap: theme.space.md },
+  actionError: {
+    fontFamily: RN_FONTS.arabicMedium,
+    fontSize: theme.fontSize['body-sm'],
+    color: theme.color.error,
     textAlign,
   },
 

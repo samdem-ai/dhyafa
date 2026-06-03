@@ -29,6 +29,7 @@ export function useTabDefs(locale: Locale): TabDef[] {
   return [
     { href: '/(tabs)', glyph: '🔍', label: pick(L.exploreGreeting, locale) },
     { href: '/(tabs)/trips', glyph: '🧳', label: pick(L.tripsTitle, locale) },
+    { href: '/(tabs)/inbox', glyph: '💬', label: pick(L.inbox, locale) },
     { href: '/(tabs)/wishlists', glyph: '🤍', label: pick(L.wishlists, locale) },
     { href: '/(tabs)/profile', glyph: '👤', label: pick(L.profileTitle, locale) },
   ];

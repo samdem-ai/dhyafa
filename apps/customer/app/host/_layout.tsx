@@ -40,6 +40,7 @@ export default function HostLayout() {
     >
       <Stack.Screen name="index" options={{ title: 'استضافتي' }} />
       <Stack.Screen name="new" options={{ headerShown: false }} />
+      <Stack.Screen name="reviews" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -137,6 +137,9 @@ export default function RootLayout() {
           <Stack.Screen name="search" options={{ headerShown: false }} />
           <Stack.Screen name="property" options={{ headerShown: false }} />
           <Stack.Screen name="booking" options={{ headerShown: false }} />
+          <Stack.Screen name="review" options={{ headerShown: false }} />
+          <Stack.Screen name="conversation" options={{ headerShown: false }} />
+          <Stack.Screen name="notifications" options={{ headerShown: false }} />
         </Stack>
       </View>
     </I18nextProvider>

@@ -51,6 +51,7 @@ const COPY = {
   instant: { ar: '⚡ حجز فوري', fr: '⚡ Réservation instantanée', en: '⚡ Instant book' },
   minNights: { ar: 'حد أدنى', fr: 'min.', en: 'min' },
   nights: { ar: 'ليالٍ', fr: 'nuits', en: 'nights' },
+  guestReviews: { ar: 'تقييمات ضيوفي', fr: 'Avis des voyageurs', en: 'Guest reviews' },
 } as const;
 
 function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
@@ -128,6 +129,17 @@ export default function HostHomeScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />
         }
+        ListHeaderComponent={
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/host/reviews')}
+            style={({ pressed }) => [styles.reviewsLink, pressed && styles.cardPressed]}
+          >
+            <Text style={styles.reviewsLinkGlyph}>⭐</Text>
+            <Text style={styles.reviewsLinkLabel}>{pick(COPY.guestReviews, locale)}</Text>
+            <Text style={styles.reviewsLinkChevron}>{I18nManager.isRTL ? '‹' : '›'}</Text>
+          </Pressable>
+        }
         ListEmptyComponent={
           <EmptyState
             title={pick(COPY.emptyTitle, locale)}
@@ -190,6 +202,29 @@ const styles = StyleSheet.create({
     ...theme.shadow.card,
   },
   cardPressed: { opacity: 0.9 },
+  reviewsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.md,
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.card,
+    padding: theme.space.lg,
+    ...theme.shadow.card,
+  },
+  reviewsLinkGlyph: { fontSize: 20 },
+  reviewsLinkLabel: {
+    flex: 1,
+    fontFamily: RN_FONTS.arabicSemiBold,
+    fontSize: theme.fontSize.body,
+    fontWeight: '600',
+    color: theme.color.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  reviewsLinkChevron: {
+    fontFamily: RN_FONTS.bodyRegular,
+    fontSize: theme.fontSize['heading-3'],
+    color: theme.color.textMuted,
+  },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',

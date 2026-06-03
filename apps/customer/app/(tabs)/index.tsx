@@ -33,6 +33,7 @@ import {
 } from '@/lib/discovery';
 import { RailCard } from '@/components/discovery';
 import { Skeleton, ErrorState } from '@/components/ui';
+import { NotificationBell } from '@/components/NotificationBell';
 import { L, pick } from '@/lib/copy';
 import { theme } from '@/theme';
 import { RN_FONTS } from '@/lib/fonts';
@@ -114,8 +115,11 @@ export default function ExploreScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.brand}>{pick(L.exploreGreeting, locale)}</Text>
-          <Text style={styles.tagline}>{pick(L.searchTitle, locale)}</Text>
+          <View style={styles.headerText}>
+            <Text style={styles.brand}>{pick(L.exploreGreeting, locale)}</Text>
+            <Text style={styles.tagline}>{pick(L.searchTitle, locale)}</Text>
+          </View>
+          <NotificationBell locale={locale} />
         </View>
 
         {/* Search entry */}
@@ -227,10 +231,15 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.9 },
 
   header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: theme.space.md,
     paddingHorizontal: theme.space.xl,
     paddingTop: theme.space.lg,
     paddingBottom: theme.space.md,
   },
+  headerText: { flex: 1 },
   brand: {
     fontFamily: RN_FONTS.displaySemiBold,
     fontSize: theme.fontSize['display-lg'],

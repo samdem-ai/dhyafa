@@ -22,6 +22,7 @@
     "expo-font": "~12.0.10",
     "expo-image-picker": "~15.0.7",
     "expo-localization": "~15.0.3",
+    "expo-notifications": "~0.28.19",
     "expo-router": "~3.5.24",
     "expo-secure-store": "~13.0.2",
     "expo-splash-screen": "~0.27.6",

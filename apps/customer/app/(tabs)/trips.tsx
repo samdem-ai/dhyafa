@@ -32,6 +32,7 @@ import { localizedName } from '@/lib/discovery';
 import { RemoteImage } from '@/components/RemoteImage';
 import { BookingStatusBadge } from '@/components/discovery';
 import { PrimaryButton, SkeletonList, ErrorState, EmptyState } from '@/components/ui';
+import { NotificationBell } from '@/components/NotificationBell';
 import { L, pick, type LMessage } from '@/lib/copy';
 import { useWilayaNames } from '@/lib/useWilayaNames';
 import { formatRange } from '@/lib/dateFormat';
@@ -88,6 +89,7 @@ export default function TripsScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <Text style={styles.title}>{pick(L.tripsTitle, locale)}</Text>
+        <NotificationBell locale={locale} />
       </View>
 
       {/* Segmented control */}
@@ -177,6 +179,14 @@ function TripCard({
               onPress={() => router.push(`/booking/${booking.id}/pay`)}
             />
           </View>
+        ) : booking.status === 'completed' ? (
+          <View style={styles.cardCta}>
+            <PrimaryButton
+              label={pick(L.leaveReview, locale)}
+              variant="secondary"
+              onPress={() => router.push(`/review/${booking.id}`)}
+            />
+          </View>
         ) : null}
       </View>
     </Pressable>
@@ -187,7 +197,15 @@ const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.color.bg },
-  header: { paddingHorizontal: theme.space.xl, paddingTop: theme.space.lg, paddingBottom: theme.space.sm },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.space.md,
+    paddingHorizontal: theme.space.xl,
+    paddingTop: theme.space.lg,
+    paddingBottom: theme.space.sm,
+  },
   title: {
     fontFamily: RN_FONTS.displaySemiBold,
     fontSize: theme.fontSize['heading-1'],
