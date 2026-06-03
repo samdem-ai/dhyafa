@@ -38,6 +38,31 @@ export function createServerClient(
 }
 
 /**
+ * User-scoped server client: **anon** key + a caller-supplied access-token JWT
+ * forwarded as the `Authorization` header. Every request runs as that user with
+ * RLS applied (NOT god-mode). Sessions are not persisted (stateless server use).
+ *
+ * Use for SECURITY DEFINER RPCs that self-check the caller's role/identity via
+ * `auth.uid()` / `has_role(...)` (e.g. `run_payouts`, `cancel_booking`), which
+ * would fail under the service-role client because it carries no JWT.
+ */
+export function createUserClient(
+  url: string,
+  anonKey: string,
+  accessToken: string,
+): SupabaseClient<Database> {
+  return createClient<Database>(url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  });
+}
+
+/**
  * Typed names of the SECURITY DEFINER Postgres RPCs exposed by the platform
  * (see canonical spec §3 / §5). Use these constants instead of bare strings
  * when calling `supabase.rpc(...)` so renames surface at compile time.

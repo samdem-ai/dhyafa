@@ -1,4 +1,4 @@
-export { createBrowserClient, createServerClient, RPC } from './client.js';
+export { createBrowserClient, createServerClient, createUserClient, RPC } from './client.js';
 export type { RpcName } from './client.js';
 
 // Re-export the database shape and the supabase-js client type so consumers get
