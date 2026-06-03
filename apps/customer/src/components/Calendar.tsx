@@ -82,6 +82,14 @@ function buildMonth(year: number, month: number): MonthGrid {
   return { year, month, days: cells };
 }
 
+/** Per-day decoration for the host availability calendar (optional). */
+export interface DayMeta {
+  /** Day is blocked/closed — rendered with a muted strike-through tint. */
+  closed?: boolean;
+  /** A nightly price override exists for this day — shows a small dot. */
+  hasOverride?: boolean;
+}
+
 export interface DateRangePickerProps {
   locale: Locale;
   checkIn: Date | null;
@@ -91,6 +99,20 @@ export interface DateRangePickerProps {
   minDate?: Date;
   /** How many months forward to render. */
   monthsAhead?: number;
+  /**
+   * Optional per-day metadata keyed by 'YYYY-MM-DD' (local calendar day).
+   * Used by the host calendar to reflect closed days + price overrides; guest
+   * callers omit it and get the plain picker.
+   */
+  dayMeta?: Record<string, DayMeta>;
+}
+
+/** Local 'YYYY-MM-DD' key for a Date (no TZ shift). */
+function dayKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = `${d.getMonth() + 1}`.padStart(2, '0');
+  const day = `${d.getDate()}`.padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function DateRangePicker({
@@ -100,6 +122,7 @@ export function DateRangePicker({
   onChange,
   minDate,
   monthsAhead = 12,
+  dayMeta,
 }: DateRangePickerProps) {
   const today = startOfDay(new Date());
   const min = minDate ? startOfDay(minDate) : today;
@@ -153,6 +176,8 @@ export function DateRangePicker({
               const isEnd = checkOut ? sameDay(day, checkOut) : false;
               const inRange = checkIn && checkOut ? isBetween(day, checkIn, checkOut) : false;
               const isEdge = isStart || isEnd;
+              const meta = dayMeta ? dayMeta[dayKey(day)] : undefined;
+              const closed = meta?.closed === true && !isEdge;
 
               return (
                 <Pressable
@@ -167,6 +192,7 @@ export function DateRangePicker({
                     style={[
                       styles.dayInner,
                       inRange && styles.dayInRange,
+                      closed && styles.dayClosed,
                       isEdge && styles.dayEdge,
                     ]}
                   >
@@ -174,11 +200,13 @@ export function DateRangePicker({
                       style={[
                         styles.dayText,
                         disabled && styles.dayTextDisabled,
+                        closed && styles.dayTextClosed,
                         isEdge && styles.dayTextEdge,
                       ]}
                     >
                       {day.getDate()}
                     </Text>
+                    {meta?.hasOverride && !isEdge ? <View style={styles.overrideDot} /> : null}
                   </View>
                 </Pressable>
               );
@@ -233,11 +261,21 @@ const styles = StyleSheet.create({
   },
   dayInRange: { backgroundColor: theme.color.infoBg },
   dayEdge: { backgroundColor: theme.color.primary, borderRadius: theme.radius.pill },
+  dayClosed: { backgroundColor: theme.color.surfaceSunken },
   dayText: {
     fontFamily: RN_FONTS.bodyMedium,
     fontSize: theme.fontSize['body-sm'],
     color: theme.color.text,
   },
   dayTextDisabled: { color: theme.color.ink300 },
+  dayTextClosed: { color: theme.color.ink300, textDecorationLine: 'line-through' },
   dayTextEdge: { color: theme.color.textOnPrimary, fontWeight: '700' },
+  overrideDot: {
+    position: 'absolute',
+    bottom: 3,
+    width: 5,
+    height: 5,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.accent,
+  },
 });

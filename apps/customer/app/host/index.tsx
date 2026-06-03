@@ -1,7 +1,13 @@
 /**
- * Host home — lists the signed-in host's own properties with status badges
- * and a "Create listing" CTA. Skeleton while loading, designed empty + error
- * states (no bare spinners). Pull-to-refresh re-fetches.
+ * Host dashboard (M4).
+ *
+ * Headline stats (active listings, pending requests) + a tidy grid of entry
+ * tiles: Reservations, Calendar & pricing, Earnings, Performance, Reviews, and
+ * Create listing. Below the tiles, the host's own listings remain inline (each
+ * routes into the wizard for editing) with status badges and a Create CTA.
+ *
+ * Skeleton while loading, designed empty + error states (no bare spinners),
+ * pull-to-refresh. Full RTL; counts use formatNumber.
  */
 
 import { useCallback, useState } from 'react';
@@ -22,6 +28,7 @@ import {
   localizedName,
   type PropertyRow,
 } from '@/lib/listings';
+import { getHostPerformance } from '@/lib/host';
 import {
   PrimaryButton,
   StatusBadge,
@@ -29,41 +36,40 @@ import {
   ErrorState,
   EmptyState,
 } from '@/components/ui';
+import { L, pick, type LMessage } from '@/lib/copy';
 import { theme } from '@/theme';
 import { RN_FONTS } from '@/lib/fonts';
 
+const textAlign = I18nManager.isRTL ? 'right' : 'left';
+
 const COPY = {
-  create: { ar: 'إنشاء إعلان جديد', fr: 'Créer une annonce', en: 'Create listing' },
-  emptyTitle: { ar: 'لا توجد إعلانات بعد', fr: 'Aucune annonce', en: 'No listings yet' },
-  emptySub: {
-    ar: 'ابدأ بإضافة أول مكان إقامة لك واستقبل ضيوفك.',
-    fr: 'Ajoutez votre premier hébergement pour accueillir des voyageurs.',
-    en: 'Add your first place to start welcoming guests.',
-  },
-  loadError: {
-    ar: 'تعذّر تحميل إعلاناتك.',
-    fr: 'Impossible de charger vos annonces.',
-    en: 'Could not load your listings.',
-  },
-  retry: { ar: 'إعادة المحاولة', fr: 'Réessayer', en: 'Retry' },
   untitled: { ar: 'إعلان بدون عنوان', fr: 'Annonce sans titre', en: 'Untitled listing' },
   rejected: { ar: 'سبب الرفض:', fr: 'Motif du rejet :', en: 'Rejection reason:' },
   instant: { ar: '⚡ حجز فوري', fr: '⚡ Réservation instantanée', en: '⚡ Instant book' },
   minNights: { ar: 'حد أدنى', fr: 'min.', en: 'min' },
   nights: { ar: 'ليالٍ', fr: 'nuits', en: 'nights' },
-  guestReviews: { ar: 'تقييمات ضيوفي', fr: 'Avis des voyageurs', en: 'Guest reviews' },
+  myListings: { ar: 'إعلاناتي', fr: 'Mes annonces', en: 'My listings' },
 } as const;
 
-function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
-  return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
+interface Tile {
+  key: string;
+  glyph: string;
+  label: LMessage;
+  href: string;
 }
+
+const TILES: Tile[] = [
+  { key: 'reservations', glyph: '📥', label: L.hostReservations, href: '/host/reservations' },
+  { key: 'calendar', glyph: '📅', label: L.hostCalendarLink, href: '/host/calendar' },
+  { key: 'earnings', glyph: '💸', label: L.hostEarnings, href: '/host/earnings' },
+  { key: 'performance', glyph: '📊', label: L.hostPerformanceLink, href: '/host/performance' },
+  { key: 'reviews', glyph: '⭐', label: L.hostReviewsTitle, href: '/host/reviews' },
+  { key: 'create', glyph: '➕', label: L.hostCreate, href: '/host/new' },
+];
 
 function propertyTitle(p: PropertyRow, locale: Locale): string {
   return (
-    localizedName(
-      { name_ar: p.title_ar, name_fr: p.title_fr, name_en: p.title_en },
-      locale,
-    ) || ''
+    localizedName({ name_ar: p.title_ar, name_fr: p.title_fr, name_en: p.title_en }, locale) || ''
   );
 }
 
@@ -72,21 +78,24 @@ export default function HostHomeScreen() {
   const locale = (i18n.language ?? 'ar') as Locale;
 
   const [properties, setProperties] = useState<PropertyRow[] | null>(null);
+  const [activeListings, setActiveListings] = useState<number | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const rows = await listMyProperties();
+      const [rows, perf] = await Promise.all([listMyProperties(), getHostPerformance()]);
       setProperties(rows);
+      setActiveListings(perf.listingCount);
+      setPendingRequests(perf.pendingRequests);
     } catch {
-      setError(pick(COPY.loadError, locale));
+      setError(pick(L.loadError, locale));
       setProperties([]);
     }
   }, [locale]);
 
-  // Reload each time the screen regains focus (e.g. after submitting a listing).
   useFocusEffect(
     useCallback(() => {
       void load();
@@ -99,7 +108,6 @@ export default function HostHomeScreen() {
     setRefreshing(false);
   }, [load]);
 
-  // Loading skeleton (first load only).
   if (properties === null) {
     return (
       <View style={styles.container}>
@@ -114,7 +122,7 @@ export default function HostHomeScreen() {
         <ErrorState
           message={error}
           onRetry={() => void load()}
-          retryLabel={pick(COPY.retry, locale)}
+          retryLabel={pick(L.search, locale)}
         />
       </View>
     );
@@ -130,20 +138,45 @@ export default function HostHomeScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />
         }
         ListHeaderComponent={
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push('/host/reviews')}
-            style={({ pressed }) => [styles.reviewsLink, pressed && styles.cardPressed]}
-          >
-            <Text style={styles.reviewsLinkGlyph}>⭐</Text>
-            <Text style={styles.reviewsLinkLabel}>{pick(COPY.guestReviews, locale)}</Text>
-            <Text style={styles.reviewsLinkChevron}>{I18nManager.isRTL ? '‹' : '›'}</Text>
-          </Pressable>
+          <View style={styles.headerWrap}>
+            {/* Headline stats */}
+            <View style={styles.statsRow}>
+              <StatCard
+                label={pick(L.hostStatActiveListings, locale)}
+                value={activeListings === null ? '—' : formatNumber(activeListings, locale)}
+              />
+              <StatCard
+                label={pick(L.hostStatPendingRequests, locale)}
+                value={pendingRequests === null ? '—' : formatNumber(pendingRequests, locale)}
+                badge={pendingRequests !== null && pendingRequests > 0}
+                onPress={() => router.push('/host/reservations')}
+              />
+            </View>
+
+            {/* Navigation tiles */}
+            <View style={styles.tiles}>
+              {TILES.map((tile) => (
+                <Pressable
+                  key={tile.key}
+                  accessibilityRole="button"
+                  onPress={() => router.push(tile.href)}
+                  style={({ pressed }) => [styles.tile, pressed && styles.cardPressed]}
+                >
+                  <Text style={styles.tileGlyph}>{tile.glyph}</Text>
+                  <Text style={styles.tileLabel} numberOfLines={2}>
+                    {pick(tile.label, locale)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.sectionTitle}>{pick(COPY.myListings, locale)}</Text>
+          </View>
         }
         ListEmptyComponent={
           <EmptyState
-            title={pick(COPY.emptyTitle, locale)}
-            subtitle={pick(COPY.emptySub, locale)}
+            title={pick(L.hostNoListingsTitle, locale)}
+            subtitle={pick(L.hostNoListingsBody, locale)}
           />
         }
         renderItem={({ item }) => {
@@ -179,12 +212,43 @@ export default function HostHomeScreen() {
 
       <View style={styles.cta}>
         <PrimaryButton
-          label={pick(COPY.create, locale)}
+          label={pick(L.hostCreate, locale)}
           onPress={() => router.push('/host/new')}
         />
       </View>
     </View>
   );
+}
+
+function StatCard({
+  label,
+  value,
+  badge = false,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  badge?: boolean;
+  onPress?: () => void;
+}) {
+  const content = (
+    <>
+      <Text style={[styles.statValue, badge && styles.statValueAccent]}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </>
+  );
+  if (onPress) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [styles.statCard, badge && styles.statCardAccent, pressed && styles.cardPressed]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+  return <View style={styles.statCard}>{content}</View>;
 }
 
 const styles = StyleSheet.create({
@@ -195,6 +259,66 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: 96,
   },
+  headerWrap: { gap: theme.space.lg },
+
+  statsRow: { flexDirection: 'row', gap: theme.space.md },
+  statCard: {
+    flex: 1,
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.card,
+    padding: theme.space.lg,
+    gap: theme.space.xs,
+    ...theme.shadow.card,
+  },
+  statCardAccent: { backgroundColor: theme.color.terracotta100 },
+  statValue: {
+    fontFamily: RN_FONTS.displaySemiBold,
+    fontSize: theme.fontSize['heading-1'],
+    color: theme.color.primary,
+    textAlign,
+  },
+  statValueAccent: { color: theme.color.accentHover },
+  statLabel: {
+    fontFamily: RN_FONTS.arabicMedium,
+    fontSize: theme.fontSize['body-sm'],
+    color: theme.color.textMuted,
+    textAlign,
+  },
+
+  tiles: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.space.md,
+  },
+  tile: {
+    flexGrow: 1,
+    flexBasis: '30%',
+    minWidth: 100,
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.card,
+    padding: theme.space.lg,
+    alignItems: 'center',
+    gap: theme.space.sm,
+    ...theme.shadow.card,
+  },
+  tileGlyph: { fontSize: 26 },
+  tileLabel: {
+    fontFamily: RN_FONTS.arabicSemiBold,
+    fontSize: theme.fontSize['body-sm'],
+    fontWeight: '600',
+    color: theme.color.text,
+    textAlign: 'center',
+  },
+
+  sectionTitle: {
+    fontFamily: RN_FONTS.arabicSemiBold,
+    fontSize: theme.fontSize.title,
+    fontWeight: '600',
+    color: theme.color.text,
+    textAlign,
+    marginTop: theme.space.xs,
+  },
+
   card: {
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.card,
@@ -202,29 +326,6 @@ const styles = StyleSheet.create({
     ...theme.shadow.card,
   },
   cardPressed: { opacity: 0.9 },
-  reviewsLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.md,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
-    ...theme.shadow.card,
-  },
-  reviewsLinkGlyph: { fontSize: 20 },
-  reviewsLinkLabel: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
-  reviewsLinkChevron: {
-    fontFamily: RN_FONTS.bodyRegular,
-    fontSize: theme.fontSize['heading-3'],
-    color: theme.color.textMuted,
-  },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -237,13 +338,14 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.title,
     fontWeight: '600',
     color: theme.color.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    textAlign,
   },
   cardMeta: {
     fontFamily: RN_FONTS.arabicRegular,
     fontSize: theme.fontSize['body-sm'],
     color: theme.color.textMuted,
     marginTop: theme.space.xs,
+    textAlign,
   },
   rejectNote: {
     fontFamily: RN_FONTS.arabicRegular,
@@ -251,6 +353,7 @@ const styles = StyleSheet.create({
     color: theme.color.error,
     marginTop: theme.space.sm,
     lineHeight: theme.lineHeight.caption,
+    textAlign,
   },
   cta: {
     position: 'absolute',
