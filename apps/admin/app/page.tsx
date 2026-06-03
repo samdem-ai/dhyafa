@@ -1,31 +1,61 @@
 /**
- * Admin overview — KPI dashboard placeholder.
+ * Admin overview — KPI dashboard backed by the analytics materialized views.
  *
- * Sections reflected (from docs/06-admin-dashboard.md §1):
- *   • KPI tiles: Bookings, GMV, Commission, Active Listings
- *   • Moderation queue stub
- *   • Quick-nav to all admin routes
- *
- * This is an M0 skeleton — data is hard-coded; real queries hit
- * materialized views (mv_daily_metrics etc.) via Server Components.
+ * Server Component, gated by `requireAdmin()`. Reads `mv_daily_metrics` and
+ * `mv_conversion_funnel` over the selected time range (URL `?range=`), plus live
+ * counts from base tables (active listings, pending queue). Renders KPI tiles +
+ * dependency-free SVG charts. MVs refresh on a schedule, so we force-dynamic to
+ * always reflect the latest refresh + range.
  */
 
-import { formatDZD } from '@dyafa/i18n';
+import { requireAdmin } from '../lib/auth';
+import { resolveLocale } from '../lib/i18n';
+import { adminSupabase } from '../lib/supabase/server';
+import { formatDZD, dir } from '@dyafa/i18n';
 import type { Locale } from '@dyafa/i18n';
-import { cookies } from 'next/headers';
-import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@dyafa/i18n';
+import { C, formatInt, formatPct, tl } from '../lib/admin-i18n';
+import { AdminShell } from '../components/AdminShell';
+import { SectionCard } from '../components/ui';
+import { BarChart, LineChart } from '../components/MiniChart';
+import { RangeSelector, rangeDays, isRangeKey, type RangeKey } from './RangeSelector';
 
-// ── Locale helper (mirrors layout) ──────────────────────────────────────────
-function resolveLocale(): Locale {
-  const cookieStore = cookies();
-  const raw = cookieStore.get('dyafa_locale')?.value;
-  if (raw && (SUPPORTED_LOCALES as readonly string[]).includes(raw)) {
-    return raw as Locale;
-  }
-  return DEFAULT_LOCALE;
+export const dynamic = 'force-dynamic';
+
+const T = {
+  title: { ar: 'نظرة عامة', fr: "Vue d'ensemble", en: 'Overview' },
+  bookings: { ar: 'الحجوزات', fr: 'Réservations', en: 'Bookings' },
+  gmv: { ar: 'إجمالي قيمة الحجوزات', fr: 'Volume brut (GMV)', en: 'Gross Booking Value' },
+  commission: { ar: 'عمولة المنصة', fr: 'Commission plateforme', en: 'Platform Commission' },
+  activeListings: { ar: 'إعلانات نشطة', fr: 'Annonces actives', en: 'Active Listings' },
+  newUsers: { ar: 'مستخدمون جدد', fr: 'Nouveaux utilisateurs', en: 'New Users' },
+  conversion: { ar: 'معدّل التحويل', fr: 'Taux de conversion', en: 'Conversion Rate' },
+  pending: { ar: 'بانتظار المراجعة', fr: 'En attente de modération', en: 'Pending moderation' },
+  completed: { ar: 'حجوزات مكتملة', fr: 'Réservations terminées', en: 'Completed bookings' },
+  bookingsPerDay: { ar: 'الحجوزات يوميًا', fr: 'Réservations / jour', en: 'Bookings per day' },
+  gmvTrend: { ar: 'اتجاه قيمة الحجوزات', fr: 'Tendance du GMV', en: 'GMV trend' },
+  inRange: { ar: 'خلال الفترة', fr: 'sur la période', en: 'in range' },
+  openQueue: {
+    ar: 'فتح طابور المراجعة ←',
+    fr: 'Ouvrir la file de modération →',
+    en: 'Open moderation queue →',
+  },
+} as const;
+
+interface DailyRow {
+  day: string | null;
+  bookings_count: number | null;
+  gmv_dzd: number | null;
+  commission_dzd: number | null;
+  new_users: number | null;
+  completed_bookings: number | null;
 }
 
-// ── KPI card component ───────────────────────────────────────────────────────
+interface FunnelRow {
+  booking_starts: number | null;
+  bookings_paid: number | null;
+  conversion_pct: number | null;
+}
+
 function KpiCard({
   label,
   value,
@@ -54,160 +84,166 @@ function KpiCard({
   );
 }
 
-// ── Moderation queue row stub ────────────────────────────────────────────────
-function QueueRow({
-  title,
-  host,
-  wilaya,
-  status,
+export default async function AdminOverviewPage({
+  searchParams,
 }: {
-  title: string;
-  host: string;
-  wilaya: string;
-  status: string;
+  searchParams: { range?: string };
 }) {
-  return (
-    <li className="flex items-center justify-between gap-md py-md border-b border-border last:border-0">
-      <div className="flex flex-col gap-xs">
-        <span className="text-title font-semibold text-text-default">{title}</span>
-        <span className="text-body-sm text-text-muted">
-          {host} · {wilaya}
-        </span>
-      </div>
-      <span className="rounded-pill bg-warning-bg text-warning text-caption font-semibold px-md py-xs">
-        {status}
-      </span>
-    </li>
+  await requireAdmin('/');
+  const locale: Locale = resolveLocale();
+  const rtl = dir(locale) === 'rtl';
+
+  const range: RangeKey = isRangeKey(searchParams.range) ? searchParams.range : '30d';
+  const days = rangeDays(range);
+  const since = new Date();
+  since.setDate(since.getDate() - (days - 1));
+  const sinceDate = since.toISOString().slice(0, 10);
+
+  // Daily metrics over the range (ordered ascending for charting).
+  const dailyQuery = adminSupabase
+    .from('mv_daily_metrics')
+    .select('day, bookings_count, gmv_dzd, commission_dzd, new_users, completed_bookings')
+    .gte('day', sinceDate)
+    .order('day', { ascending: true });
+
+  // Conversion funnel over the same range (aggregate client-side).
+  const funnelQuery = adminSupabase
+    .from('mv_conversion_funnel')
+    .select('booking_starts, bookings_paid, conversion_pct')
+    .gte('day', sinceDate);
+
+  // Live count: currently-active (approved) listings.
+  const activeListingsQuery = adminSupabase
+    .from('properties')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'approved');
+
+  // Live count: listings awaiting moderation.
+  const pendingQuery = adminSupabase
+    .from('properties')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
+
+  const [dailyRes, funnelRes, activeRes, pendingRes] = await Promise.all([
+    dailyQuery,
+    funnelQuery,
+    activeListingsQuery,
+    pendingQuery,
+  ]);
+
+  const error =
+    dailyRes.error ?? funnelRes.error ?? activeRes.error ?? pendingRes.error ?? null;
+
+  const daily = (dailyRes.data ?? []) as DailyRow[];
+  const funnel = (funnelRes.data ?? []) as FunnelRow[];
+
+  // Aggregate totals across the range.
+  const totals = daily.reduce(
+    (acc, r) => {
+      acc.bookings += r.bookings_count ?? 0;
+      acc.gmv += r.gmv_dzd ?? 0;
+      acc.commission += r.commission_dzd ?? 0;
+      acc.newUsers += r.new_users ?? 0;
+      acc.completed += r.completed_bookings ?? 0;
+      return acc;
+    },
+    { bookings: 0, gmv: 0, commission: 0, newUsers: 0, completed: 0 },
   );
-}
 
-// ── Page ─────────────────────────────────────────────────────────────────────
-export default function AdminOverviewPage() {
-  const locale = resolveLocale();
+  const funnelTotals = funnel.reduce(
+    (acc, r) => {
+      acc.starts += r.booking_starts ?? 0;
+      acc.paid += r.bookings_paid ?? 0;
+      return acc;
+    },
+    { starts: 0, paid: 0 },
+  );
+  const conversionPct = funnelTotals.starts > 0 ? (funnelTotals.paid / funnelTotals.starts) * 100 : 0;
 
-  // Stub data — replace with Server Component queries to mv_daily_metrics
-  const kpis = [
-    {
-      label: locale === 'ar' ? 'الحجوزات (آخر 30 يوم)' : locale === 'fr' ? 'Réservations (30j)' : 'Bookings (30d)',
-      value: '1 284',
-      sub: locale === 'ar' ? '+12% مقارنة بالشهر الماضي' : locale === 'fr' ? '+12% vs mois dernier' : '+12% vs last month',
-    },
-    {
-      label: locale === 'ar' ? 'إجمالي قيمة المعاملات' : locale === 'fr' ? 'Volume brut (GMV)' : 'Gross Booking Value',
-      value: formatDZD(47_600_000, locale),
-      sub: locale === 'ar' ? 'آخر 30 يوم' : locale === 'fr' ? 'sur 30 jours' : 'last 30 days',
-      accent: true,
-    },
-    {
-      label: locale === 'ar' ? 'عمولة المنصة' : locale === 'fr' ? 'Commission plateforme' : 'Platform Commission',
-      value: formatDZD(4_760_000, locale),
-      sub: '10%',
-    },
-    {
-      label: locale === 'ar' ? 'إعلانات نشطة' : locale === 'fr' ? 'Annonces actives' : 'Active Listings',
-      value: '3 417',
-      sub: locale === 'ar' ? '58 ولاية' : locale === 'fr' ? '58 wilayas' : '58 wilayas',
-    },
-  ] as const;
+  const activeListings = activeRes.count ?? 0;
+  const pendingCount = pendingRes.count ?? 0;
 
-  const pendingListings = [
-    { title: 'فيلا تلمسان', host: 'حمزة بلحاج', wilaya: 'تلمسان', status: locale === 'ar' ? 'قيد المراجعة' : locale === 'fr' ? 'En attente' : 'Pending' },
-    { title: 'Dar Béjaïa', host: 'Anis Khaldi', wilaya: 'Béjaïa', status: locale === 'ar' ? 'قيد المراجعة' : locale === 'fr' ? 'En attente' : 'Pending' },
-    { title: 'Gîte Ghardaïa', host: 'Salima Rouabah', wilaya: 'Ghardaïa', status: locale === 'ar' ? 'قيد المراجعة' : locale === 'fr' ? 'En attente' : 'Pending' },
-  ];
+  const dayLabel = (iso: string | null): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '' : String(d.getUTCDate());
+  };
+
+  const bookingsSeries = daily.map((r) => ({ label: dayLabel(r.day), value: r.bookings_count ?? 0 }));
+  const gmvSeries = daily.map((r) => ({ label: dayLabel(r.day), value: r.gmv_dzd ?? 0 }));
+
+  const rangeSuffix = tl(T.inRange, locale);
 
   return (
-    <main className="min-h-screen bg-bg">
-      {/* ── Top bar ──────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-header bg-primary px-xl py-md flex items-center justify-between shadow-card">
-        <div className="flex items-center gap-md">
-          <span className="font-display text-heading-3 font-semibold text-text-on-primary">
-            دافة
-          </span>
-          <span className="text-body-sm text-teal-200">
-            {locale === 'ar' ? 'لوحة التحكم' : locale === 'fr' ? 'Administration' : 'Admin'}
-          </span>
+    <AdminShell locale={locale} pathname="/">
+      {/* ── Title + range selector ──────────────────────────────────────── */}
+      <section className="flex items-center justify-between gap-md flex-wrap">
+        <h1 className="font-display text-heading-1 font-semibold text-primary">
+          {tl(T.title, locale)}
+        </h1>
+        <RangeSelector locale={locale} current={range} />
+      </section>
+
+      {error && (
+        <div role="alert" className="rounded-card bg-error-bg text-error px-xl py-lg text-body-sm">
+          {tl(C.errorTitle, locale)} — {error.message}
         </div>
-        {/* Locale badge (placeholder — wire up locale switcher later) */}
-        <span className="rounded-pill bg-teal-700 text-text-on-primary text-caption font-semibold px-md py-xs uppercase">
-          {locale}
-        </span>
-      </header>
+      )}
 
-      <div className="max-w-screen-xl mx-auto px-xl py-2xl flex flex-col gap-2xl">
+      {/* ── KPI tiles ───────────────────────────────────────────────────── */}
+      <section className="grid grid-cols-1 gap-lg sm:grid-cols-2 lg:grid-cols-3">
+        <KpiCard label={tl(T.bookings, locale)} value={formatInt(totals.bookings, locale)} sub={rangeSuffix} />
+        <KpiCard
+          label={tl(T.gmv, locale)}
+          value={formatDZD(totals.gmv, locale)}
+          sub={rangeSuffix}
+          accent
+        />
+        <KpiCard
+          label={tl(T.commission, locale)}
+          value={formatDZD(totals.commission, locale)}
+          sub={rangeSuffix}
+        />
+        <KpiCard
+          label={tl(T.activeListings, locale)}
+          value={formatInt(activeListings, locale)}
+          sub={`${formatInt(pendingCount, locale)} ${tl(T.pending, locale)}`}
+        />
+        <KpiCard label={tl(T.newUsers, locale)} value={formatInt(totals.newUsers, locale)} sub={rangeSuffix} />
+        <KpiCard
+          label={tl(T.conversion, locale)}
+          value={formatPct(conversionPct, locale)}
+          sub={`${formatInt(totals.completed, locale)} ${tl(T.completed, locale)}`}
+        />
+      </section>
 
-        {/* ── KPI tiles ─────────────────────────────────────────────────── */}
-        <section>
-          <h1 className="font-display text-heading-1 font-semibold text-primary mb-xl">
-            {locale === 'ar' ? 'نظرة عامة' : locale === 'fr' ? "Vue d'ensemble" : 'Overview'}
-          </h1>
-          <div className="grid grid-cols-1 gap-lg sm:grid-cols-2 lg:grid-cols-4">
-            {kpis.map((k) => (
-              <KpiCard key={k.label} label={k.label} value={k.value} sub={k.sub} accent={'accent' in k && k.accent} />
-            ))}
-          </div>
-        </section>
+      {/* ── Charts ──────────────────────────────────────────────────────── */}
+      <section className="grid grid-cols-1 gap-lg lg:grid-cols-2">
+        <SectionCard title={tl(T.bookingsPerDay, locale)}>
+          {bookingsSeries.length === 0 ? (
+            <p className="text-body-sm italic text-text-muted">{tl(C.emptyBody, locale)}</p>
+          ) : (
+            <BarChart points={bookingsSeries} rtl={rtl} ariaLabel={tl(T.bookingsPerDay, locale)} />
+          )}
+        </SectionCard>
+        <SectionCard title={tl(T.gmvTrend, locale)}>
+          {gmvSeries.length === 0 ? (
+            <p className="text-body-sm italic text-text-muted">{tl(C.emptyBody, locale)}</p>
+          ) : (
+            <LineChart points={gmvSeries} rtl={rtl} ariaLabel={tl(T.gmvTrend, locale)} />
+          )}
+        </SectionCard>
+      </section>
 
-        {/* ── Moderation queue ──────────────────────────────────────────── */}
-        <section>
-          <div className="flex items-center justify-between mb-lg">
-            <h2 className="font-display text-heading-2 font-semibold text-primary">
-              {locale === 'ar' ? 'طابور المراجعة' : locale === 'fr' ? 'File de modération' : 'Moderation Queue'}
-            </h2>
-            {/* Badge showing pending count */}
-            <span className="rounded-pill bg-accent text-text-on-primary text-caption font-semibold px-md py-xs tabular-nums">
-              3
-            </span>
-          </div>
-          <div className="rounded-card bg-surface shadow-card px-xl">
-            <ul className="divide-y divide-border">
-              {pendingListings.map((row) => (
-                <QueueRow key={row.title} {...row} />
-              ))}
-            </ul>
-          </div>
-          <a
-            href="/moderation"
-            className="mt-md inline-flex items-center gap-xs text-body-sm font-semibold text-accent hover:opacity-80 transition-opacity duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 rounded-sm"
-          >
-            {locale === 'ar'
-              ? 'فتح طابور المراجعة ←'
-              : locale === 'fr'
-              ? 'Ouvrir la file de modération →'
-              : 'Open moderation queue →'}
-          </a>
-        </section>
-
-        {/* ── Nav grid (quick links to all admin sections) ──────────────── */}
-        <section>
-          <h2 className="font-display text-heading-2 font-semibold text-primary mb-lg">
-            {locale === 'ar' ? 'الأقسام' : locale === 'fr' ? 'Sections' : 'Sections'}
-          </h2>
-          <div className="grid grid-cols-2 gap-md sm:grid-cols-3 lg:grid-cols-4">
-            {[
-              { href: '/admin/users', ar: 'المستخدمون', fr: 'Utilisateurs', en: 'Users' },
-              { href: '/moderation', ar: 'الإعلانات', fr: 'Annonces', en: 'Listings' },
-              { href: '/admin/bookings', ar: 'الحجوزات', fr: 'Réservations', en: 'Bookings' },
-              { href: '/admin/payments', ar: 'المدفوعات', fr: 'Paiements', en: 'Payments' },
-              { href: '/admin/payouts', ar: 'المدفوعات للمضيفين', fr: 'Virements', en: 'Payouts' },
-              { href: '/admin/disputes', ar: 'النزاعات', fr: 'Litiges', en: 'Disputes' },
-              { href: '/admin/reviews', ar: 'التقييمات', fr: 'Avis', en: 'Reviews' },
-              { href: '/admin/audit', ar: 'سجل التدقيق', fr: 'Journal d\'audit', en: 'Audit Log' },
-              { href: '/admin/reports', ar: 'التقارير', fr: 'Rapports', en: 'Reports' },
-              { href: '/admin/settings', ar: 'الإعدادات', fr: 'Paramètres', en: 'Settings' },
-            ].map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className="rounded-card bg-surface shadow-xs p-lg text-body font-medium text-primary hover:bg-bone-300 hover:shadow-card transition-shadow duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              >
-                {item[locale]}
-              </a>
-            ))}
-          </div>
-        </section>
-
-      </div>
-    </main>
+      {/* ── Moderation shortcut ─────────────────────────────────────────── */}
+      <section>
+        <a
+          href="/moderation"
+          className="inline-flex items-center gap-xs text-body-sm font-semibold text-accent hover:opacity-80 transition-opacity duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 rounded-sm"
+        >
+          {tl(T.openQueue, locale)}
+        </a>
+      </section>
+    </AdminShell>
   );
 }

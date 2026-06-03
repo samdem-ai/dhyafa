@@ -1,0 +1,78 @@
+'use client';
+
+/**
+ * Dashboard time-range selector.
+ *
+ * Writes the chosen range to the `range` URL search param so the dashboard
+ * Server Component can re-query the materialized views server-side (views are
+ * shareable/bookmarkable). Pure UX — no data fetching here.
+ */
+
+import { useRouter, useSearchParams } from 'next/navigation';
+import type { Locale } from '@dyafa/i18n';
+import { tl, type L10n } from '../lib/admin-i18n';
+
+export const RANGES = ['7d', '30d', '90d', 'qtr'] as const;
+export type RangeKey = (typeof RANGES)[number];
+
+export const RANGE_LABEL: Record<RangeKey, L10n> = {
+  '7d': { ar: '٧ أيام', fr: '7 j', en: '7d' },
+  '30d': { ar: '٣٠ يوم', fr: '30 j', en: '30d' },
+  '90d': { ar: '٩٠ يوم', fr: '90 j', en: '90d' },
+  qtr: { ar: 'الربع', fr: 'Trimestre', en: 'Quarter' },
+};
+
+/** Map a range key to a number of days (used by the page query). */
+export function rangeDays(range: RangeKey): number {
+  switch (range) {
+    case '7d':
+      return 7;
+    case '30d':
+      return 30;
+    case '90d':
+      return 90;
+    case 'qtr':
+      return 90;
+  }
+}
+
+export function isRangeKey(v: string | null | undefined): v is RangeKey {
+  return v === '7d' || v === '30d' || v === '90d' || v === 'qtr';
+}
+
+export function RangeSelector({ locale, current }: { locale: Locale; current: RangeKey }) {
+  const router = useRouter();
+  const params = useSearchParams();
+
+  function select(range: RangeKey) {
+    const next = new URLSearchParams(params.toString());
+    next.set('range', range);
+    router.replace(`/?${next.toString()}`);
+  }
+
+  return (
+    <div
+      role="group"
+      className="inline-flex items-stretch rounded-md border border-border-strong overflow-hidden"
+    >
+      {RANGES.map((r) => {
+        const active = r === current;
+        return (
+          <button
+            key={r}
+            type="button"
+            onClick={() => select(r)}
+            aria-pressed={active}
+            className={`px-md py-sm text-body-sm font-semibold transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+              active
+                ? 'bg-primary text-text-on-primary'
+                : 'bg-surface text-text-muted hover:text-text-default'
+            }`}
+          >
+            {tl(RANGE_LABEL[r], locale)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
