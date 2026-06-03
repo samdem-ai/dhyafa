@@ -2514,6 +2514,13 @@ export type Database = {
         Args: { p_booking_id: string }
         Returns: undefined
       }
+      add_hotel_staff: {
+        Args: {
+          p_staff_role: Database["public"]["Enums"]["staff_role"]
+          p_user_id: string
+        }
+        Returns: string
+      }
       apply_payment_event: {
         Args: {
           p_amount_dzd?: number
@@ -2597,9 +2604,24 @@ export type Database = {
         Args: { p_date: string; p_room_type_id: string }
         Returns: number
       }
+      run_payouts: {
+        Args: { p_period_end: string; p_period_start: string }
+        Returns: number
+      }
       send_message: {
         Args: { p_body: string; p_conversation_id: string }
         Returns: string
+      }
+      set_availability_range: {
+        Args: {
+          p_from: string
+          p_is_closed?: boolean
+          p_min_stay?: number
+          p_price_override_dzd?: number
+          p_room_type_id: string
+          p_to: string
+        }
+        Returns: number
       }
       submit_property_for_review: {
         Args: { p_property_id: string }
