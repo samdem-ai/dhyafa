@@ -8,6 +8,18 @@
  */
 
 import type { Locale } from '@dyafa/i18n';
+import {
+  OverviewIcon,
+  UsersIcon,
+  ListingIcon,
+  BookingIcon,
+  PaymentIcon,
+  ReviewIcon,
+  DisputeIcon,
+  ContentIcon,
+  AuditIcon,
+  type IconProps,
+} from '../components/icons';
 
 /** A string available in all three locales. */
 export type L10n = Record<Locale, string>;
@@ -85,7 +97,12 @@ export function formatPct(value: number | null | undefined, locale: Locale): str
 
 export const C = {
   brand: { ar: 'دافة', fr: 'Dyafa', en: 'Dyafa' },
+  brandMark: { ar: 'د', fr: 'D', en: 'D' },
   adminLabel: { ar: 'لوحة التحكم', fr: 'Administration', en: 'Admin' },
+  roleChip: { ar: 'مشرف', fr: 'Admin', en: 'Admin' },
+  avatarInitials: { ar: 'مش', fr: 'AD', en: 'AD' },
+  openMenu: { ar: 'فتح القائمة', fr: 'Ouvrir le menu', en: 'Open menu' },
+  closeMenu: { ar: 'إغلاق القائمة', fr: 'Fermer le menu', en: 'Close menu' },
   backToDashboard: { ar: '← لوحة التحكم', fr: '← Tableau de bord', en: '← Dashboard' },
   signOut: { ar: 'تسجيل الخروج', fr: 'Déconnexion', en: 'Sign out' },
 
@@ -136,19 +153,52 @@ export const C = {
 export interface NavItem {
   href: string;
   label: L10n;
+  /** Inline SVG icon component (forwards className). */
+  icon: (props: IconProps) => JSX.Element;
 }
 
-export const NAV_ITEMS: readonly NavItem[] = [
-  { href: '/', label: { ar: 'نظرة عامة', fr: 'Vue d’ensemble', en: 'Overview' } },
-  { href: '/users', label: { ar: 'المستخدمون', fr: 'Utilisateurs', en: 'Users' } },
-  { href: '/moderation', label: { ar: 'الإعلانات', fr: 'Annonces', en: 'Listings' } },
-  { href: '/bookings', label: { ar: 'الحجوزات', fr: 'Réservations', en: 'Bookings' } },
-  { href: '/payments', label: { ar: 'المدفوعات', fr: 'Paiements', en: 'Payments' } },
-  { href: '/reviews', label: { ar: 'التقييمات', fr: 'Avis', en: 'Reviews' } },
-  { href: '/disputes', label: { ar: 'النزاعات', fr: 'Litiges', en: 'Disputes' } },
-  { href: '/content', label: { ar: 'المحتوى', fr: 'Contenu', en: 'Content' } },
-  { href: '/audit', label: { ar: 'سجل التدقيق', fr: 'Journal d’audit', en: 'Audit' } },
+export interface NavGroup {
+  label: L10n;
+  items: readonly NavItem[];
+}
+
+/**
+ * Sidebar nav, grouped with tiny uppercase section labels (design brief).
+ * `NAV_ITEMS` is the flattened list (used for active-route / breadcrumb lookup).
+ */
+export const NAV_GROUPS: readonly NavGroup[] = [
+  {
+    label: { ar: 'عام', fr: 'Général', en: 'General' },
+    items: [
+      { href: '/', label: { ar: 'نظرة عامة', fr: 'Vue d’ensemble', en: 'Overview' }, icon: OverviewIcon },
+    ],
+  },
+  {
+    label: { ar: 'العمليات', fr: 'Opérations', en: 'Operations' },
+    items: [
+      { href: '/users', label: { ar: 'المستخدمون', fr: 'Utilisateurs', en: 'Users' }, icon: UsersIcon },
+      { href: '/moderation', label: { ar: 'الإعلانات', fr: 'Annonces', en: 'Listings' }, icon: ListingIcon },
+      { href: '/bookings', label: { ar: 'الحجوزات', fr: 'Réservations', en: 'Bookings' }, icon: BookingIcon },
+    ],
+  },
+  {
+    label: { ar: 'المالية والثقة', fr: 'Finance & confiance', en: 'Finance & Trust' },
+    items: [
+      { href: '/payments', label: { ar: 'المدفوعات', fr: 'Paiements', en: 'Payments' }, icon: PaymentIcon },
+      { href: '/reviews', label: { ar: 'التقييمات', fr: 'Avis', en: 'Reviews' }, icon: ReviewIcon },
+      { href: '/disputes', label: { ar: 'النزاعات', fr: 'Litiges', en: 'Disputes' }, icon: DisputeIcon },
+    ],
+  },
+  {
+    label: { ar: 'النظام', fr: 'Système', en: 'System' },
+    items: [
+      { href: '/content', label: { ar: 'المحتوى', fr: 'Contenu', en: 'Content' }, icon: ContentIcon },
+      { href: '/audit', label: { ar: 'سجل التدقيق', fr: 'Journal d’audit', en: 'Audit' }, icon: AuditIcon },
+    ],
+  },
 ] as const;
+
+export const NAV_ITEMS: readonly NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
 // ─── Status enum → localized labels ──────────────────────────────────────────
 
@@ -156,11 +206,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
 export type Tone = 'neutral' | 'success' | 'warning' | 'error' | 'info';
 
 export const STATUS_PILL: Record<Tone, string> = {
-  neutral: 'bg-surface-sunken text-text-muted',
-  success: 'bg-success-bg text-success',
-  warning: 'bg-warning-bg text-warning',
-  error: 'bg-error-bg text-error',
-  info: 'bg-info-bg text-info',
+  neutral: 'bg-surface-sunken text-text-muted ring-1 ring-inset ring-border-strong/50',
+  success: 'bg-success-bg text-success ring-1 ring-inset ring-success/15',
+  warning: 'bg-warning-bg text-warning ring-1 ring-inset ring-warning/15',
+  error: 'bg-error-bg text-error ring-1 ring-inset ring-error/15',
+  info: 'bg-info-bg text-info ring-1 ring-inset ring-info/20',
 };
 
 export const BOOKING_STATUS: Record<string, { label: L10n; tone: Tone }> = {

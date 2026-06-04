@@ -15,6 +15,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabase/client';
 import { dir, type Locale, DEFAULT_LOCALE } from '@dyafa/i18n';
 import { T, tl } from '../../../lib/dashboard-i18n';
+import { LanguageSwitcher } from '../../../components/LanguageSwitcher';
+import { inputClass, buttonClass } from '../../../components/ui';
+import { BrandMark, CheckCircleIcon, LoginIcon } from '../../../components/icons';
 
 function resolveLocaleFromCookie(): Locale {
   if (typeof document === 'undefined') return DEFAULT_LOCALE;
@@ -99,74 +102,127 @@ export default function SignInPage() {
     }
   }
 
+  const features = [
+    tl(T.signInFeatureBookings, locale),
+    tl(T.signInFeatureRevenue, locale),
+    tl(T.signInFeatureTeam, locale),
+  ];
+
   return (
-    <main
-      dir={direction}
-      className="min-h-screen bg-bg flex items-center justify-center px-lg py-3xl"
-    >
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center gap-xs mb-xl">
-          <span className="font-display text-heading-1 font-semibold text-primary">
-            {tl(T.brand, locale)}
+    <main dir={direction} className="min-h-screen bg-bg lg:grid lg:grid-cols-2">
+      {/* ── Brand / marketing aside (hidden on small screens) ───────────────── */}
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-[color:var(--sidebar-bg)] p-3xl text-text-on-primary lg:flex">
+        <div aria-hidden className="absolute inset-0 bg-dotted opacity-[0.06]" />
+        <div className="relative flex items-center gap-sm">
+          <span className="grid size-11 place-items-center rounded-md bg-white/10">
+            <BrandMark size={26} />
           </span>
-          <span className="text-body-sm text-text-muted">{tl(T.signInSubtitle, locale)}</span>
+          <div className="flex flex-col leading-tight">
+            <span className="font-display text-heading-3 font-semibold">{tl(T.brand, locale)}</span>
+            <span className="text-overline uppercase tracking-wider text-teal-200/80">
+              {tl(T.brandTagline, locale)}
+            </span>
+          </div>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-card bg-surface shadow-card p-xl flex flex-col gap-lg"
-          noValidate
-        >
-          <h1 className="font-display text-heading-2 font-semibold text-primary">
-            {tl(T.signInTitle, locale)}
-          </h1>
+        <div className="relative flex flex-col gap-xl">
+          <h2 className="font-display text-display-lg font-semibold leading-tight">
+            {tl(T.signInHeadline, locale)}
+          </h2>
+          <ul className="flex flex-col gap-md">
+            {features.map((f) => (
+              <li key={f} className="flex items-center gap-md text-body text-teal-100">
+                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent/90 text-text-on-primary">
+                  <CheckCircleIcon size={16} />
+                </span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
 
-          {error && (
-            <div role="alert" className="rounded-md bg-error-bg text-error text-body-sm px-md py-sm">
-              {error}
+        <span className="relative text-caption text-teal-200/70">
+          © {new Date().getFullYear()} {tl(T.brand, locale)}
+        </span>
+      </aside>
+
+      {/* ── Form column ─────────────────────────────────────────────────────── */}
+      <div className="flex min-h-screen flex-col px-lg py-xl sm:px-2xl">
+        <div className="flex items-center justify-between lg:justify-end">
+          <span className="flex items-center gap-sm lg:hidden">
+            <span className="grid size-9 place-items-center rounded-md bg-primary/10 text-primary">
+              <BrandMark size={20} />
+            </span>
+            <span className="font-display text-heading-3 font-semibold text-primary">
+              {tl(T.brand, locale)}
+            </span>
+          </span>
+          <LanguageSwitcher locale={locale} />
+        </div>
+
+        <div className="flex flex-1 items-center justify-center py-2xl">
+          <div className="w-full max-w-md">
+            <div className="mb-xl flex flex-col gap-xs">
+              <h1 className="font-display text-display-lg font-semibold text-primary">
+                {tl(T.signInTitle, locale)}
+              </h1>
+              <p className="text-body text-text-muted">{tl(T.signInSubtitle, locale)}</p>
             </div>
-          )}
 
-          <label className="flex flex-col gap-xs">
-            <span className="text-caption font-semibold text-text-default">
-              {tl(T.email, locale)}
-            </span>
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              required
-              dir="ltr"
-              value={email}
-              onChange={(ev) => setEmail(ev.target.value)}
-              className="rounded-md border border-border-strong bg-surface px-md py-sm text-body text-text-default outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            />
-          </label>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-lg" noValidate>
+              {error && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-sm rounded-md border border-error/30 bg-error-bg text-error text-body-sm px-md py-sm"
+                >
+                  <span aria-hidden className="font-semibold">!</span>
+                  <span>{error}</span>
+                </div>
+              )}
 
-          <label className="flex flex-col gap-xs">
-            <span className="text-caption font-semibold text-text-default">
-              {tl(T.password, locale)}
-            </span>
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              required
-              dir="ltr"
-              value={password}
-              onChange={(ev) => setPassword(ev.target.value)}
-              className="rounded-md border border-border-strong bg-surface px-md py-sm text-body text-text-default outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            />
-          </label>
+              <label className="flex flex-col gap-xs">
+                <span className="text-caption font-semibold text-text-default">
+                  {tl(T.email, locale)}
+                </span>
+                <input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  required
+                  dir="ltr"
+                  value={email}
+                  onChange={(ev) => setEmail(ev.target.value)}
+                  className={inputClass}
+                />
+              </label>
 
-          <button
-            type="submit"
-            disabled={pending}
-            className="mt-sm rounded-md bg-accent text-text-on-primary text-body font-semibold px-lg py-md transition-opacity duration-fast hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-          >
-            {pending ? tl(T.signInSubmitting, locale) : tl(T.signInSubmit, locale)}
-          </button>
-        </form>
+              <label className="flex flex-col gap-xs">
+                <span className="text-caption font-semibold text-text-default">
+                  {tl(T.password, locale)}
+                </span>
+                <input
+                  type="password"
+                  name="password"
+                  autoComplete="current-password"
+                  required
+                  dir="ltr"
+                  value={password}
+                  onChange={(ev) => setPassword(ev.target.value)}
+                  className={inputClass}
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={pending}
+                className={buttonClass('accent', 'md', 'mt-sm w-full')}
+              >
+                <LoginIcon size={18} />
+                {pending ? tl(T.signInSubmitting, locale) : tl(T.signInSubmit, locale)}
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     </main>
   );

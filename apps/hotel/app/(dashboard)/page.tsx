@@ -22,7 +22,27 @@ import {
   bookingStatusColor,
   localizedField,
 } from '../../lib/dashboard-i18n';
-import { KpiCard, Section, EmptyState, StatusPill, Price } from '../../components/ui';
+import {
+  PageHeader,
+  KpiCard,
+  Section,
+  Card,
+  EmptyState,
+  StatusPill,
+  Price,
+  Pill,
+  ViewAllLink,
+} from '../../components/ui';
+import {
+  LoginIcon,
+  LogoutIcon,
+  ChartIcon,
+  WalletIcon,
+  BellIcon,
+  CheckCircleIcon,
+  ChevronRightIcon,
+  CalendarIcon,
+} from '../../components/icons';
 import type { Database } from '@dyafa/api-client';
 
 export const dynamic = 'force-dynamic';
@@ -210,108 +230,126 @@ export default async function OverviewPage() {
 
   return (
     <>
-      <h1 className="font-display text-heading-1 font-semibold text-primary">
-        {tl(T.ovTitle, locale)}
-      </h1>
+      <PageHeader title={tl(T.ovTitle, locale)} subtitle={tl(T.dashboardLabel, locale)} />
 
-      {/* KPI tiles */}
+      {/* Hero KPI tiles */}
       <div className="grid grid-cols-1 gap-lg sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           label={tl(T.ovCheckinsToday, locale)}
           value={String(checkinsToday)}
           sub={tl(T.ovConfirmedBookings, locale)}
+          icon={<LoginIcon size={18} />}
         />
         <KpiCard
           label={tl(T.ovCheckoutsToday, locale)}
           value={String(checkoutsToday)}
           sub={tl(T.ovRoomsReturning, locale)}
+          icon={<LogoutIcon size={18} />}
         />
-        <KpiCard label={tl(T.ovOccupancy, locale)} value={formatPercent(occupancyPct, locale)} />
+        <KpiCard
+          label={tl(T.ovOccupancy, locale)}
+          value={formatPercent(occupancyPct, locale)}
+          icon={<ChartIcon size={18} />}
+        />
         <KpiCard
           label={tl(T.ovRevenue, locale)}
           value={formatDZD(monthRevenue, locale)}
           sub={tl(T.ovRevenueSub, locale)}
           accent
+          icon={<WalletIcon size={18} />}
         />
       </div>
 
-      {/* Pending actions */}
-      <Section
-        title={tl(T.ovPendingActions, locale)}
-        action={
-          pendingActions.length > 0 ? (
-            <span className="rounded-pill bg-accent text-text-on-primary text-caption font-semibold px-md py-xs tabular-nums">
-              {pendingActions.length}
-            </span>
-          ) : undefined
-        }
-      >
-        {pendingActions.length === 0 ? (
-          <div className="rounded-card bg-surface shadow-card px-xl py-lg text-body-sm text-text-muted">
-            {tl(T.ovNoPending, locale)}
-          </div>
-        ) : (
-          <div className="rounded-card bg-surface shadow-card px-xl py-md flex flex-col gap-md">
-            {pendingActions.map((action) => (
-              <a
-                key={action.href}
-                href={action.href}
-                className="flex items-center gap-md text-body text-primary hover:text-accent transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 rounded-sm"
-              >
-                <span aria-hidden className="text-accent">
-                  •
-                </span>
-                <span>{action.text}</span>
-              </a>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {/* Upcoming reservations */}
-      <Section
-        title={tl(T.ovUpcoming, locale)}
-        action={
-          <a
-            href="/reservations"
-            className="text-body-sm font-medium text-accent hover:text-accent-hover transition-colors duration-fast"
+      <div className="grid grid-cols-1 gap-2xl lg:grid-cols-5">
+        {/* Pending actions */}
+        <div className="lg:col-span-2">
+          <Section
+            title={tl(T.ovPendingActions, locale)}
+            action={
+              pendingActions.length > 0 ? (
+                <Pill label={String(pendingActions.length)} tone="accent" />
+              ) : undefined
+            }
           >
-            {tl(T.viewAll, locale)}
-          </a>
-        }
-      >
-        {upcoming.length === 0 ? (
-          <EmptyState title={tl(T.ovNoUpcoming, locale)} />
-        ) : (
-          <div className="rounded-card bg-surface shadow-card px-xl">
-            <ul>
-              {upcoming.map((b) => (
-                <li
-                  key={b.id}
-                  className="flex flex-col gap-xs py-md border-b border-border last:border-0 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex flex-col gap-xs">
-                    <span className="text-title font-semibold text-text-default">
-                      {guestName.get(b.guest_id) ?? tl(T.msgGuest, locale)}
+            {pendingActions.length === 0 ? (
+              <Card className="flex items-center gap-md">
+                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-success-bg text-success">
+                  <CheckCircleIcon size={20} />
+                </span>
+                <span className="text-body-sm text-text-muted">{tl(T.ovNoPending, locale)}</span>
+              </Card>
+            ) : (
+              <Card padded={false} className="divide-y divide-border">
+                {pendingActions.map((action) => (
+                  <a
+                    key={action.href}
+                    href={action.href}
+                    className="flex items-center gap-md px-lg py-md transition-colors duration-fast hover:bg-surface-sunken/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
+                  >
+                    <span className="grid size-9 shrink-0 place-items-center rounded-full bg-warning-bg text-warning">
+                      <BellIcon size={18} />
                     </span>
-                    <span className="text-body-sm text-text-muted">
-                      {propTitle.get(b.property_id) ?? '—'} · {formatDate(b.check_in, locale)} →{' '}
-                      {formatDate(b.check_out, locale)}
+                    <span className="flex-1 text-body-sm font-medium text-text-default">
+                      {action.text}
                     </span>
+                    <ChevronRightIcon size={16} className="text-text-muted rtl:rotate-180" />
+                  </a>
+                ))}
+              </Card>
+            )}
+          </Section>
+        </div>
+
+        {/* Upcoming reservations */}
+        <div className="lg:col-span-3">
+          <Section
+            title={tl(T.ovUpcoming, locale)}
+            action={<ViewAllLink href="/reservations" label={tl(T.viewAll, locale)} />}
+          >
+            {upcoming.length === 0 ? (
+              <EmptyState
+                title={tl(T.ovNoUpcoming, locale)}
+                icon={<CalendarIcon size={24} />}
+              />
+            ) : (
+              <Card padded={false} className="divide-y divide-border">
+                {upcoming.map((b) => (
+                  <div
+                    key={b.id}
+                    className="flex flex-col gap-sm px-lg py-md transition-colors duration-fast hover:bg-surface-sunken/50 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex items-center gap-md min-w-0">
+                      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-body-sm font-semibold text-primary">
+                        {(guestName.get(b.guest_id) ?? 'G').charAt(0).toUpperCase()}
+                      </span>
+                      <div className="flex min-w-0 flex-col gap-px">
+                        <span className="truncate text-body font-semibold text-text-default">
+                          {guestName.get(b.guest_id) ?? tl(T.msgGuest, locale)}
+                        </span>
+                        <span className="truncate text-body-sm text-text-muted">
+                          {propTitle.get(b.property_id) ?? '—'} · {formatDate(b.check_in, locale)} →{' '}
+                          {formatDate(b.check_out, locale)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-md ps-[52px] sm:ps-0">
+                      <Price
+                        amount={b.total_dzd}
+                        locale={locale}
+                        className="text-body font-semibold text-accent-hover"
+                      />
+                      <StatusPill
+                        label={bookingStatusLabel(b.status, locale)}
+                        colorClass={bookingStatusColor(b.status)}
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-md">
-                    <Price amount={b.total_dzd} locale={locale} className="text-body font-semibold text-accent" />
-                    <StatusPill
-                      label={bookingStatusLabel(b.status, locale)}
-                      colorClass={bookingStatusColor(b.status)}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </Section>
+                ))}
+              </Card>
+            )}
+          </Section>
+        </div>
+      </div>
     </>
   );
 }

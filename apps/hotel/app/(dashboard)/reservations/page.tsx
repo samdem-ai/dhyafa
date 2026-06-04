@@ -18,7 +18,8 @@ import {
   bookingStatusLabel,
   bookingStatusColor,
 } from '../../../lib/dashboard-i18n';
-import { PageHeader, EmptyState, ErrorState, StatusPill, Price } from '../../../components/ui';
+import { PageHeader, Card, EmptyState, ErrorState, StatusPill, Price } from '../../../components/ui';
+import { BookingIcon } from '../../../components/icons';
 import { ReservationsFilter } from './ReservationsFilter';
 import { ReservationActions } from './ReservationActions';
 import type { Database } from '@dyafa/api-client';
@@ -185,7 +186,11 @@ export default async function ReservationsPage({
       {error && <ErrorState title={tl(T.errorTitle, locale)} message={error.message} />}
 
       {!error && rows.length === 0 && (
-        <EmptyState title={tl(T.resTitle, locale)} body={tl(T.resEmpty, locale)} />
+        <EmptyState
+          title={tl(T.resTitle, locale)}
+          body={tl(T.resEmpty, locale)}
+          icon={<BookingIcon size={24} />}
+        />
       )}
 
       {!error && rows.length > 0 && (
@@ -203,57 +208,75 @@ export default async function ReservationsPage({
                   narrowed === 'awaiting_payment'));
 
             return (
-              <li key={b.id} className="rounded-card bg-surface shadow-card p-lg flex flex-col gap-md">
-                <div className="flex flex-col gap-sm sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex flex-col gap-xs">
-                    <div className="flex items-center gap-sm flex-wrap">
-                      <span className="text-title font-semibold text-text-default">{guest}</span>
-                      <span className="text-caption text-text-muted font-mono" dir="ltr">
-                        {b.code}
+              <li key={b.id}>
+                <Card className="flex flex-col gap-md">
+                  <div className="flex flex-col gap-sm sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-md min-w-0">
+                      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/10 text-body font-semibold text-primary">
+                        {guest.charAt(0).toUpperCase()}
                       </span>
+                      <div className="flex flex-col gap-xs min-w-0">
+                        <div className="flex items-center gap-sm flex-wrap">
+                          <span className="text-title font-semibold text-text-default">{guest}</span>
+                          <span
+                            className="rounded-md bg-surface-sunken px-sm py-px text-overline font-medium text-text-muted font-mono"
+                            dir="ltr"
+                          >
+                            {b.code}
+                          </span>
+                        </div>
+                        <span className="text-body-sm text-text-muted">
+                          {prop}
+                          {room ? ` · ${room}` : ''}
+                        </span>
+                        <span className="text-body-sm text-text-muted tabular-nums">
+                          {formatDate(b.check_in, locale)} → {formatDate(b.check_out, locale)}
+                          {b.nights != null
+                            ? ` · ${formatNumber(b.nights, locale)} ${tl(T.resNights, locale)}`
+                            : ''}
+                          {' · '}
+                          {formatNumber(b.adults, locale)} {tl(T.resAdults, locale)}
+                          {b.children > 0
+                            ? ` · ${formatNumber(b.children, locale)} ${tl(T.resChildren, locale)}`
+                            : ''}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-body-sm text-text-muted">
-                      {prop}
-                      {room ? ` · ${room}` : ''}
-                    </span>
-                    <span className="text-body-sm text-text-muted">
-                      {formatDate(b.check_in, locale)} → {formatDate(b.check_out, locale)}
-                      {b.nights != null ? ` · ${formatNumber(b.nights, locale)} ${tl(T.resNights, locale)}` : ''}
-                      {' · '}
-                      {formatNumber(b.adults, locale)} {tl(T.resAdults, locale)}
-                      {b.children > 0
-                        ? ` · ${formatNumber(b.children, locale)} ${tl(T.resChildren, locale)}`
-                        : ''}
-                    </span>
+                    <div className="flex shrink-0 flex-row-reverse items-center gap-sm sm:flex-col sm:items-end">
+                      <Price
+                        amount={b.total_dzd}
+                        locale={locale}
+                        className="text-body-lg font-semibold text-accent-hover"
+                      />
+                      <StatusPill
+                        label={bookingStatusLabel(b.status, locale)}
+                        colorClass={bookingStatusColor(b.status)}
+                      />
+                    </div>
                   </div>
-                  <div className="flex flex-col items-start gap-sm sm:items-end">
-                    <Price amount={b.total_dzd} locale={locale} className="text-body-lg font-semibold text-accent" />
-                    <StatusPill
-                      label={bookingStatusLabel(b.status, locale)}
-                      colorClass={bookingStatusColor(b.status)}
-                    />
-                  </div>
-                </div>
 
-                {b.special_requests && (
-                  <div className="rounded-md bg-surface-sunken px-md py-sm">
-                    <span className="text-caption font-semibold text-text-muted">
-                      {tl(T.resSpecialRequests, locale)}
-                    </span>
-                    <p className="text-body-sm text-text-default whitespace-pre-line mt-xs">
-                      {b.special_requests}
-                    </p>
-                  </div>
-                )}
+                  {b.special_requests && (
+                    <div className="rounded-md border-s-2 border-accent/40 bg-surface-sunken/70 px-md py-sm">
+                      <span className="text-overline font-semibold uppercase tracking-wide text-text-muted">
+                        {tl(T.resSpecialRequests, locale)}
+                      </span>
+                      <p className="text-body-sm text-text-default whitespace-pre-line mt-xs">
+                        {b.special_requests}
+                      </p>
+                    </div>
+                  )}
 
-                {showActions && (
-                  <ReservationActions
-                    bookingId={b.id}
-                    status={narrowed}
-                    canManage={manage}
-                    locale={locale}
-                  />
-                )}
+                  {showActions && (
+                    <div className="border-t border-border pt-md">
+                      <ReservationActions
+                        bookingId={b.id}
+                        status={narrowed}
+                        canManage={manage}
+                        locale={locale}
+                      />
+                    </div>
+                  )}
+                </Card>
               </li>
             );
           })}

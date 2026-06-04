@@ -18,7 +18,8 @@ import {
   ratePlanKindLabel,
   formatDate,
 } from '../../../lib/dashboard-i18n';
-import { PageHeader, Section, EmptyState } from '../../../components/ui';
+import { PageHeader, Section, EmptyState, Card, TableCard, THead, Th, Td } from '../../../components/ui';
+import { CalendarIcon } from '../../../components/icons';
 import { CalendarBoard, type AvailabilityCell } from './CalendarBoard';
 import { monthRange, addMonths } from '../../../lib/calendar';
 import type { Database } from '@dyafa/api-client';
@@ -94,7 +95,11 @@ export default async function CalendarPage({
     return (
       <>
         <PageHeader title={tl(T.calTitle, locale)} subtitle={tl(T.calSubtitle, locale)} />
-        <EmptyState title={tl(T.calTitle, locale)} body={tl(T.calNoRoomTypes, locale)} />
+        <EmptyState
+          title={tl(T.calTitle, locale)}
+          body={tl(T.calNoRoomTypes, locale)}
+          icon={<CalendarIcon size={24} />}
+        />
       </>
     );
   }
@@ -158,8 +163,8 @@ export default async function CalendarPage({
       <PageHeader title={tl(T.calTitle, locale)} subtitle={tl(T.calSubtitle, locale)} />
 
       {/* Room-type picker — links keep it server-driven (no client state needed) */}
-      <div className="flex flex-col gap-xs">
-        <span className="text-caption font-semibold text-text-default">
+      <Card className="flex flex-col gap-sm">
+        <span className="text-overline font-semibold uppercase tracking-wider text-text-muted">
           {tl(T.calPickRoomType, locale)}
         </span>
         <div className="flex flex-wrap gap-sm">
@@ -170,10 +175,10 @@ export default async function CalendarPage({
                 key={r.id}
                 href={`/calendar?room=${r.id}`}
                 aria-current={active ? 'true' : undefined}
-                className={`rounded-pill px-md py-xs text-body-sm font-medium transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+                className={`rounded-pill px-lg py-xs text-body-sm font-semibold transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
                   active
                     ? 'bg-primary text-text-on-primary'
-                    : 'bg-surface text-text-default shadow-xs hover:bg-bone-300'
+                    : 'border border-border text-text-default hover:border-border-strong hover:bg-surface-sunken'
                 }`}
               >
                 {roomLabel(r)}
@@ -181,7 +186,7 @@ export default async function CalendarPage({
             );
           })}
         </div>
-      </div>
+      </Card>
 
       <CalendarBoard
         locale={locale}

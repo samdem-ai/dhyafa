@@ -129,78 +129,118 @@ export default function SignInPage() {
     }
   }
 
+  const inputCls =
+    'h-11 rounded-md border border-border-strong bg-surface px-md text-body text-text-default shadow-xs outline-none transition-[box-shadow,border-color] duration-fast placeholder:text-text-muted focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-focus-ring/60';
+
   return (
-    <main
-      dir={direction}
-      className="min-h-screen bg-bg flex items-center justify-center px-lg py-2xl"
-    >
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center gap-xs mb-xl">
-          <span className="font-display text-heading-1 font-semibold text-primary">
-            {T.brand[locale]}
+    <main dir={direction} className="grid min-h-screen lg:grid-cols-2">
+      {/* ── Brand / marketing panel ───────────────────────────────────────── */}
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-teal-900 p-3xl text-text-on-primary lg:flex">
+        {/* Warm decorative washes */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -end-24 -top-24 h-80 w-80 rounded-pill bg-accent/20 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-32 -start-16 h-80 w-80 rounded-pill bg-teal-600/30 blur-3xl"
+        />
+
+        <div className="relative flex items-center gap-md">
+          <span className="grid h-11 w-11 place-items-center rounded-md bg-accent font-display text-heading-2 font-semibold text-text-on-primary shadow-raised">
+            {locale === 'ar' ? 'د' : 'D'}
           </span>
-          <span className="text-body-sm text-text-muted">{T.subtitle[locale]}</span>
+          <span className="flex flex-col leading-none">
+            <span className="font-display text-heading-3 font-semibold">{T.brand[locale]}</span>
+            <span className="mt-0.5 text-overline font-semibold uppercase tracking-[0.16em] text-teal-200">
+              {T.subtitle[locale]}
+            </span>
+          </span>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-card bg-surface shadow-card p-xl flex flex-col gap-lg"
-          noValidate
-        >
-          <h1 className="font-display text-heading-2 font-semibold text-primary">
-            {T.title[locale]}
-          </h1>
+        <div className="relative max-w-md">
+          <h2 className="font-display text-display-lg font-semibold leading-tight">
+            {T.heroTitle[locale]}
+          </h2>
+          <p className="mt-md text-body-lg text-teal-100">{T.heroBody[locale]}</p>
+        </div>
 
-          {error && (
-            <div
-              role="alert"
-              className="rounded-md bg-error-bg text-error text-body-sm px-md py-sm"
+        <p className="relative text-caption text-teal-200">© Dyafa</p>
+      </aside>
+
+      {/* ── Form panel ────────────────────────────────────────────────────── */}
+      <section className="flex items-center justify-center bg-bg px-lg py-3xl">
+        <div className="w-full max-w-[400px]">
+          {/* Compact brand for mobile (no marketing panel) */}
+          <div className="mb-2xl flex items-center gap-md lg:hidden">
+            <span className="grid h-10 w-10 place-items-center rounded-md bg-accent font-display text-heading-3 font-semibold text-text-on-primary">
+              {locale === 'ar' ? 'د' : 'D'}
+            </span>
+            <span className="font-display text-heading-2 font-semibold text-primary">
+              {T.brand[locale]}
+            </span>
+          </div>
+
+          <div className="mb-xl flex flex-col gap-xs">
+            <h1 className="font-display text-heading-1 font-semibold tracking-tight text-primary">
+              {T.title[locale]}
+            </h1>
+            <p className="text-body-sm text-text-muted">{T.subtitle[locale]}</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-lg" noValidate>
+            {error && (
+              <div
+                role="alert"
+                className="flex items-start gap-sm rounded-md border border-error/25 bg-error-bg px-md py-sm text-body-sm text-error"
+              >
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-pill bg-error/15 text-caption font-bold">
+                  !
+                </span>
+                <span>{error}</span>
+              </div>
+            )}
+
+            <label className="flex flex-col gap-xs">
+              <span className="text-caption font-semibold text-text-default">{T.email[locale]}</span>
+              <input
+                type="email"
+                name="email"
+                autoComplete="email"
+                required
+                dir="ltr"
+                value={email}
+                onChange={(ev) => setEmail(ev.target.value)}
+                className={inputCls}
+              />
+            </label>
+
+            <label className="flex flex-col gap-xs">
+              <span className="text-caption font-semibold text-text-default">
+                {T.password[locale]}
+              </span>
+              <input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                required
+                dir="ltr"
+                value={password}
+                onChange={(ev) => setPassword(ev.target.value)}
+                className={inputCls}
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={pending}
+              className="mt-sm inline-flex h-11 items-center justify-center rounded-md bg-accent text-body font-semibold text-text-on-primary shadow-xs transition-colors duration-fast hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
-              {error}
-            </div>
-          )}
-
-          <label className="flex flex-col gap-xs">
-            <span className="text-caption font-semibold text-text-default">
-              {T.email[locale]}
-            </span>
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              required
-              dir="ltr"
-              value={email}
-              onChange={(ev) => setEmail(ev.target.value)}
-              className="rounded-md border border-border-strong bg-surface px-md py-sm text-body text-text-default outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            />
-          </label>
-
-          <label className="flex flex-col gap-xs">
-            <span className="text-caption font-semibold text-text-default">
-              {T.password[locale]}
-            </span>
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              required
-              dir="ltr"
-              value={password}
-              onChange={(ev) => setPassword(ev.target.value)}
-              className="rounded-md border border-border-strong bg-surface px-md py-sm text-body text-text-default outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            />
-          </label>
-
-          <button
-            type="submit"
-            disabled={pending}
-            className="mt-sm rounded-md bg-accent text-text-on-primary text-body font-semibold px-lg py-md transition-opacity duration-fast hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-          >
-            {pending ? T.submitting[locale] : T.submit[locale]}
-          </button>
-        </form>
-      </div>
+              {pending ? T.submitting[locale] : T.submit[locale]}
+            </button>
+          </form>
+        </div>
+      </section>
     </main>
   );
 }

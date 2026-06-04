@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase/client';
 import { C, tl } from '../lib/admin-i18n';
 import type { Locale } from '@dyafa/i18n';
+import { SignOutIcon } from './icons';
 
 export function SignOutButton({ locale }: { locale: Locale }) {
   const router = useRouter();
@@ -36,9 +37,12 @@ export function SignOutButton({ locale }: { locale: Locale }) {
       type="button"
       onClick={onSignOut}
       disabled={pending}
-      className="text-body-sm text-teal-200 hover:text-text-on-primary transition-colors duration-fast disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-primary rounded-sm"
+      title={tl(C.signOut, locale)}
+      aria-label={tl(C.signOut, locale)}
+      className="inline-flex h-10 items-center gap-xs rounded-md border border-border bg-surface px-md text-body-sm font-semibold text-text-muted shadow-xs transition-colors duration-fast hover:border-error/30 hover:bg-error-bg hover:text-error disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
     >
-      {pending ? tl(C.loading, locale) : tl(C.signOut, locale)}
+      <SignOutIcon className="h-4 w-4" />
+      <span className="hidden sm:inline">{pending ? tl(C.loading, locale) : tl(C.signOut, locale)}</span>
     </button>
   );
 }

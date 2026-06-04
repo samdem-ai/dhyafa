@@ -53,7 +53,7 @@ export function RangeSelector({ locale, current }: { locale: Locale; current: Ra
   return (
     <div
       role="group"
-      className="inline-flex items-stretch rounded-md border border-border-strong overflow-hidden"
+      className="inline-flex items-center gap-xs rounded-md border border-border bg-surface p-xs shadow-xs"
     >
       {RANGES.map((r) => {
         const active = r === current;
@@ -63,10 +63,10 @@ export function RangeSelector({ locale, current }: { locale: Locale; current: Ra
             type="button"
             onClick={() => select(r)}
             aria-pressed={active}
-            className={`px-md py-sm text-body-sm font-semibold transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset ${
+            className={`h-8 rounded-sm px-md text-caption font-semibold transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-1 focus-visible:ring-offset-surface ${
               active
-                ? 'bg-primary text-text-on-primary'
-                : 'bg-surface text-text-muted hover:text-text-default'
+                ? 'bg-primary text-text-on-primary shadow-xs'
+                : 'text-text-muted hover:bg-surface-sunken hover:text-text-default'
             }`}
           >
             {tl(RANGE_LABEL[r], locale)}

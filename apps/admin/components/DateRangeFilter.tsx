@@ -39,12 +39,12 @@ export function DateRangeFilter({
   }
 
   const inputCls =
-    'rounded-md border border-border-strong bg-surface px-md py-sm text-body-sm text-text-default outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2';
+    'h-7 rounded-sm border-0 bg-transparent px-xs text-body-sm text-text-default outline-none focus-visible:ring-2 focus-visible:ring-focus-ring/60 [color-scheme:light]';
 
   return (
-    <div className="flex items-center gap-xs">
-      <label className="flex items-center gap-xs text-caption text-text-muted">
-        {LABELS.from[locale]}
+    <div className="flex h-10 items-center gap-sm rounded-md border border-border-strong bg-surface px-md shadow-xs">
+      <label className="flex items-center gap-xs text-caption font-medium text-text-muted">
+        <span className="uppercase tracking-wide">{LABELS.from[locale]}</span>
         <input
           type="date"
           value={from ?? ''}
@@ -52,8 +52,9 @@ export function DateRangeFilter({
           className={inputCls}
         />
       </label>
-      <label className="flex items-center gap-xs text-caption text-text-muted">
-        {LABELS.to[locale]}
+      <span aria-hidden="true" className="h-4 w-px bg-border-strong" />
+      <label className="flex items-center gap-xs text-caption font-medium text-text-muted">
+        <span className="uppercase tracking-wide">{LABELS.to[locale]}</span>
         <input
           type="date"
           value={to ?? ''}

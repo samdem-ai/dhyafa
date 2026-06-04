@@ -13,7 +13,6 @@
 
 import { requireHost, canManage } from '../../lib/auth';
 import { resolveLocale } from '../../lib/i18n';
-import { dir } from '@dyafa/i18n';
 import { Sidebar, type NavCapabilities } from '../../components/Sidebar';
 import { T, tl } from '../../lib/dashboard-i18n';
 
@@ -26,7 +25,6 @@ export default async function DashboardLayout({
 }) {
   const session = await requireHost('/');
   const locale = resolveLocale();
-  const direction = dir(locale);
 
   const staffRoleLabel = session.isOwner
     ? tl(T.roleOwner, locale)
@@ -38,16 +36,12 @@ export default async function DashboardLayout({
     canManage: canManage(session),
     isOwner: session.isOwner,
     staffRoleLabel,
+    email: session.email,
   };
 
   return (
-    <div dir={direction} className="min-h-screen bg-bg lg:flex">
-      <Sidebar locale={locale} caps={caps} />
-      <main className="flex-1 min-w-0">
-        <div className="max-w-screen-xl mx-auto px-lg sm:px-xl py-xl sm:py-2xl flex flex-col gap-2xl">
-          {children}
-        </div>
-      </main>
-    </div>
+    <Sidebar locale={locale} caps={caps}>
+      {children}
+    </Sidebar>
   );
 }

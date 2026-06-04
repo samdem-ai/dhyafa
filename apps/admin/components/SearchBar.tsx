@@ -9,6 +9,7 @@ import { useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import type { Locale } from '@dyafa/i18n';
 import { C, tl } from '../lib/admin-i18n';
+import { SearchIcon } from './icons';
 
 export function SearchBar({
   locale,
@@ -35,17 +36,20 @@ export function SearchBar({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex items-stretch gap-sm w-full sm:w-auto">
-      <input
-        type="search"
-        value={value}
-        onChange={(ev) => setValue(ev.target.value)}
-        placeholder={placeholder ?? tl(C.search, locale)}
-        className="flex-1 sm:w-72 rounded-md border border-border-strong bg-surface px-md py-sm text-body text-text-default outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-      />
+    <form onSubmit={onSubmit} className="flex w-full items-stretch gap-sm sm:w-auto">
+      <div className="relative flex-1 sm:w-72">
+        <SearchIcon className="pointer-events-none absolute inset-y-0 start-md my-auto h-4 w-4 text-text-muted" />
+        <input
+          type="search"
+          value={value}
+          onChange={(ev) => setValue(ev.target.value)}
+          placeholder={placeholder ?? tl(C.search, locale)}
+          className="h-10 w-full rounded-md border border-border-strong bg-surface ps-9 pe-md text-body-sm text-text-default shadow-xs outline-none transition-[box-shadow,border-color] duration-fast placeholder:text-text-muted focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-focus-ring/60"
+        />
+      </div>
       <button
         type="submit"
-        className="rounded-md bg-primary text-text-on-primary text-body-sm font-semibold px-lg py-sm transition-opacity duration-fast hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-lg text-body-sm font-semibold text-text-on-primary shadow-xs transition-colors duration-fast hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
       >
         {tl(C.search, locale)}
       </button>

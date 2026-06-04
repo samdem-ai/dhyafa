@@ -12,6 +12,8 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { type Locale } from '@dyafa/i18n';
 import { T, tl } from '../../../lib/dashboard-i18n';
+import { buttonClass, inputClass } from '../../../components/ui';
+import { CheckCircleIcon, CloseIcon } from '../../../components/icons';
 import {
   acceptBookingRequest,
   declineBookingRequest,
@@ -98,15 +100,16 @@ export function ReservationActions({
             type="button"
             onClick={() => run(() => acceptBookingRequest(bookingId))}
             disabled={pending}
-            className="rounded-md bg-accent text-text-on-primary text-body-sm font-semibold px-lg py-sm transition-opacity duration-fast hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className={buttonClass('accent', 'sm')}
           >
+            <CheckCircleIcon size={16} />
             {pending ? tl(T.saving, locale) : tl(T.resAccept, locale)}
           </button>
           <button
             type="button"
             onClick={() => run(() => declineBookingRequest(bookingId))}
             disabled={pending}
-            className="rounded-md border border-error/40 text-error text-body-sm font-semibold px-lg py-sm transition-colors duration-fast hover:bg-error-bg disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            className={buttonClass('danger', 'sm')}
           >
             {tl(T.resDecline, locale)}
           </button>
@@ -121,7 +124,7 @@ export function ReservationActions({
             setError(null);
           }}
           disabled={pending}
-          className="self-start rounded-md border border-border-strong text-body-sm font-medium text-text-muted px-md py-xs hover:text-error hover:border-error/40 transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          className={buttonClass('secondary', 'sm', 'self-start hover:!text-error hover:!border-error/40')}
         >
           {tl(T.resCancel, locale)}
         </button>
@@ -139,14 +142,14 @@ export function ReservationActions({
               rows={2}
               required
               placeholder={tl(T.resCancelReasonPh, locale)}
-              className="rounded-md border border-border-strong bg-surface px-md py-sm text-body-sm text-text-default outline-none resize-y focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              className={`${inputClass} h-auto resize-y py-sm`}
             />
           </label>
           <div className="flex items-center gap-sm">
             <button
               type="submit"
               disabled={pending}
-              className="rounded-md bg-error text-text-on-primary text-body-sm font-semibold px-lg py-sm transition-opacity duration-fast hover:opacity-90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              className={buttonClass('danger', 'sm')}
             >
               {pending ? tl(T.saving, locale) : tl(T.resCancel, locale)}
             </button>
@@ -157,8 +160,9 @@ export function ReservationActions({
                 setError(null);
               }}
               disabled={pending}
-              className="rounded-md px-md py-sm text-body-sm font-medium text-text-muted hover:text-text-default transition-colors duration-fast disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              className={buttonClass('ghost', 'sm')}
             >
+              <CloseIcon size={15} />
               {tl(T.cancel, locale)}
             </button>
           </div>

@@ -82,11 +82,25 @@ export function monthLabel(monthIndex0: number, locale: Locale): string {
 
 export const T = {
   brand: { ar: 'دافة', fr: 'Dyafa', en: 'Dyafa' },
+  brandTagline: { ar: 'للفنادق', fr: 'pour les hôtels', en: 'for Hotels' },
   dashboardLabel: {
     ar: 'لوحة المضيفين',
     fr: 'Tableau de bord hôtelier',
     en: 'Hotel Dashboard',
   },
+  // Sidebar nav group labels (tiny uppercase headings)
+  navGroupMain: { ar: 'الرئيسية', fr: 'Principal', en: 'Main' },
+  navGroupOperations: { ar: 'العمليات', fr: 'Opérations', en: 'Operations' },
+  navGroupBusiness: { ar: 'الأعمال', fr: 'Activité', en: 'Business' },
+  // Topbar
+  topbarSearch: {
+    ar: 'بحث في الحجوزات…',
+    fr: 'Rechercher des réservations…',
+    en: 'Search reservations…',
+  },
+  account: { ar: 'الحساب', fr: 'Compte', en: 'Account' },
+  closeMenu: { ar: 'إغلاق القائمة', fr: 'Fermer le menu', en: 'Close menu' },
+  openMenu: { ar: 'فتح القائمة', fr: 'Ouvrir le menu', en: 'Open menu' },
   signOut: { ar: 'تسجيل الخروج', fr: 'Se déconnecter', en: 'Sign out' },
   signingOut: { ar: 'جارٍ الخروج…', fr: 'Déconnexion…', en: 'Signing out…' },
   menu: { ar: 'القائمة', fr: 'Menu', en: 'Menu' },
@@ -164,6 +178,26 @@ export const T = {
     ar: 'تعذّر تسجيل الدخول. حاول مرة أخرى.',
     fr: 'Échec de la connexion. Réessayez.',
     en: 'Could not sign in. Please try again.',
+  },
+  signInHeadline: {
+    ar: 'أدِر فندقك من مكان واحد',
+    fr: 'Pilotez votre hôtel depuis un seul endroit',
+    en: 'Run your property from one place',
+  },
+  signInFeatureBookings: {
+    ar: 'حجوزات وتقويم وأسعار لحظية',
+    fr: 'Réservations, calendrier et tarifs en temps réel',
+    en: 'Live reservations, calendar and pricing',
+  },
+  signInFeatureRevenue: {
+    ar: 'الإيرادات والإشغال والمدفوعات',
+    fr: 'Revenus, occupation et virements',
+    en: 'Revenue, occupancy and payouts',
+  },
+  signInFeatureTeam: {
+    ar: 'صلاحيات للفريق: استقبال ومدير',
+    fr: 'Rôles d’équipe : réception et gérant',
+    en: 'Team roles: reception and manager',
   },
 
   // ── Overview ───────────────────────────────────────────────────────────────

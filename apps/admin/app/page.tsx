@@ -15,14 +15,27 @@ import { formatDZD, dir } from '@dyafa/i18n';
 import type { Locale } from '@dyafa/i18n';
 import { C, formatInt, formatPct, tl } from '../lib/admin-i18n';
 import { AdminShell } from '../components/AdminShell';
-import { SectionCard } from '../components/ui';
+import { Card, StatCard, LinkButton, ErrorState, ArrowRightIcon, type TrendDir } from '../components/ui';
 import { BarChart, LineChart } from '../components/MiniChart';
+import {
+  BookingIcon,
+  PaymentIcon,
+  ListingIcon,
+  UsersIcon,
+  ReviewIcon,
+  TrendUpIcon,
+} from '../components/icons';
 import { RangeSelector, rangeDays, isRangeKey, type RangeKey } from './RangeSelector';
 
 export const dynamic = 'force-dynamic';
 
 const T = {
   title: { ar: 'نظرة عامة', fr: "Vue d'ensemble", en: 'Overview' },
+  subtitle: {
+    ar: 'مؤشرات الأداء عبر المنصة',
+    fr: 'Indicateurs de performance de la plateforme',
+    en: 'Platform performance at a glance',
+  },
   bookings: { ar: 'الحجوزات', fr: 'Réservations', en: 'Bookings' },
   gmv: { ar: 'إجمالي قيمة الحجوزات', fr: 'Volume brut (GMV)', en: 'Gross Booking Value' },
   commission: { ar: 'عمولة المنصة', fr: 'Commission plateforme', en: 'Platform Commission' },
@@ -35,9 +48,9 @@ const T = {
   gmvTrend: { ar: 'اتجاه قيمة الحجوزات', fr: 'Tendance du GMV', en: 'GMV trend' },
   inRange: { ar: 'خلال الفترة', fr: 'sur la période', en: 'in range' },
   openQueue: {
-    ar: 'فتح طابور المراجعة ←',
-    fr: 'Ouvrir la file de modération →',
-    en: 'Open moderation queue →',
+    ar: 'فتح طابور المراجعة',
+    fr: 'Ouvrir la file',
+    en: 'Open queue',
   },
 } as const;
 
@@ -56,32 +69,22 @@ interface FunnelRow {
   conversion_pct: number | null;
 }
 
-function KpiCard({
-  label,
-  value,
-  sub,
-  accent = false,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  accent?: boolean;
-}) {
-  return (
-    <div className="rounded-card bg-surface shadow-card p-lg flex flex-col gap-sm">
-      <span className="text-caption font-semibold uppercase tracking-wide text-text-muted">
-        {label}
-      </span>
-      <span
-        className={`font-display text-heading-1 font-semibold tabular-nums ${
-          accent ? 'text-accent' : 'text-primary'
-        }`}
-      >
-        {value}
-      </span>
-      {sub && <span className="text-body-sm text-text-muted">{sub}</span>}
-    </div>
-  );
+/**
+ * Period-over-period trend for the hero tiles: compares the second half of the
+ * range to the first half (purely derived from the already-fetched daily rows —
+ * no extra query). Returns null when there isn't enough data to be meaningful.
+ */
+function trendOf(values: number[], locale: Locale): { dir: TrendDir; text: string } | null {
+  if (values.length < 4) return null;
+  const mid = Math.floor(values.length / 2);
+  const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
+  const prev = sum(values.slice(0, mid));
+  const curr = sum(values.slice(mid));
+  if (prev <= 0) return curr > 0 ? { dir: 'up', text: '+100%' } : null;
+  const pct = ((curr - prev) / prev) * 100;
+  const dir: TrendDir = pct > 0.5 ? 'up' : pct < -0.5 ? 'down' : 'neutral';
+  const sign = pct > 0 ? '+' : '';
+  return { dir, text: `${sign}${formatPct(pct, locale)}` };
 }
 
 export default async function AdminOverviewPage({
@@ -172,77 +175,115 @@ export default async function AdminOverviewPage({
   const bookingsSeries = daily.map((r) => ({ label: dayLabel(r.day), value: r.bookings_count ?? 0 }));
   const gmvSeries = daily.map((r) => ({ label: dayLabel(r.day), value: r.gmv_dzd ?? 0 }));
 
+  // Period-over-period trends (derived from the same daily rows).
+  const bookingsTrend = trendOf(daily.map((r) => r.bookings_count ?? 0), locale);
+  const gmvTrend = trendOf(daily.map((r) => r.gmv_dzd ?? 0), locale);
+  const commissionTrend = trendOf(daily.map((r) => r.commission_dzd ?? 0), locale);
+  const newUsersTrend = trendOf(daily.map((r) => r.new_users ?? 0), locale);
+
   const rangeSuffix = tl(T.inRange, locale);
 
   return (
     <AdminShell locale={locale} pathname="/">
       {/* ── Title + range selector ──────────────────────────────────────── */}
-      <section className="flex items-center justify-between gap-md flex-wrap">
-        <h1 className="font-display text-heading-1 font-semibold text-primary">
-          {tl(T.title, locale)}
-        </h1>
+      <section className="flex flex-wrap items-end justify-between gap-md">
+        <div>
+          <h2 className="font-display text-heading-1 font-semibold tracking-tight text-primary">
+            {tl(T.title, locale)}
+          </h2>
+          <p className="mt-xs text-body-sm text-text-muted">{tl(T.subtitle, locale)}</p>
+        </div>
         <RangeSelector locale={locale} current={range} />
       </section>
 
-      {error && (
-        <div role="alert" className="rounded-card bg-error-bg text-error px-xl py-lg text-body-sm">
-          {tl(C.errorTitle, locale)} — {error.message}
-        </div>
-      )}
+      {error && <ErrorState locale={locale} message={error.message} />}
 
-      {/* ── KPI tiles ───────────────────────────────────────────────────── */}
-      <section className="grid grid-cols-1 gap-lg sm:grid-cols-2 lg:grid-cols-3">
-        <KpiCard label={tl(T.bookings, locale)} value={formatInt(totals.bookings, locale)} sub={rangeSuffix} />
-        <KpiCard
+      {/* ── Hero KPI tiles ──────────────────────────────────────────────── */}
+      <section className="grid grid-cols-1 gap-lg sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label={tl(T.bookings, locale)}
+          value={formatInt(totals.bookings, locale)}
+          sub={rangeSuffix}
+          icon={<BookingIcon className="h-5 w-5" />}
+          trend={bookingsTrend ?? undefined}
+        />
+        <StatCard
           label={tl(T.gmv, locale)}
           value={formatDZD(totals.gmv, locale)}
           sub={rangeSuffix}
           accent
+          icon={<PaymentIcon className="h-5 w-5" />}
+          trend={gmvTrend ?? undefined}
         />
-        <KpiCard
+        <StatCard
           label={tl(T.commission, locale)}
           value={formatDZD(totals.commission, locale)}
           sub={rangeSuffix}
+          icon={<TrendUpIcon className="h-5 w-5" />}
+          trend={commissionTrend ?? undefined}
         />
-        <KpiCard
-          label={tl(T.activeListings, locale)}
-          value={formatInt(activeListings, locale)}
-          sub={`${formatInt(pendingCount, locale)} ${tl(T.pending, locale)}`}
-        />
-        <KpiCard label={tl(T.newUsers, locale)} value={formatInt(totals.newUsers, locale)} sub={rangeSuffix} />
-        <KpiCard
+        <StatCard
           label={tl(T.conversion, locale)}
           value={formatPct(conversionPct, locale)}
           sub={`${formatInt(totals.completed, locale)} ${tl(T.completed, locale)}`}
+          icon={<ReviewIcon className="h-5 w-5" />}
         />
       </section>
 
       {/* ── Charts ──────────────────────────────────────────────────────── */}
       <section className="grid grid-cols-1 gap-lg lg:grid-cols-2">
-        <SectionCard title={tl(T.bookingsPerDay, locale)}>
+        <Card title={tl(T.bookingsPerDay, locale)}>
           {bookingsSeries.length === 0 ? (
-            <p className="text-body-sm italic text-text-muted">{tl(C.emptyBody, locale)}</p>
+            <p className="py-2xl text-center text-body-sm italic text-text-muted">
+              {tl(C.emptyBody, locale)}
+            </p>
           ) : (
             <BarChart points={bookingsSeries} rtl={rtl} ariaLabel={tl(T.bookingsPerDay, locale)} />
           )}
-        </SectionCard>
-        <SectionCard title={tl(T.gmvTrend, locale)}>
+        </Card>
+        <Card title={tl(T.gmvTrend, locale)}>
           {gmvSeries.length === 0 ? (
-            <p className="text-body-sm italic text-text-muted">{tl(C.emptyBody, locale)}</p>
+            <p className="py-2xl text-center text-body-sm italic text-text-muted">
+              {tl(C.emptyBody, locale)}
+            </p>
           ) : (
             <LineChart points={gmvSeries} rtl={rtl} ariaLabel={tl(T.gmvTrend, locale)} />
           )}
-        </SectionCard>
+        </Card>
       </section>
 
-      {/* ── Moderation shortcut ─────────────────────────────────────────── */}
-      <section>
-        <a
-          href="/moderation"
-          className="inline-flex items-center gap-xs text-body-sm font-semibold text-accent hover:opacity-80 transition-opacity duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 rounded-sm"
-        >
-          {tl(T.openQueue, locale)}
-        </a>
+      {/* ── Secondary KPIs + moderation shortcut ────────────────────────── */}
+      <section className="grid grid-cols-1 gap-lg sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          label={tl(T.activeListings, locale)}
+          value={formatInt(activeListings, locale)}
+          sub={`${formatInt(pendingCount, locale)} ${tl(T.pending, locale)}`}
+          icon={<ListingIcon className="h-5 w-5" />}
+        />
+        <StatCard
+          label={tl(T.newUsers, locale)}
+          value={formatInt(totals.newUsers, locale)}
+          sub={rangeSuffix}
+          icon={<UsersIcon className="h-5 w-5" />}
+          trend={newUsersTrend ?? undefined}
+        />
+        <Card className="flex" bodyClassName="flex flex-1 flex-col justify-between gap-md">
+          <div className="flex items-start gap-md">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-accent/12 text-accent">
+              <ListingIcon className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="font-display text-heading-3 font-semibold text-primary">
+                {formatInt(pendingCount, locale)} {tl(T.pending, locale)}
+              </p>
+              <p className="mt-xs text-caption text-text-muted">{tl(T.subtitle, locale)}</p>
+            </div>
+          </div>
+          <LinkButton href="/moderation" variant="accent" size="sm" className="self-start">
+            {tl(T.openQueue, locale)}
+            <ArrowRightIcon className="h-4 w-4 rtl:-scale-x-100" />
+          </LinkButton>
+        </Card>
       </section>
     </AdminShell>
   );
