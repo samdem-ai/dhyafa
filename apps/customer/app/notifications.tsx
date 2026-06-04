@@ -19,7 +19,7 @@ import {
   SafeAreaView,
   I18nManager,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
 import type { Locale } from '@dyafa/i18n';
@@ -44,7 +44,7 @@ const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
 export default function NotificationsScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const { user, loading: sessionLoading } = useSession();
   const myUid = user?.id ?? null;
 
@@ -119,7 +119,7 @@ export default function NotificationsScreen() {
       void markNotificationsRead([n.id]).catch(() => undefined);
     }
     const route = notificationRoute(n);
-    if (route) router.push(route);
+    if (route) router.push(route as Href);
   }
 
   return (

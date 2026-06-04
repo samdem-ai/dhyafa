@@ -1,15 +1,17 @@
 /**
  * RTL helpers for Dyafa.
  *
- * Arabic is the PRIMARY locale and the design default — RTL is not an afterthought.
- * Fallback chain: ar → fr → en (matches the Algerian audience).
+ * Default UI locale is ENGLISH (LTR); Arabic (RTL) and French are fully supported
+ * and user-selectable. RTL is applied only when the user is actually in Arabic.
+ * Fallback chain: en → fr → ar.
  */
 
 export type Locale = 'ar' | 'fr' | 'en';
 
-export const SUPPORTED_LOCALES: readonly Locale[] = ['ar', 'fr', 'en'] as const;
+// English first (default + display order in pickers); Arabic + French selectable.
+export const SUPPORTED_LOCALES: readonly Locale[] = ['en', 'ar', 'fr'] as const;
 
-export const DEFAULT_LOCALE: Locale = 'ar';
+export const DEFAULT_LOCALE: Locale = 'en';
 
 /**
  * Returns true only for Arabic — the single RTL locale in this app.

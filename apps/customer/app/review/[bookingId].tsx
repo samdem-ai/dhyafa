@@ -60,7 +60,7 @@ type Phase = 'loading' | 'form' | 'ineligible' | 'done' | 'error';
 
 export default function LeaveReviewScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const { bookingId } = useLocalSearchParams<{ bookingId: string }>();
 
   const [phase, setPhase] = useState<Phase>('loading');

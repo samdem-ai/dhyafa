@@ -47,7 +47,7 @@ const TABS: { key: TripBucket; label: LMessage }[] = [
 
 export default function TripsScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const { user, loading: sessionLoading } = useSession();
   const wilayaNames = useWilayaNames(locale);
 

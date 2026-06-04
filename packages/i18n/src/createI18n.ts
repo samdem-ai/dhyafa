@@ -89,8 +89,8 @@ export function createI18n(initialLocale: Locale = DEFAULT_LOCALE): i18n {
   // is false — no need to await the returned promise for bundled resources.
   instance.init({
     lng: initialLocale,
-    fallbackLng: 'fr',
-    supportedLngs: ['ar', 'fr', 'en'],
+    fallbackLng: ['en', 'fr'],
+    supportedLngs: ['en', 'ar', 'fr'],
     ns: ['common', 'auth', 'booking'],
     defaultNS: 'common',
     resources,

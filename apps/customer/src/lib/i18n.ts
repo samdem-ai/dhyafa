@@ -18,7 +18,6 @@
 
 import { createI18n, isRTL, DEFAULT_LOCALE, SUPPORTED_LOCALES, type Locale } from '@dyafa/i18n';
 import * as SecureStore from 'expo-secure-store';
-import * as Localization from 'expo-localization';
 import { I18nManager } from 'react-native';
 
 // ---------------------------------------------------------------------------
@@ -33,19 +32,10 @@ const LOCALE_STORE_KEY = 'app.language';
 // resolve synchronously from the device locale first; the stored value is
 // applied via initLocale() which _must_ be awaited in RootLayout.
 // ---------------------------------------------------------------------------
-function resolveDeviceLocale(): Locale {
-  const deviceLocales = Localization.getLocales();
-  for (const l of deviceLocales) {
-    const tag = l.languageTag.split('-')[0] as string;
-    if ((SUPPORTED_LOCALES as readonly string[]).includes(tag)) {
-      return tag as Locale;
-    }
-  }
-  return DEFAULT_LOCALE;
-}
-
 // Module-level i18n instance; mutated by initLocale() before first render.
-export let i18nInstance = createI18n(resolveDeviceLocale());
+// First launch defaults to English (DEFAULT_LOCALE); the user can switch to
+// Arabic (RTL) or French, and that choice is persisted (see initLocale/setLocale).
+export let i18nInstance = createI18n(DEFAULT_LOCALE);
 
 /**
  * Async init: reads the stored locale, updates the i18n instance, and applies
@@ -60,11 +50,10 @@ export async function initLocale(): Promise<Locale> {
     const stored = await SecureStore.getItemAsync(LOCALE_STORE_KEY);
     if (stored && (SUPPORTED_LOCALES as readonly string[]).includes(stored)) {
       locale = stored as Locale;
-    } else {
-      locale = resolveDeviceLocale();
     }
+    // else: keep DEFAULT_LOCALE (English) on first launch — user opts into AR/FR.
   } catch {
-    locale = resolveDeviceLocale();
+    // ignore read errors; keep DEFAULT_LOCALE.
   }
 
   // Rebuild the i18n instance with the resolved locale.

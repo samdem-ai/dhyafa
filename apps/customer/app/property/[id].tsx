@@ -76,7 +76,7 @@ type Overlay = 'dates' | 'guests' | null;
 
 export default function PropertyDetailScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const params = useLocalSearchParams<{ id: string }>();
   const id = params.id;
   const searchState = fromParams(params as Record<string, string | undefined>);

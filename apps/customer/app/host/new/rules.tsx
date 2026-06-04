@@ -48,7 +48,7 @@ const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
 export default function StepRules() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const { draft, patch, saveProperty } = useWizard();
 
   const [tab, setTab] = useState<Locale>(locale);

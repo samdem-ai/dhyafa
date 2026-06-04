@@ -73,7 +73,7 @@ function roomLabel(rt: RoomTypeRow, locale: Locale): string {
 
 export default function HostCalendarScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
 
   const [properties, setProperties] = useState<PropertyRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

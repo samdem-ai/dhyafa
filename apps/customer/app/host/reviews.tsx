@@ -52,7 +52,7 @@ const CAT_LABEL: Record<ReviewCategory, keyof typeof L> = {
 
 export default function HostReviewsScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
 
   const [data, setData] = useState<HostReviewItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);

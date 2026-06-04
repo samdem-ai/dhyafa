@@ -57,7 +57,7 @@ const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
 export default function BookingConfirmScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const { user } = useSession();
   const params = useLocalSearchParams<{
     propertyId: string;

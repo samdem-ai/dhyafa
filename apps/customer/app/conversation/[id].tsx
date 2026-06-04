@@ -46,7 +46,7 @@ const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
 export default function ConversationScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useSession();
   const myUid = user?.id ?? null;

@@ -20,7 +20,7 @@ import {
   RefreshControl,
   I18nManager,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, type Locale } from '@dyafa/i18n';
 import {
@@ -75,7 +75,7 @@ function propertyTitle(p: PropertyRow, locale: Locale): string {
 
 export default function HostHomeScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
 
   const [properties, setProperties] = useState<PropertyRow[] | null>(null);
   const [activeListings, setActiveListings] = useState<number | null>(null);
@@ -159,7 +159,7 @@ export default function HostHomeScreen() {
                 <Pressable
                   key={tile.key}
                   accessibilityRole="button"
-                  onPress={() => router.push(tile.href)}
+                  onPress={() => router.push(tile.href as Href)}
                   style={({ pressed }) => [styles.tile, pressed && styles.cardPressed]}
                 >
                   <Text style={styles.tileGlyph}>{tile.glyph}</Text>

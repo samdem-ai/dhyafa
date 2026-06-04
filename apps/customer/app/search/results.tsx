@@ -55,7 +55,7 @@ const SORT_LABEL: Record<SortKey, LMessage> = {
 
 export default function ResultsScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const params = useLocalSearchParams();
   const state: SearchState = fromParams(params as Record<string, string | undefined>);
 

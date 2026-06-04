@@ -40,7 +40,7 @@ function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
 
 export default function StepAmenities() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const { draft, patch, ensureDraft } = useWizard();
 
   const [amenities, setAmenitiesState] = useState<AmenityRow[] | null>(null);

@@ -54,7 +54,7 @@ function Row({
 
 export default function ProfileScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const { user, loading } = useSession();
 
   const [hosting, setHosting] = useState(false);

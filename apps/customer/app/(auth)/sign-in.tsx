@@ -36,7 +36,7 @@ function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
 
 export default function SignInScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   // `next` is a known route group ('host' | 'home') rather than a free-form
   // path, so it stays compatible with expo-router typed routes.
   const params = useLocalSearchParams<{ next?: string }>();

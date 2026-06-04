@@ -10,7 +10,7 @@
  */
 
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { router, usePathname, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Locale } from '@dyafa/i18n';
 import { theme } from '@/theme';
@@ -61,7 +61,7 @@ export function TabBar({ locale }: { locale: Locale }) {
             accessibilityState={{ selected: active }}
             accessibilityLabel={tab.label}
             onPress={() => {
-              if (!active) router.replace(tab.href);
+              if (!active) router.replace(tab.href as Href);
             }}
             style={styles.item}
             hitSlop={4}

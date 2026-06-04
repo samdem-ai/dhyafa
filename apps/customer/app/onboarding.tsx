@@ -34,7 +34,7 @@ const LOCALE_LABELS: Record<Locale, { native: string; flag: string }> = {
 
 export default function OnboardingScreen() {
   const { i18n } = useTranslation('common');
-  const currentLocale = (i18n.language ?? 'ar') as Locale;
+  const currentLocale = (i18n.language ?? 'en') as Locale;
   const [applying, setApplying] = useState<Locale | null>(null);
 
   async function handleSelect(locale: Locale) {

@@ -15,7 +15,7 @@ import { RN_FONTS } from '@/lib/fonts';
 
 export default function WishlistsScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
 
   return (
     <SafeAreaView style={styles.safe}>

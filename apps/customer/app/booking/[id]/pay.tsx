@@ -39,7 +39,7 @@ const IS_DEV = typeof __DEV__ !== 'undefined' && __DEV__;
 
 export default function PaymentScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const tt = (ar: string, fr: string, en: string) =>
     locale === 'ar' ? ar : locale === 'fr' ? fr : en;
   const { id } = useLocalSearchParams<{ id: string }>();

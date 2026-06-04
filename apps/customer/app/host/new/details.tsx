@@ -48,7 +48,7 @@ function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
 
 export default function StepDetails() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const { draft, patch, saveProperty } = useWizard();
 
   const [tab, setTab] = useState<Locale>(locale);

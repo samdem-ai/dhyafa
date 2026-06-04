@@ -19,7 +19,7 @@ import { theme } from '@/theme';
 
 export default function TabsLayout() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
 
   // Register for push (foreground handler + token) once signed in.
   // In-app + realtime is the M3 deliverable; device-token storage is a follow-up.

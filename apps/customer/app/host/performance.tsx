@@ -40,7 +40,7 @@ function formatPercent(ratio: number, locale: Locale): string {
 
 export default function HostPerformanceScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
 
   const [stats, setStats] = useState<HostPerformance | null>(null);
   const [error, setError] = useState<string | null>(null);

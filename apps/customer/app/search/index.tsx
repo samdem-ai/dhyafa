@@ -40,7 +40,7 @@ type Panel = 'destination' | 'dates' | 'guests' | null;
 
 export default function SearchEntryScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
 
   const [panel, setPanel] = useState<Panel>('destination');
 

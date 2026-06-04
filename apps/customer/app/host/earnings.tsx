@@ -70,7 +70,7 @@ function isPaid(status: PayoutStatus): boolean {
 
 export default function HostEarningsScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
 
   const [tab, setTab] = useState<Tab>('payouts');
   const [payouts, setPayouts] = useState<PayoutRow[] | null>(null);

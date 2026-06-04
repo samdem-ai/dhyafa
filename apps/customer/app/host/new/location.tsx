@@ -62,7 +62,7 @@ function parseCoord(v: string): number | null {
 
 export default function StepLocation() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const { draft, patch, saveProperty } = useWizard();
 
   const [wilayas, setWilayas] = useState<WilayaRow[] | null>(null);

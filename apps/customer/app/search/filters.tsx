@@ -39,7 +39,7 @@ const RATING_OPTIONS: (number | null)[] = [null, 3, 4, 4.5];
 
 export default function FiltersScreen() {
   const { i18n } = useTranslation('common');
-  const locale = (i18n.language ?? 'ar') as Locale;
+  const locale = (i18n.language ?? 'en') as Locale;
   const params = useLocalSearchParams();
   const initial = fromParams(params as Record<string, string | undefined>);
 
