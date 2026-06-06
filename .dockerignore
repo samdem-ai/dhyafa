@@ -1,0 +1,14 @@
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/.expo
+**/.expo-shared
+.git
+**/*.log
+apps/customer/android
+apps/customer/ios
+supabase/.branches
+supabase/.temp
+**/.env
+**/.env.*

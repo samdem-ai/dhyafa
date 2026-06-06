@@ -1,0 +1,44 @@
+# Dyafa web dashboards (admin + hotel) for the VPS.
+# Supabase runs separately (self-hosted on the host); these point at it via the
+# public API URL. Reads keys from deploy/.env (SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+# PUBLIC_API_URL). Isolated `dyafa` project — does not touch other stacks on the box.
+name: dyafa
+
+services:
+  admin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        APP: admin
+        PORT: "8411"
+        NEXT_PUBLIC_SUPABASE_URL: "${PUBLIC_API_URL}"
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
+    image: dyafa-admin:latest
+    environment:
+      SUPABASE_URL: "${PUBLIC_API_URL}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY}"
+      NEXT_PUBLIC_SUPABASE_URL: "${PUBLIC_API_URL}"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
+    ports:
+      - "8411:8411"
+    restart: unless-stopped
+
+  hotel:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        APP: hotel
+        PORT: "8412"
+        NEXT_PUBLIC_SUPABASE_URL: "${PUBLIC_API_URL}"
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
+    image: dyafa-hotel:latest
+    environment:
+      SUPABASE_URL: "${PUBLIC_API_URL}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY}"
+      NEXT_PUBLIC_SUPABASE_URL: "${PUBLIC_API_URL}"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
+    ports:
+      - "8412:8412"
+    restart: unless-stopped

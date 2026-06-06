@@ -1,0 +1,31 @@
+# Multi-stage build for a Dyafa Next.js app (admin or hotel) from the pnpm monorepo.
+# Build context = repo root.  docker build -f deploy/Dockerfile.web --build-arg APP=admin ...
+FROM node:22-alpine AS build
+ARG APP
+ARG PORT=3000
+# NEXT_PUBLIC_* are inlined at BUILD time → must be present here.
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
+    NEXT_TELEMETRY_DISABLED=1
+RUN corepack enable
+WORKDIR /app
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm exec turbo build --filter=@dyafa/$APP
+
+FROM node:22-alpine AS run
+ARG APP
+ARG PORT=3000
+ENV NODE_ENV=production \
+    PORT=$PORT \
+    HOSTNAME=0.0.0.0 \
+    APP=$APP
+WORKDIR /app
+# Next standalone bundle: self-contained server + traced node_modules + workspace pkgs.
+COPY --from=build /app/apps/$APP/.next/standalone ./
+COPY --from=build /app/apps/$APP/.next/static ./apps/$APP/.next/static
+EXPOSE $PORT
+# server.js lives under apps/<app>/ inside the monorepo standalone output.
+CMD ["sh", "-c", "node apps/$APP/server.js"]
