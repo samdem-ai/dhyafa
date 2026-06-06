@@ -10,35 +10,8 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { Locale } from '@dyafa/i18n';
-import { tl, type L10n } from '../lib/admin-i18n';
-
-export const RANGES = ['7d', '30d', '90d', 'qtr'] as const;
-export type RangeKey = (typeof RANGES)[number];
-
-export const RANGE_LABEL: Record<RangeKey, L10n> = {
-  '7d': { ar: '٧ أيام', fr: '7 j', en: '7d' },
-  '30d': { ar: '٣٠ يوم', fr: '30 j', en: '30d' },
-  '90d': { ar: '٩٠ يوم', fr: '90 j', en: '90d' },
-  qtr: { ar: 'الربع', fr: 'Trimestre', en: 'Quarter' },
-};
-
-/** Map a range key to a number of days (used by the page query). */
-export function rangeDays(range: RangeKey): number {
-  switch (range) {
-    case '7d':
-      return 7;
-    case '30d':
-      return 30;
-    case '90d':
-      return 90;
-    case 'qtr':
-      return 90;
-  }
-}
-
-export function isRangeKey(v: string | null | undefined): v is RangeKey {
-  return v === '7d' || v === '30d' || v === '90d' || v === 'qtr';
-}
+import { tl } from '../lib/admin-i18n';
+import { RANGES, RANGE_LABEL, type RangeKey } from './range';
 
 export function RangeSelector({ locale, current }: { locale: Locale; current: RangeKey }) {
   const router = useRouter();

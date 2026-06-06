@@ -25,7 +25,8 @@ import {
   ReviewIcon,
   TrendUpIcon,
 } from '../components/icons';
-import { RangeSelector, rangeDays, isRangeKey, type RangeKey } from './RangeSelector';
+import { RangeSelector } from './RangeSelector';
+import { rangeDays, isRangeKey, type RangeKey } from './range';
 
 export const dynamic = 'force-dynamic';
 
