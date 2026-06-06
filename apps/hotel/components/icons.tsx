@@ -9,14 +9,16 @@
  * Server-safe (no client hooks).
  */
 
-import type { SVGProps } from 'react';
+import type { ReactNode, SVGProps } from 'react';
 
-export type IconProps = SVGProps<SVGSVGElement> & {
+// Omit `ref` so spreading `...rest` onto <svg> never carries the legacy string-ref
+// type (which conflicts across React 18/19 type resolutions under a flat node_modules).
+export type IconProps = Omit<SVGProps<SVGSVGElement>, 'ref'> & {
   /** Pixel size for width/height (default 20). */
   size?: number;
 };
 
-function Svg({ size = 20, className, children, ...rest }: IconProps & { children: React.ReactNode }) {
+function Svg({ size = 20, className, children, ...rest }: IconProps & { children: ReactNode }) {
   return (
     <svg
       width={size}
