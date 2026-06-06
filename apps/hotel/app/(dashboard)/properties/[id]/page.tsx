@@ -22,6 +22,7 @@ import {
 } from '../../../../lib/dashboard-i18n';
 import { PageHeader, Section, EmptyState, ErrorState, StatusPill } from '../../../../components/ui';
 import { RoomTypeEditor } from './RoomTypeEditor';
+import { RoomTypeForm } from './RoomTypeForm';
 import type { Database } from '@dyafa/api-client';
 
 export const dynamic = 'force-dynamic';
@@ -55,6 +56,7 @@ interface RoomTypeRow {
   cleaning_fee_dzd: number;
   bed_config: Json;
   sort_order: number | null;
+  is_active: boolean;
 }
 
 interface PhotoRow {
@@ -99,7 +101,7 @@ export default async function PropertyDetailPage({
     supabase
       .from('room_types')
       .select(
-        'id, name_ar, name_fr, name_en, base_price_dzd, weekend_price_dzd, inventory_count, max_occupancy, cleaning_fee_dzd, bed_config, sort_order',
+        'id, name_ar, name_fr, name_en, base_price_dzd, weekend_price_dzd, inventory_count, max_occupancy, cleaning_fee_dzd, bed_config, sort_order, is_active',
       )
       .eq('property_id', params.id)
       .order('sort_order', { ascending: true, nullsFirst: false }),
@@ -114,7 +116,9 @@ export default async function PropertyDetailPage({
       .eq('property_id', params.id),
   ]);
 
-  const rooms = (roomsRes.data ?? []) as unknown as RoomTypeRow[];
+  const allRooms = (roomsRes.data ?? []) as unknown as RoomTypeRow[];
+  const rooms = allRooms.filter((rt) => rt.is_active);
+  const inactiveCount = allRooms.length - rooms.length;
   const photos = (photosRes.data ?? []) as PhotoRow[];
   const amenities = (amenitiesRes.data ?? []) as unknown as AmenityJoinRow[];
 
@@ -225,8 +229,21 @@ export default async function PropertyDetailPage({
           ) : undefined
         }
       >
+        {inactiveCount > 0 && (
+          <p className="text-caption text-text-muted">
+            {tl(T.propInactiveCount, locale).replace(
+              '{n}',
+              formatNumber(inactiveCount, locale),
+            )}
+          </p>
+        )}
+
         {rooms.length === 0 ? (
-          <EmptyState title={tl(T.propRoomTypes, locale)} body={tl(T.propNoRoomTypes, locale)} />
+          <EmptyState
+            title={tl(T.propRoomTypes, locale)}
+            body={tl(T.propNoRoomTypes, locale)}
+            action={editable ? <RoomTypeForm locale={locale} propertyId={property.id} /> : undefined}
+          />
         ) : (
           <div className="flex flex-col gap-md">
             {rooms.map((rt) => (
@@ -249,6 +266,12 @@ export default async function PropertyDetailPage({
                 }}
               />
             ))}
+
+            {editable && (
+              <div className="pt-xs">
+                <RoomTypeForm locale={locale} propertyId={property.id} />
+              </div>
+            )}
           </div>
         )}
       </Section>

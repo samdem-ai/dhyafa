@@ -12,7 +12,7 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDZD, type Locale } from '@dyafa/i18n';
 import { T, tl } from '../../../../lib/dashboard-i18n';
-import { updateRoomType, type ActionResult } from '../actions';
+import { updateRoomType, removeRoomType, type ActionResult } from '../actions';
 
 export interface RoomTypeEditorProps {
   locale: Locale;
@@ -38,6 +38,10 @@ function errorMessage(result: Extract<ActionResult, { ok: false }>, locale: Loca
       return tl(T.accessDenied, locale);
     case 'invalid_input':
       return tl(T.errorBody, locale);
+    case 'last_room_type':
+      return tl(T.propRemoveLastError, locale);
+    case 'not_found':
+      return tl(T.errorBody, locale);
     default:
       return `${tl(T.errorTitle, locale)}${result.message ? ` — ${result.message}` : ''}`;
   }
@@ -47,6 +51,7 @@ export function RoomTypeEditor({ locale, canEdit, roomType }: RoomTypeEditorProp
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
@@ -83,6 +88,30 @@ export function RoomTypeEditor({ locale, canEdit, roomType }: RoomTypeEditorProp
     }
   }
 
+  async function onRemove() {
+    if (typeof window !== 'undefined' && !window.confirm(tl(T.propRemoveConfirm, locale))) {
+      return;
+    }
+    setError(null);
+    setRemoving(true);
+    try {
+      const result = await removeRoomType({
+        roomTypeId: roomType.id,
+        propertyId: roomType.propertyId,
+      });
+      if (result.ok) {
+        router.refresh();
+      } else {
+        setError(errorMessage(result, locale));
+        if (result.code === 'not_authorized') {
+          router.replace('/sign-in?next=/properties');
+        }
+      }
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   return (
     <div className="rounded-card bg-surface shadow-card p-lg flex flex-col gap-md">
       <div className="flex items-start justify-between gap-md">
@@ -94,16 +123,27 @@ export function RoomTypeEditor({ locale, canEdit, roomType }: RoomTypeEditorProp
           </span>
         </div>
         {canEdit && !editing && (
-          <button
-            type="button"
-            onClick={() => {
-              setEditing(true);
-              setError(null);
-            }}
-            className="rounded-md border border-border-strong text-body-sm font-medium text-primary px-md py-xs hover:bg-bone-300 transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-          >
-            {tl(T.edit, locale)}
-          </button>
+          <div className="flex shrink-0 items-center gap-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(true);
+                setError(null);
+              }}
+              disabled={removing}
+              className="rounded-md border border-border-strong text-body-sm font-medium text-primary px-md py-xs hover:bg-bone-300 transition-colors duration-fast disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            >
+              {tl(T.edit, locale)}
+            </button>
+            <button
+              type="button"
+              onClick={onRemove}
+              disabled={removing}
+              className="rounded-md border border-error/30 bg-error-bg text-body-sm font-medium text-error px-md py-xs hover:bg-error hover:text-text-on-primary transition-colors duration-fast disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            >
+              {removing ? tl(T.propRemoving, locale) : tl(T.propRemove, locale)}
+            </button>
+          </div>
         )}
       </div>
 

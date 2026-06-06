@@ -274,6 +274,46 @@ export const T = {
     fr: 'Mettez à jour le prix de base, le prix week-end et l’inventaire. Sauvegarde immédiate.',
     en: 'Update base price, weekend price and inventory. Saves immediately.',
   },
+  // Add / remove room types
+  propAddRoomType: { ar: 'إضافة نوع غرفة', fr: 'Ajouter un type de chambre', en: 'Add room type' },
+  propAddRoomTypeTitle: {
+    ar: 'نوع غرفة جديد',
+    fr: 'Nouveau type de chambre',
+    en: 'New room type',
+  },
+  propRoomTypeName: { ar: 'اسم نوع الغرفة', fr: 'Nom du type de chambre', en: 'Room type name' },
+  propRoomTypeNamePh: {
+    ar: 'مثال: غرفة مزدوجة كلاسيكية',
+    fr: 'ex : Chambre double classique',
+    en: 'e.g. Classic double room',
+  },
+  propMaxOccupancy: { ar: 'السعة القصوى', fr: 'Capacité max.', en: 'Max occupancy' },
+  propBaseOccupancy: { ar: 'السعة الأساسية', fr: 'Capacité de base', en: 'Base occupancy' },
+  propCreate: { ar: 'إنشاء', fr: 'Créer', en: 'Create' },
+  propCreating: { ar: 'جارٍ الإنشاء…', fr: 'Création…', en: 'Creating…' },
+  propCreated: { ar: 'تمت إضافة نوع الغرفة', fr: 'Type de chambre ajouté', en: 'Room type added' },
+  propRemove: { ar: 'إزالة', fr: 'Retirer', en: 'Remove' },
+  propRemoving: { ar: 'جارٍ الإزالة…', fr: 'Retrait…', en: 'Removing…' },
+  propRemoveConfirm: {
+    ar: 'إزالة نوع الغرفة هذا؟ لن يظهر للضيوف بعد الآن، مع الحفاظ على سجلّ الحجوزات.',
+    fr: 'Retirer ce type de chambre ? Il ne sera plus proposé aux voyageurs ; l’historique des réservations est conservé.',
+    en: 'Remove this room type? It will no longer be offered to guests; booking history is preserved.',
+  },
+  propRemoveLastError: {
+    ar: 'لا يمكن إزالة نوع الغرفة الوحيد النشِط. أضِف نوعًا آخر أولًا.',
+    fr: 'Impossible de retirer le seul type de chambre actif. Ajoutez-en un autre d’abord.',
+    en: 'Cannot remove the only active room type. Add another one first.',
+  },
+  propInactiveCount: {
+    ar: '{n} نوع غرفة مُزال (مخفي عن الضيوف)',
+    fr: '{n} type(s) de chambre retiré(s) (masqué aux voyageurs)',
+    en: '{n} removed room type(s) (hidden from guests)',
+  },
+  propRoomTypeNameRequired: {
+    ar: 'أدخل اسمًا لنوع الغرفة.',
+    fr: 'Saisissez un nom de type de chambre.',
+    en: 'Enter a room type name.',
+  },
 
   // Property status badges
   stDraft: { ar: 'مسودة', fr: 'Brouillon', en: 'Draft' },
