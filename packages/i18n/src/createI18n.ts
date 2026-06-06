@@ -25,17 +25,17 @@ import { DEFAULT_LOCALE } from './rtl.js';
 // Bundled locale resources (resolveJsonModule handles the .json imports)
 // ---------------------------------------------------------------------------
 
-import arCommon from './locales/ar/common.json' assert { type: 'json' };
-import arAuth from './locales/ar/auth.json' assert { type: 'json' };
-import arBooking from './locales/ar/booking.json' assert { type: 'json' };
+import arCommon from './locales/ar/common.json';
+import arAuth from './locales/ar/auth.json';
+import arBooking from './locales/ar/booking.json';
 
-import frCommon from './locales/fr/common.json' assert { type: 'json' };
-import frAuth from './locales/fr/auth.json' assert { type: 'json' };
-import frBooking from './locales/fr/booking.json' assert { type: 'json' };
+import frCommon from './locales/fr/common.json';
+import frAuth from './locales/fr/auth.json';
+import frBooking from './locales/fr/booking.json';
 
-import enCommon from './locales/en/common.json' assert { type: 'json' };
-import enAuth from './locales/en/auth.json' assert { type: 'json' };
-import enBooking from './locales/en/booking.json' assert { type: 'json' };
+import enCommon from './locales/en/common.json';
+import enAuth from './locales/en/auth.json';
+import enBooking from './locales/en/booking.json';
 
 // ---------------------------------------------------------------------------
 // Resource bundle (typed for safety)
