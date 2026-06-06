@@ -14,6 +14,8 @@ import { useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabase/client';
 import { dir, type Locale, DEFAULT_LOCALE } from '@dyafa/i18n';
+import { LocaleSwitcher } from '../../../components/LocaleSwitcher';
+import { buttonClass } from '../../../components/ui';
 
 // Inline AR/FR/EN copy (matches the inline-object style used elsewhere).
 const T = {
@@ -23,6 +25,16 @@ const T = {
     ar: 'لوحة تحكم المشرفين',
     fr: 'Console d’administration',
     en: 'Admin console',
+  },
+  heroTitle: {
+    ar: 'أدِر منصة ضيافة بثقة.',
+    fr: 'Pilotez la plateforme Dyafa en toute confiance.',
+    en: 'Run the Dyafa platform with confidence.',
+  },
+  heroBody: {
+    ar: 'الإشراف، الحجوزات، المدفوعات، والنزاعات — كل ما تحتاجه لإدارة المنصة في مكان واحد.',
+    fr: 'Modération, réservations, paiements et litiges — tout ce qu’il faut pour gérer la plateforme, au même endroit.',
+    en: 'Moderation, bookings, payments, and disputes — everything you need to operate the platform, in one place.',
   },
   email: { ar: 'البريد الإلكتروني', fr: 'E-mail', en: 'Email' },
   password: { ar: 'كلمة المرور', fr: 'Mot de passe', en: 'Password' },
@@ -146,16 +158,19 @@ export default function SignInPage() {
           className="pointer-events-none absolute -bottom-32 -start-16 h-80 w-80 rounded-pill bg-teal-600/30 blur-3xl"
         />
 
-        <div className="relative flex items-center gap-md">
-          <span className="grid h-11 w-11 place-items-center rounded-md bg-accent font-display text-heading-2 font-semibold text-text-on-primary shadow-raised">
-            {locale === 'ar' ? 'د' : 'D'}
-          </span>
-          <span className="flex flex-col leading-none">
-            <span className="font-display text-heading-3 font-semibold">{T.brand[locale]}</span>
-            <span className="mt-0.5 text-overline font-semibold uppercase tracking-[0.16em] text-teal-200">
-              {T.subtitle[locale]}
+        <div className="relative flex items-center justify-between gap-md">
+          <div className="flex items-center gap-md">
+            <span className="grid h-11 w-11 place-items-center rounded-md bg-accent font-display text-heading-2 font-semibold text-text-on-primary shadow-raised">
+              {locale === 'ar' ? 'د' : 'D'}
             </span>
-          </span>
+            <span className="flex flex-col leading-none">
+              <span className="font-display text-heading-3 font-semibold">{T.brand[locale]}</span>
+              <span className="mt-0.5 text-overline font-semibold uppercase tracking-[0.16em] text-teal-200">
+                {T.subtitle[locale]}
+              </span>
+            </span>
+          </div>
+          <LocaleSwitcher current={locale} />
         </div>
 
         <div className="relative max-w-md">
@@ -171,14 +186,21 @@ export default function SignInPage() {
       {/* ── Form panel ────────────────────────────────────────────────────── */}
       <section className="flex items-center justify-center bg-bg px-lg py-3xl">
         <div className="w-full max-w-[400px]">
-          {/* Compact brand for mobile (no marketing panel) */}
-          <div className="mb-2xl flex items-center gap-md lg:hidden">
-            <span className="grid h-10 w-10 place-items-center rounded-md bg-accent font-display text-heading-3 font-semibold text-text-on-primary">
-              {locale === 'ar' ? 'د' : 'D'}
-            </span>
-            <span className="font-display text-heading-2 font-semibold text-primary">
-              {T.brand[locale]}
-            </span>
+          {/* Compact brand for mobile (no marketing panel). The language switcher
+              is teal-tuned, so it sits in a small dark chip to stay legible on
+              the bone panel; on lg+ it lives in the brand panel instead. */}
+          <div className="mb-2xl flex items-center justify-between gap-md lg:hidden">
+            <div className="flex items-center gap-md">
+              <span className="grid h-10 w-10 place-items-center rounded-md bg-accent font-display text-heading-3 font-semibold text-text-on-primary">
+                {locale === 'ar' ? 'د' : 'D'}
+              </span>
+              <span className="font-display text-heading-2 font-semibold text-primary">
+                {T.brand[locale]}
+              </span>
+            </div>
+            <div className="rounded-pill bg-teal-900 p-px">
+              <LocaleSwitcher current={locale} />
+            </div>
           </div>
 
           <div className="mb-xl flex flex-col gap-xs">
@@ -234,7 +256,10 @@ export default function SignInPage() {
             <button
               type="submit"
               disabled={pending}
-              className="mt-sm inline-flex h-11 items-center justify-center rounded-md bg-accent text-body font-semibold text-text-on-primary shadow-xs transition-colors duration-fast hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+              className={`mt-sm ${buttonClass({ variant: 'accent', size: 'md', full: true }).replace(
+                'h-10',
+                'h-11',
+              )}`}
             >
               {pending ? T.submitting[locale] : T.submit[locale]}
             </button>
