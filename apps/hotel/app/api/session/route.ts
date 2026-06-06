@@ -55,7 +55,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? Math.min(body.expires_in, 60 * 60)
       : 60 * 60;
 
-  const secure = process.env.NODE_ENV === 'production';
+  // Mark cookies Secure only when actually served over HTTPS. NODE_ENV is the
+  // wrong signal: the container runs NODE_ENV=production even on plain HTTP, which
+  // would set Secure and make the browser drop the cookie — bouncing the user
+  // back to sign-in (the VPS is served over http://<ip>:port today).
+  const proto =
+    request.headers.get('x-forwarded-proto') ?? request.nextUrl.protocol.replace(':', '');
+  const secure = proto === 'https';
   const store = cookies();
 
   store.set(ACCESS_TOKEN_COOKIE, accessToken, {
