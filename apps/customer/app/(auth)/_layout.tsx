@@ -18,7 +18,7 @@ export default function AuthLayout() {
           fontFamily: RN_FONTS.arabicSemiBold,
           color: theme.color.text,
         },
-        headerBackTitleVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
         contentStyle: { backgroundColor: theme.color.bg },
         animation: I18nManager.isRTL ? 'slide_from_left' : 'slide_from_right',
       }}

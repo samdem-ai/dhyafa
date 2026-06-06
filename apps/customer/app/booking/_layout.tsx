@@ -37,7 +37,7 @@ export default function BookingLayout() {
         headerStyle: { backgroundColor: theme.color.surface },
         headerTintColor: theme.color.text,
         headerTitleStyle: { fontFamily: RN_FONTS.arabicSemiBold, color: theme.color.text },
-        headerBackTitleVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
         contentStyle: { backgroundColor: theme.color.bg },
         animation: I18nManager.isRTL ? 'slide_from_left' : 'slide_from_right',
       }}
