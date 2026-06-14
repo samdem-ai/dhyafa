@@ -1,0 +1,18 @@
+/**
+ * Route-level loading skeleton for the Listings page.
+ * Rendered by the App Router while the Server Component awaits data. Uses the
+ * shared @dyafa/ui skeleton primitives so it matches the migrated table chrome
+ * (mirrors app/moderation/loading.tsx).
+ */
+
+import { Skeleton, SkeletonTable } from '@dyafa/ui';
+
+export default function ListingsLoading() {
+  return (
+    <main className="mx-auto flex w-full max-w-[1280px] flex-1 flex-col gap-xl px-lg py-2xl sm:px-xl">
+      <Skeleton className="h-8 w-56" />
+      <Skeleton className="h-10 w-full max-w-xs" />
+      <SkeletonTable rows={6} cols={7} />
+    </main>
+  );
+}

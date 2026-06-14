@@ -61,7 +61,6 @@ const GROUPS: NavGroupDef[] = [
         href: '/listings',
         label: { ar: 'الإعلانات', fr: 'Annonces', en: 'Listings' },
         icon: Building2,
-        comingSoon: true,
       },
       {
         href: '/bookings',
