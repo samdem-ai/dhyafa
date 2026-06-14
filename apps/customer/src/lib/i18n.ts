@@ -1,7 +1,7 @@
 /**
  * i18n bootstrap for the customer Expo app.
  *
- * - Detects device locale via expo-localization, falls back to DEFAULT_LOCALE ('ar').
+ * - Detects device locale via expo-localization, falls back to DEFAULT_LOCALE ('en').
  * - Persists the user's language choice in expo-secure-store (key: 'app.language').
  * - setLocale() applies forceRTL and triggers an app reload so RN picks up the
  *   new layout direction (RTL requires a native restart to take effect).
@@ -27,7 +27,7 @@ const LOCALE_STORE_KEY = 'app.language';
 
 // ---------------------------------------------------------------------------
 // Resolve initial locale (synchronous — called at module load).
-// Order: persisted user choice → device locale → DEFAULT_LOCALE ('ar').
+// Order: persisted user choice → device locale → DEFAULT_LOCALE ('en').
 // SecureStore.getItem is async, but we can't await at module top-level, so we
 // resolve synchronously from the device locale first; the stored value is
 // applied via initLocale() which _must_ be awaited in RootLayout.
@@ -81,7 +81,7 @@ export async function setLocale(locale: Locale): Promise<void> {
   I18nManager.forceRTL(isRTL(locale));
 
   // Reload to apply the new layout direction natively.
-  // expo-updates reloadAsync is the recommended way in Expo SDK 51.
+  // expo-updates reloadAsync is the recommended way in Expo SDK 54.
   // In development (Expo Go / dev client) a manual reload achieves the same.
   try {
     // Dynamic import so the bundle doesn't hard-depend on expo-updates
