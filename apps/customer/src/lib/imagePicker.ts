@@ -92,3 +92,38 @@ export async function pickListingImage(): Promise<PickResult> {
     return { ok: false, reason: 'error' };
   }
 }
+
+export type MultiPickResult =
+  | { ok: true; images: PickedImage[] }
+  | { ok: false; reason: 'canceled' | 'denied' | 'unavailable' | 'error' };
+
+/** Prompt for library permission, then pick one OR MORE images with base64. */
+export async function pickListingImages(selectionLimit = 10): Promise<MultiPickResult> {
+  const mod = await loadModule();
+  if (!mod) return { ok: false, reason: 'unavailable' };
+
+  try {
+    const perm = await mod.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return { ok: false, reason: 'denied' };
+
+    const result = await mod.launchImageLibraryAsync({
+      mediaTypes: mod.MediaTypeOptions?.Images ?? ['images'],
+      quality: 0.8,
+      base64: true,
+      allowsMultipleSelection: true,
+      selectionLimit,
+    });
+
+    if (result.canceled) return { ok: false, reason: 'canceled' };
+    const assets = (result.assets ?? []).filter((a) => !!a.base64);
+    if (assets.length === 0) return { ok: false, reason: 'error' };
+
+    const images: PickedImage[] = assets.map((asset) => {
+      const { ext, mime } = extFromUri(asset.uri, asset.mimeType);
+      return { base64: asset.base64 as string, uri: asset.uri, ext, mimeType: mime };
+    });
+    return { ok: true, images };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
+}

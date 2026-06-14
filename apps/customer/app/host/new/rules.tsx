@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { Locale } from '@dyafa/i18n';
@@ -12,8 +12,8 @@ import { useWizard } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
 import { TextField, LocaleTabs, Card } from '@/components/fields';
 import { FieldLabel } from '@/components/ui';
+import { Text, TimePicker } from '@/ui';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const COPY = {
   title: { ar: 'القواعد والأوقات', fr: 'Règles et horaires', en: 'Rules & times' },
@@ -31,20 +31,12 @@ const COPY = {
   times: { ar: 'الأوقات', fr: 'Horaires', en: 'Times' },
   checkin: { ar: 'وقت الوصول', fr: 'Arrivée', en: 'Check-in' },
   checkout: { ar: 'وقت المغادرة', fr: 'Départ', en: 'Check-out' },
-  timeHint: { ar: 'بصيغة 24 ساعة (HH:MM)', fr: 'Format 24 h (HH:MM)', en: '24h format (HH:MM)' },
-  badTime: {
-    ar: 'صيغة الوقت غير صحيحة (HH:MM).',
-    fr: "Format d'heure invalide (HH:MM).",
-    en: 'Invalid time format (HH:MM).',
-  },
   saveError: { ar: 'تعذّر الحفظ.', fr: "Échec de l'enregistrement.", en: 'Could not save.' },
 } as const;
 
 function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
   return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
 }
-
-const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
 export default function StepRules() {
   const { i18n } = useTranslation('common');
@@ -66,13 +58,7 @@ export default function StepRules() {
     else patch({ houseRulesEn: t });
   }
 
-  const timesValid = TIME_RE.test(draft.checkinTime) && TIME_RE.test(draft.checkoutTime);
-
   async function onNext() {
-    if (!timesValid) {
-      setSaveError(pick(COPY.badTime, locale));
-      return;
-    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -97,7 +83,6 @@ export default function StepRules() {
       step={6}
       title={pick(COPY.title, locale)}
       subtitle={pick(COPY.subtitle, locale)}
-      nextDisabled={!timesValid}
       nextLoading={saving}
       onNext={() => void onNext()}
     >
@@ -110,31 +95,35 @@ export default function StepRules() {
         multiline
       />
 
-      <FieldLabel label={pick(COPY.times, locale)} hint={pick(COPY.timeHint, locale)} />
+      <FieldLabel label={pick(COPY.times, locale)} />
       <Card>
         <View style={styles.row}>
           <View style={styles.col}>
-            <TextField
+            <TimePicker
               label={pick(COPY.checkin, locale)}
               value={draft.checkinTime}
-              onChangeText={(t) => patch({ checkinTime: t })}
-              placeholder="14:00"
-              keyboardType="numbers-and-punctuation"
+              onChange={(t) => patch({ checkinTime: t })}
+              sheetTitle={pick(COPY.checkin, locale)}
             />
           </View>
           <View style={styles.col}>
-            <TextField
+            <TimePicker
               label={pick(COPY.checkout, locale)}
               value={draft.checkoutTime}
-              onChangeText={(t) => patch({ checkoutTime: t })}
-              placeholder="12:00"
-              keyboardType="numbers-and-punctuation"
+              onChange={(t) => patch({ checkoutTime: t })}
+              sheetTitle={pick(COPY.checkout, locale)}
             />
           </View>
         </View>
       </Card>
 
-      {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
+      {saveError ? (
+        <View style={styles.errorBox}>
+          <Text variant="body-sm" color="error" center>
+            {saveError}
+          </Text>
+        </View>
+      ) : null}
     </WizardChrome>
   );
 }
@@ -142,13 +131,9 @@ export default function StepRules() {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: theme.space.md },
   col: { flex: 1 },
-  error: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
+  errorBox: {
     backgroundColor: theme.color.errorBg,
     padding: theme.space.md,
     borderRadius: theme.radius.md,
-    textAlign: 'center',
   },
 });

@@ -43,6 +43,8 @@ export { Select } from './Select';
 export type { SelectProps, SelectOption } from './Select';
 export { SearchBar } from './SearchBar';
 export type { SearchBarProps } from './SearchBar';
+export { TimePicker } from './TimePicker';
+export type { TimePickerProps } from './TimePicker';
 
 // Selection
 export { Chip } from './Chip';

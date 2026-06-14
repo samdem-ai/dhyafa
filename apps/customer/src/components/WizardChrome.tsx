@@ -4,7 +4,7 @@
  * RTL-aware. Used by every step screen under app/host/new/.
  */
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,9 @@ import type { Locale } from '@dyafa/i18n';
 import { theme } from '@/theme';
 import { RN_FONTS } from '@/lib/fonts';
 import { PrimaryButton } from './ui';
+import { BottomSheet } from '@/ui';
+import { useWizard } from '@/lib/wizard';
+import { L, pick as pickL } from '@/lib/copy';
 
 export const WIZARD_TOTAL_STEPS = 9;
 
@@ -65,6 +68,20 @@ export function WizardChrome({
   onBack,
 }: WizardChromeProps) {
   const progress = step / WIZARD_TOTAL_STEPS;
+  const { reset } = useWizard();
+  const [exitSheet, setExitSheet] = useState(false);
+
+  // The draft auto-persists, so closing saves progress. The sheet lets the host
+  // explicitly discard (clearing the persisted draft) instead.
+  async function onDiscard() {
+    await reset();
+    setExitSheet(false);
+    router.replace('/host');
+  }
+  function onSaveExit() {
+    setExitSheet(false);
+    router.replace('/host');
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -75,7 +92,8 @@ export function WizardChrome({
           </Text>
           <Pressable
             accessibilityRole="button"
-            onPress={() => (onBack ? onBack() : router.back())}
+            accessibilityLabel="Close"
+            onPress={() => setExitSheet(true)}
             hitSlop={8}
           >
             <Text style={styles.backInline}>✕</Text>
@@ -120,6 +138,26 @@ export function WizardChrome({
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <BottomSheet visible={exitSheet} onClose={() => setExitSheet(false)}>
+        <View style={styles.exitBody}>
+          <Text style={styles.exitTitle}>{pickL(L.wizardDiscardTitle, locale)}</Text>
+          <Text style={styles.exitMsg}>{pickL(L.wizardDiscardBody, locale)}</Text>
+          <View style={styles.exitActions}>
+            <PrimaryButton label={pickL(L.wizardSaveExit, locale)} onPress={onSaveExit} />
+            <PrimaryButton
+              label={pickL(L.wizardDiscard, locale)}
+              variant="danger"
+              onPress={() => void onDiscard()}
+            />
+            <PrimaryButton
+              label={pickL(L.wizardKeepEditing, locale)}
+              variant="secondary"
+              onPress={() => setExitSheet(false)}
+            />
+          </View>
+        </View>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -189,4 +227,19 @@ const styles = StyleSheet.create({
   },
   backBtn: { flex: 1 },
   nextBtn: { flex: 2 },
+  exitBody: { gap: theme.space.sm, paddingTop: theme.space.sm },
+  exitTitle: {
+    fontFamily: I18nManager.isRTL ? RN_FONTS.arabicBold : RN_FONTS.displaySemiBold,
+    fontSize: theme.fontSize['heading-3'],
+    color: theme.color.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  exitMsg: {
+    fontFamily: RN_FONTS.arabicRegular,
+    fontSize: theme.fontSize.body,
+    color: theme.color.textMuted,
+    lineHeight: theme.lineHeight.body,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  exitActions: { gap: theme.space.sm, marginTop: theme.space.md },
 });

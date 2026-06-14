@@ -1,13 +1,17 @@
 /**
  * Wizard step 2 — location: wilaya + commune + address + lat/lng.
- * Map is a stub View with manual lat/lng inputs (Mapbox lands later, needs an
- * EAS dev client). Persists the draft property on Next.
+ *
+ * Wilaya is chosen via a searchable BottomSheet (not 58 chips). Commune is an
+ * optional searchable list once a wilaya is set. Map is a stub View with manual
+ * lat/lng inputs (range-validated; Mapbox lands later, needs an EAS dev client).
+ * Persists the draft property on Next.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, I18nManager } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { ChevronDown, Check, MapPin } from 'lucide-react-native';
 import type { Locale } from '@dyafa/i18n';
 import {
   listWilayas,
@@ -20,8 +24,9 @@ import { useWizard } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
 import { TextField, Card } from '@/components/fields';
 import { FieldLabel, SkeletonList, ErrorState } from '@/components/ui';
+import { Text, BottomSheet, SearchBar } from '@/ui';
+import { L, pick as pickL } from '@/lib/copy';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const COPY = {
   title: { ar: 'أين يقع مكانك؟', fr: 'Où se trouve votre lieu ?', en: 'Where is your place?' },
@@ -33,31 +38,47 @@ const COPY = {
   wilaya: { ar: 'الولاية', fr: 'Wilaya', en: 'Wilaya' },
   commune: { ar: 'البلدية', fr: 'Commune', en: 'Commune' },
   communeHint: { ar: 'اختياري', fr: 'Optionnel', en: 'Optional' },
-  pickWilaya: { ar: 'اختر الولاية أولًا', fr: "Choisissez d'abord la wilaya", en: 'Pick a wilaya first' },
+  pickWilaya: { ar: 'اختر الولاية', fr: 'Choisir la wilaya', en: 'Choose a wilaya' },
+  pickCommune: { ar: 'اختر البلدية', fr: 'Choisir la commune', en: 'Choose a commune' },
   address: { ar: 'العنوان', fr: 'Adresse', en: 'Address' },
   addressPh: { ar: 'الحي، الشارع…', fr: 'Quartier, rue…', en: 'Neighborhood, street…' },
   map: { ar: 'الخريطة', fr: 'Carte', en: 'Map' },
   mapStub: {
-    ar: '🗺 الخريطة التفاعلية تأتي لاحقًا — أدخل الإحداثيات يدويًا',
-    fr: '🗺 Carte interactive à venir — saisissez les coordonnées',
-    en: '🗺 Interactive map coming later — enter coordinates manually',
+    ar: 'الخريطة التفاعلية تأتي لاحقًا — أدخل الإحداثيات يدويًا',
+    fr: 'Carte interactive à venir — saisissez les coordonnées',
+    en: 'Interactive map coming later — enter coordinates manually',
   },
   lat: { ar: 'خط العرض (Lat)', fr: 'Latitude', en: 'Latitude' },
   lng: { ar: 'خط الطول (Lng)', fr: 'Longitude', en: 'Longitude' },
   loadError: { ar: 'تعذّر تحميل الولايات.', fr: 'Échec du chargement des wilayas.', en: 'Failed to load wilayas.' },
   retry: { ar: 'إعادة المحاولة', fr: 'Réessayer', en: 'Retry' },
-  saveError: { ar: 'تعذّر حفظ الموقع.', fr: "Échec de l'enregistrement.", en: 'Could not save location.' },
+  saveAuthError: {
+    ar: 'تعذّر تجهيز حساب الاستضافة. حاول مجددًا.',
+    fr: "Impossible de préparer le compte hôte. Réessayez.",
+    en: 'Could not prepare your host account. Try again.',
+  },
+  saveNetError: {
+    ar: 'تعذّر حفظ الموقع. تحقّق من اتصالك.',
+    fr: "Échec de l'enregistrement. Vérifiez votre connexion.",
+    en: 'Could not save location. Check your connection.',
+  },
+  badCoords: {
+    ar: 'الإحداثيات خارج النطاق الصحيح.',
+    fr: 'Coordonnées hors plage valide.',
+    en: 'Coordinates are out of range.',
+  },
 } as const;
 
 function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
   return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
 }
 
-function parseCoord(v: string): number | null {
+/** Parse a coordinate, returning null for empty, NaN for invalid. */
+function parseCoord(v: string): number | null | undefined {
   const t = v.trim();
   if (t === '') return null;
   const n = Number(t);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) ? n : undefined; // undefined = invalid
 }
 
 export default function StepLocation() {
@@ -70,6 +91,11 @@ export default function StepLocation() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [wilayaSheet, setWilayaSheet] = useState(false);
+  const [communeSheet, setCommuneSheet] = useState(false);
+  const [wilayaQuery, setWilayaQuery] = useState('');
+  const [communeQuery, setCommuneQuery] = useState('');
 
   const load = useCallback(async () => {
     setError(null);
@@ -85,7 +111,6 @@ export default function StepLocation() {
     void load();
   }, [load]);
 
-  // Load communes whenever the wilaya changes.
   useEffect(() => {
     if (draft.wilayaCode == null) {
       setCommunes([]);
@@ -100,9 +125,47 @@ export default function StepLocation() {
     };
   }, [draft.wilayaCode]);
 
+  const selectedWilaya = useMemo(
+    () => (wilayas ?? []).find((w) => w.code === draft.wilayaCode) ?? null,
+    [wilayas, draft.wilayaCode],
+  );
+  const selectedCommune = useMemo(
+    () => communes.find((c) => c.id === draft.communeId) ?? null,
+    [communes, draft.communeId],
+  );
+
+  const filteredWilayas = useMemo(() => {
+    const q = wilayaQuery.trim().toLowerCase();
+    const list = wilayas ?? [];
+    if (!q) return list;
+    return list.filter(
+      (w) =>
+        localizedName(w, locale).toLowerCase().includes(q) ||
+        String(w.code).padStart(2, '0').includes(q),
+    );
+  }, [wilayas, wilayaQuery, locale]);
+
+  const filteredCommunes = useMemo(() => {
+    const q = communeQuery.trim().toLowerCase();
+    if (!q) return communes;
+    return communes.filter((c) => localizedName(c, locale).toLowerCase().includes(q));
+  }, [communes, communeQuery, locale]);
+
   async function onNext() {
     const lat = parseCoord(draft.lat);
     const lng = parseCoord(draft.lng);
+    if (lat === undefined || lng === undefined) {
+      setSaveError(pick(COPY.badCoords, locale));
+      return;
+    }
+    if (
+      (lat != null && (lat < -90 || lat > 90)) ||
+      (lng != null && (lng < -180 || lng > 180))
+    ) {
+      setSaveError(pick(COPY.badCoords, locale));
+      return;
+    }
+
     setSaving(true);
     setSaveError(null);
     try {
@@ -114,8 +177,14 @@ export default function StepLocation() {
         lng,
       });
       router.push('/host/new/photos');
-    } catch {
-      setSaveError(pick(COPY.saveError, locale));
+    } catch (e) {
+      // Distinguish auth/claim failure from network/RLS.
+      const msg = e instanceof Error ? e.message : '';
+      if (/PROPERTY_TYPE|host|claim|JWT|auth/i.test(msg)) {
+        setSaveError(pick(COPY.saveAuthError, locale));
+      } else {
+        setSaveError(pick(COPY.saveNetError, locale));
+      }
     } finally {
       setSaving(false);
     }
@@ -148,51 +217,46 @@ export default function StepLocation() {
       nextLoading={saving}
       onNext={() => void onNext()}
     >
-      {/* Wilaya picker — horizontal-wrapping chips */}
+      {/* Wilaya picker — opens a searchable sheet */}
       <FieldLabel label={pick(COPY.wilaya, locale)} />
-      <View style={styles.chipWrap}>
-        {wilayas.map((w) => {
-          const selected = draft.wilayaCode === w.code;
-          return (
-            <Pressable
-              key={w.code}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() => patch({ wilayaCode: w.code, communeId: null })}
-              style={[styles.wilayaChip, selected && styles.wilayaChipActive]}
-            >
-              <Text style={[styles.wilayaChipText, selected && styles.wilayaChipTextActive]}>
-                {String(w.code).padStart(2, '0')} · {localizedName(w, locale)}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={pick(COPY.pickWilaya, locale)}
+        onPress={() => {
+          setWilayaQuery('');
+          setWilayaSheet(true);
+        }}
+        style={({ pressed }) => [styles.trigger, pressed && styles.triggerPressed]}
+      >
+        <Text variant="body" color={selectedWilaya ? 'text' : 'textMuted'} style={styles.flex}>
+          {selectedWilaya
+            ? `${String(selectedWilaya.code).padStart(2, '0')} · ${localizedName(selectedWilaya, locale)}`
+            : pick(COPY.pickWilaya, locale)}
+        </Text>
+        <ChevronDown size={20} color={theme.color.ink300} />
+      </Pressable>
 
       {/* Commune picker (optional) */}
       <FieldLabel label={pick(COPY.commune, locale)} hint={pick(COPY.communeHint, locale)} />
-      {draft.wilayaCode == null ? (
-        <Text style={styles.muted}>{pick(COPY.pickWilaya, locale)}</Text>
-      ) : (
-        <View style={styles.chipWrap}>
-          {communes.map((c) => {
-            const selected = draft.communeId === c.id;
-            return (
-              <Pressable
-                key={c.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => patch({ communeId: selected ? null : c.id })}
-                style={[styles.wilayaChip, selected && styles.wilayaChipActive]}
-              >
-                <Text style={[styles.wilayaChipText, selected && styles.wilayaChipTextActive]}>
-                  {localizedName(c, locale)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={pick(COPY.pickCommune, locale)}
+        disabled={draft.wilayaCode == null}
+        onPress={() => {
+          setCommuneQuery('');
+          setCommuneSheet(true);
+        }}
+        style={({ pressed }) => [
+          styles.trigger,
+          pressed && styles.triggerPressed,
+          draft.wilayaCode == null && styles.triggerDisabled,
+        ]}
+      >
+        <Text variant="body" color={selectedCommune ? 'text' : 'textMuted'} style={styles.flex}>
+          {selectedCommune ? localizedName(selectedCommune, locale) : pick(COPY.pickCommune, locale)}
+        </Text>
+        <ChevronDown size={20} color={theme.color.ink300} />
+      </Pressable>
 
       <TextField
         label={pick(COPY.address, locale)}
@@ -205,7 +269,10 @@ export default function StepLocation() {
       <FieldLabel label={pick(COPY.map, locale)} />
       <Card>
         <View style={styles.mapStub}>
-          <Text style={styles.mapStubText}>{pick(COPY.mapStub, locale)}</Text>
+          <MapPin size={22} color={theme.color.textMuted} />
+          <Text variant="body-sm" color="textMuted" center>
+            {pick(COPY.mapStub, locale)}
+          </Text>
         </View>
         <View style={styles.coordRow}>
           <View style={styles.coordCol}>
@@ -229,58 +296,132 @@ export default function StepLocation() {
         </View>
       </Card>
 
-      {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
+      {saveError ? (
+        <View style={styles.errorBox}>
+          <Text variant="body-sm" color="error" center>
+            {saveError}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Wilaya search sheet */}
+      <BottomSheet visible={wilayaSheet} onClose={() => setWilayaSheet(false)} snapPoints={['80%']}>
+        <Text variant="title" weight="semibold" style={styles.sheetTitle}>
+          {pick(COPY.pickWilaya, locale)}
+        </Text>
+        <SearchBar
+          value={wilayaQuery}
+          onChangeText={setWilayaQuery}
+          placeholder={pickL(L.wizardSearchWilaya, locale)}
+        />
+        <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
+          {filteredWilayas.length === 0 ? (
+            <Text variant="body" color="textMuted" center style={styles.noMatch}>
+              {pickL(L.wizardNoWilaya, locale)}
+            </Text>
+          ) : (
+            filteredWilayas.map((w) => {
+              const active = draft.wilayaCode === w.code;
+              return (
+                <Pressable
+                  key={w.code}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => {
+                    patch({ wilayaCode: w.code, communeId: null });
+                    setWilayaSheet(false);
+                  }}
+                  style={({ pressed }) => [styles.optionRow, pressed && styles.triggerPressed]}
+                >
+                  <Text variant="body-lg" color={active ? 'primary' : 'text'} style={styles.flex}>
+                    {String(w.code).padStart(2, '0')} · {localizedName(w, locale)}
+                  </Text>
+                  {active ? <Check size={20} color={theme.color.primary} /> : null}
+                </Pressable>
+              );
+            })
+          )}
+        </ScrollView>
+      </BottomSheet>
+
+      {/* Commune search sheet */}
+      <BottomSheet visible={communeSheet} onClose={() => setCommuneSheet(false)} snapPoints={['80%']}>
+        <Text variant="title" weight="semibold" style={styles.sheetTitle}>
+          {pick(COPY.pickCommune, locale)}
+        </Text>
+        <SearchBar
+          value={communeQuery}
+          onChangeText={setCommuneQuery}
+          placeholder={pickL(L.wizardSearchWilaya, locale)}
+        />
+        <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
+          {filteredCommunes.map((c) => {
+            const active = draft.communeId === c.id;
+            return (
+              <Pressable
+                key={c.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => {
+                  patch({ communeId: active ? null : c.id });
+                  setCommuneSheet(false);
+                }}
+                style={({ pressed }) => [styles.optionRow, pressed && styles.triggerPressed]}
+              >
+                <Text variant="body-lg" color={active ? 'primary' : 'text'} style={styles.flex}>
+                  {localizedName(c, locale)}
+                </Text>
+                {active ? <Check size={20} color={theme.color.primary} /> : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </BottomSheet>
     </WizardChrome>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: theme.color.bg },
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
-  wilayaChip: {
-    borderRadius: theme.radius.pill,
+  flex: { flex: 1 },
+  trigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.sm,
+    minHeight: 48,
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.md,
     borderWidth: 1.5,
     borderColor: theme.color.border,
-    backgroundColor: theme.color.surface,
     paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.sm,
   },
-  wilayaChipActive: { borderColor: theme.color.primary, backgroundColor: theme.color.infoBg },
-  wilayaChipText: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
-  },
-  wilayaChipTextActive: { color: theme.color.primary, fontWeight: '600' },
-  muted: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-  },
+  triggerPressed: { backgroundColor: theme.color.surfaceSunken },
+  triggerDisabled: { opacity: 0.5 },
   mapStub: {
     height: 120,
     borderRadius: theme.radius.md,
     backgroundColor: theme.color.surfaceSunken,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: theme.space.sm,
     paddingHorizontal: theme.space.lg,
-  },
-  mapStubText: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign: 'center',
-    lineHeight: theme.lineHeight['body-sm'],
   },
   coordRow: { flexDirection: 'row', gap: theme.space.md },
   coordCol: { flex: 1 },
-  error: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
+  errorBox: {
     backgroundColor: theme.color.errorBg,
     padding: theme.space.md,
     borderRadius: theme.radius.md,
-    textAlign: 'center',
+  },
+  sheetTitle: { marginBottom: theme.space.sm },
+  sheetList: { maxHeight: 420, marginTop: theme.space.sm },
+  noMatch: { paddingVertical: theme.space.xl },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.md,
+    paddingVertical: theme.space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.color.border,
   },
 });

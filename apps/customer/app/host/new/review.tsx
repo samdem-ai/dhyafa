@@ -30,6 +30,8 @@ import {
   type PropertyPhotoRow,
 } from '@/lib/listings';
 import { useWizard, type RoomTypeDraft } from '@/lib/wizard';
+import { haptics } from '@/ui';
+import { cancellationTierCopy, pick as pickL } from '@/lib/copy';
 import { WizardChrome } from '@/components/WizardChrome';
 import { PrimaryButton, Skeleton, EmptyState } from '@/components/ui';
 import { theme } from '@/theme';
@@ -100,7 +102,7 @@ function bestTitle(draft: ReturnType<typeof useWizard>['draft'], locale: Locale)
 export default function StepReview() {
   const { i18n } = useTranslation('common');
   const locale = (i18n.language ?? 'en') as Locale;
-  const { draft, ensureDraft } = useWizard();
+  const { draft, ensureDraft, setRooms, reset } = useWizard();
 
   const [photos, setPhotos] = useState<PropertyPhotoRow[] | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -109,13 +111,17 @@ export default function StepReview() {
 
   const loadPhotos = useCallback(async () => {
     try {
-      const id = draft.propertyId ?? (await ensureDraft());
-      setPhotos(await listPhotos(id));
+      // Read-only: don't create a draft just by visiting review.
+      if (!draft.propertyId) {
+        setPhotos([]);
+        return;
+      }
+      setPhotos(await listPhotos(draft.propertyId));
     } catch {
       setPhotos([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [draft.propertyId]);
 
   useEffect(() => {
     void loadPhotos();
@@ -128,12 +134,20 @@ export default function StepReview() {
   const hasPhoto = photoCount > 0;
   const canSubmit = hasTitle && hasRoom && hasPhoto && !submitting;
 
+  /**
+   * Reconcile room types idempotently. We write each inserted room's DB id back
+   * into the wizard draft so a retried submit (e.g. after a transient failure)
+   * takes the UPDATE path instead of duplicating room_types. For single_unit we
+   * additionally adopt any pre-existing default row so re-entry never piles up.
+   */
   async function persistRooms(propertyId: string): Promise<void> {
     const isSingle = draft.listingKind === 'single_unit';
     const existing = await listRoomTypes(propertyId);
+    // Work on a local copy so we can stamp ids and push back once at the end.
+    const next: RoomTypeDraft[] = draft.rooms.map((r) => ({ ...r }));
 
     if (isSingle) {
-      const room = draft.rooms[0];
+      const room = next[0];
       if (!room) return;
       const payload = {
         nameAr: room.nameAr.trim() || null,
@@ -147,9 +161,11 @@ export default function StepReview() {
         cleaningFeeDzd: toInt(room.cleaningFeeDzd),
         inventoryCount: 1,
       };
-      const current = existing.find((r) => r.is_default) ?? existing[0];
-      if (current) {
-        await updateRoomType(current.id, {
+      // Prefer the room's own persisted id, then any existing default row.
+      const currentId =
+        room.id ?? (existing.find((r) => r.is_default) ?? existing[0])?.id;
+      if (currentId) {
+        await updateRoomType(currentId, {
           name_ar: payload.nameAr,
           name_fr: payload.nameFr,
           name_en: payload.nameEn,
@@ -161,14 +177,16 @@ export default function StepReview() {
           cleaning_fee_dzd: payload.cleaningFeeDzd,
           inventory_count: 1,
         });
+        room.id = currentId;
       } else {
-        await addRoomType({ propertyId, ...payload });
+        room.id = await addRoomType({ propertyId, ...payload });
       }
+      setRooms(next);
       return;
     }
 
     // multi_room: persist any room not yet saved; update those already saved.
-    for (const [idx, room] of draft.rooms.entries()) {
+    for (const [idx, room] of next.entries()) {
       const payload = {
         nameAr: room.nameAr.trim() || null,
         nameFr: room.nameFr.trim() || null,
@@ -195,9 +213,11 @@ export default function StepReview() {
           inventory_count: payload.inventoryCount,
         });
       } else {
-        await addRoomType({ propertyId, ...payload });
+        // Stamp the new id back so a retry updates instead of re-inserting.
+        room.id = await addRoomType({ propertyId, ...payload });
       }
     }
+    setRooms(next);
   }
 
   async function onSubmit() {
@@ -217,12 +237,19 @@ export default function StepReview() {
       await setAmenities(propertyId, draft.amenityIds);
       await submitForReview(propertyId);
 
+      haptics.success();
       setDone(true);
     } catch {
       setError(pick(COPY.submitError, locale));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  /** Clear the draft (memory + storage) then return to the dashboard. */
+  async function onFinish() {
+    await reset();
+    router.replace('/host');
   }
 
   if (done) {
@@ -236,7 +263,7 @@ export default function StepReview() {
         <View style={styles.successAction}>
           <PrimaryButton
             label={pick(COPY.backToListings, locale)}
-            onPress={() => router.replace('/host')}
+            onPress={() => void onFinish()}
           />
         </View>
       </View>
@@ -314,10 +341,14 @@ export default function StepReview() {
         {/* Policy */}
         <Section label={pick(COPY.sectionPolicy, locale)}>
           <Text style={styles.value}>
-            {pick(COPY.cancellation, locale)}: {draft.cancellationTier} ·{' '}
+            {pick(COPY.cancellation, locale)}:{' '}
+            {pickL(cancellationTierCopy(draft.cancellationTier).label, locale)} ·{' '}
             {draft.instantBook ? pick(COPY.instantOn, locale) : pick(COPY.instantOff, locale)} ·{' '}
             {pick(COPY.minNights, locale)} {Math.max(1, toInt(draft.minNights))}{' '}
             {pick(COPY.nights, locale)}
+          </Text>
+          <Text style={styles.muted}>
+            {pickL(cancellationTierCopy(draft.cancellationTier).window, locale)}
           </Text>
           {cheapest ? (
             <Text style={styles.fromPrice}>{formatDZD(cheapest, locale)} {pick(COPY.perNight, locale)}</Text>
@@ -396,6 +427,13 @@ const styles = StyleSheet.create({
     lineHeight: theme.lineHeight.body,
   },
   price: { fontFamily: RN_FONTS.bodyBold, color: theme.color.accent, fontWeight: '700' },
+  muted: {
+    fontFamily: RN_FONTS.arabicRegular,
+    fontSize: theme.fontSize['body-sm'],
+    color: theme.color.textMuted,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    lineHeight: theme.lineHeight['body-sm'],
+  },
   fromPrice: {
     fontFamily: RN_FONTS.bodyBold,
     fontSize: theme.fontSize.title,

@@ -13,16 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  ScrollView,
-  SafeAreaView,
-  I18nManager,
-} from 'react-native';
-import { router } from 'expo-router';
+import { View, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { formatDZD, type Locale } from '@dyafa/i18n';
 import { DateRangePicker, type DayMeta } from '@/components/Calendar';
@@ -30,23 +21,21 @@ import {
   listRoomTypesForProperty,
   listAvailability,
   setAvailabilityRange,
+  clearAvailabilityOverride,
+  listBookedDates,
   type RoomTypeRow,
   type AvailabilityRow,
 } from '@/lib/host';
 import { listMyProperties, localizedName, type PropertyRow } from '@/lib/listings';
 import { toDateParam, nightsBetween } from '@/lib/bookings';
 import { TextField, ToggleRow } from '@/components/fields';
-import {
-  PrimaryButton,
-  Skeleton,
-  SkeletonList,
-  ErrorState,
-  EmptyState,
-} from '@/components/ui';
+import { Skeleton, SkeletonList, ErrorState, EmptyState } from '@/components/ui';
+import { Screen, Header, Text, Button, haptics } from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { formatRange } from '@/lib/dateFormat';
 import { theme } from '@/theme';
 import { RN_FONTS } from '@/lib/fonts';
+import { I18nManager } from 'react-native';
 
 const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
@@ -83,6 +72,7 @@ export default function HostCalendarScreen() {
   const [roomTypeId, setRoomTypeId] = useState<string | null>(null);
 
   const [availability, setAvailability] = useState<AvailabilityRow[]>([]);
+  const [bookedDates, setBookedDates] = useState<string[]>([]);
   const [availLoading, setAvailLoading] = useState(false);
 
   const [checkIn, setCheckIn] = useState<Date | null>(null);
@@ -138,14 +128,20 @@ export default function HostCalendarScreen() {
   const loadAvailability = useCallback(async () => {
     if (!roomTypeId) {
       setAvailability([]);
+      setBookedDates([]);
       return;
     }
     setAvailLoading(true);
     try {
-      const rows = await listAvailability(roomTypeId, dayOffset(0), dayOffset(WINDOW_DAYS));
+      const [rows, booked] = await Promise.all([
+        listAvailability(roomTypeId, dayOffset(0), dayOffset(WINDOW_DAYS)),
+        listBookedDates(roomTypeId, dayOffset(0), dayOffset(WINDOW_DAYS)),
+      ]);
       setAvailability(rows);
+      setBookedDates(booked);
     } catch {
       setAvailability([]);
+      setBookedDates([]);
     } finally {
       setAvailLoading(false);
     }
@@ -164,8 +160,17 @@ export default function HostCalendarScreen() {
         hasOverride: row.price_override_dzd != null,
       };
     }
+    for (const date of bookedDates) {
+      map[date] = { ...(map[date] ?? {}), booked: true };
+    }
     return map;
-  }, [availability]);
+  }, [availability, bookedDates]);
+
+  // The currently-selected property (for the draft-listing note).
+  const selectedProperty = useMemo(
+    () => (properties ?? []).find((p) => p.id === propertyId) ?? null,
+    [properties, propertyId],
+  );
 
   const clearSelection = useCallback(() => {
     setCheckIn(null);
@@ -201,6 +206,8 @@ export default function HostCalendarScreen() {
       await setAvailabilityRange({
         roomTypeId,
         from: toDateParam(checkIn),
+        // rangeEnd is the inclusive last night; the lib adds +1 for the RPC's
+        // exclusive p_to so the last night is written + single-day works.
         to: toDateParam(rangeEnd),
         isClosed: closed,
         priceOverrideDzd:
@@ -210,6 +217,29 @@ export default function HostCalendarScreen() {
             ? Math.round(minStayVal)
             : null,
       });
+      haptics.success();
+      setFeedback({ kind: 'ok', text: pick(L.hostCalendarApplied, locale) });
+      await loadAvailability();
+      setCheckIn(null);
+      setCheckOut(null);
+    } catch {
+      setFeedback({ kind: 'err', text: pick(L.hostCalendarFailed, locale) });
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  async function onClearOverride() {
+    if (!roomTypeId || !checkIn || !rangeEnd) return;
+    setApplying(true);
+    setFeedback(null);
+    try {
+      await clearAvailabilityOverride(
+        roomTypeId,
+        toDateParam(checkIn),
+        toDateParam(rangeEnd),
+      );
+      haptics.selection();
       setFeedback({ kind: 'ok', text: pick(L.hostCalendarApplied, locale) });
       await loadAvailability();
       setCheckIn(null);
@@ -224,41 +254,41 @@ export default function HostCalendarScreen() {
   // ---- Render: loading / error / empty gates ----
   if (properties === null) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <TopBar locale={locale} />
+      <Screen>
+        <Header title={pick(L.hostCalendarTitle, locale)} />
         <SkeletonList count={4} />
-      </SafeAreaView>
+      </Screen>
     );
   }
   if (loadError && properties.length === 0) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <TopBar locale={locale} />
+      <Screen>
+        <Header title={pick(L.hostCalendarTitle, locale)} />
         <ErrorState
           message={loadError}
           onRetry={() => void loadProperties()}
           retryLabel={pick(L.search, locale)}
         />
-      </SafeAreaView>
+      </Screen>
     );
   }
   if (properties.length === 0) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <TopBar locale={locale} />
+      <Screen>
+        <Header title={pick(L.hostCalendarTitle, locale)} />
         <EmptyState
           title={pick(L.hostNoListingsTitle, locale)}
           subtitle={pick(L.hostNoListingsBody, locale)}
         />
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   const hasRange = checkIn !== null;
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <TopBar locale={locale} />
+    <Screen>
+      <Header title={pick(L.hostCalendarTitle, locale)} />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Listing picker */}
         <Text style={styles.sectionLabel}>{pick(L.hostPickListing, locale)}</Text>
@@ -319,19 +349,39 @@ export default function HostCalendarScreen() {
           </ScrollView>
         )}
 
+        {/* Draft-listing note */}
+        {selectedProperty && selectedProperty.status !== 'approved' ? (
+          <View style={styles.noteBox}>
+            <Text variant="caption" color="warning">
+              {pick(L.hostDraftListingNote, locale)}
+            </Text>
+          </View>
+        ) : null}
+
         {roomTypeId ? (
           <>
             {/* Legend */}
             <View style={styles.legend}>
               <View style={styles.legendItem}>
+                <View style={[styles.legendSwatch, { backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border }]} />
+                <Text style={styles.legendText}>{pick(L.hostLegendAvailable, locale)}</Text>
+              </View>
+              <View style={styles.legendItem}>
                 <View style={[styles.legendSwatch, { backgroundColor: theme.color.surfaceSunken }]} />
                 <Text style={styles.legendText}>{pick(L.hostLegendClosed, locale)}</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: theme.color.primary }]} />
+                <Text style={styles.legendText}>{pick(L.hostLegendBooked, locale)}</Text>
               </View>
               <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: theme.color.accent }]} />
                 <Text style={styles.legendText}>{pick(L.hostLegendOverride, locale)}</Text>
               </View>
             </View>
+            <Text variant="caption" color="textMuted" style={styles.bookingsNote}>
+              {pick(L.hostBookingsOverlayNote, locale)}
+            </Text>
 
             {/* Month grid */}
             <View style={styles.calendarWrap}>
@@ -399,39 +449,41 @@ export default function HostCalendarScreen() {
                 />
 
                 {feedback ? (
-                  <Text style={feedback.kind === 'ok' ? styles.okText : styles.errText}>
+                  <Text
+                    variant="body-sm"
+                    weight="medium"
+                    color={feedback.kind === 'ok' ? 'success' : 'error'}
+                  >
                     {feedback.text}
                   </Text>
                 ) : null}
 
                 <View style={styles.applyRow}>
-                  <PrimaryButton
+                  <Button
                     label={pick(L.hostApplyChanges, locale)}
                     onPress={() => void onApply()}
                     loading={applying}
                     disabled={applying || rangeNights === 0}
                   />
                 </View>
+                <View style={styles.clearOverrideRow}>
+                  <Button
+                    label={pick(L.hostClearOverride, locale)}
+                    variant="ghost"
+                    onPress={() => void onClearOverride()}
+                    disabled={applying || rangeNights === 0}
+                  />
+                </View>
               </View>
             ) : (
-              <Text style={styles.hint}>{pick(L.hostSelectRange, locale)}</Text>
+              <Text variant="body-sm" color="textMuted" center style={styles.hint}>
+                {pick(L.hostSelectRange, locale)}
+              </Text>
             )}
           </>
         ) : null}
       </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-function TopBar({ locale }: { locale: Locale }) {
-  return (
-    <View style={styles.topBar}>
-      <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8}>
-        <Text style={styles.topBack}>{I18nManager.isRTL ? '→' : '←'}</Text>
-      </Pressable>
-      <Text style={styles.topTitle}>{pick(L.hostCalendarTitle, locale)}</Text>
-      <View style={styles.topSpacer} />
-    </View>
+    </Screen>
   );
 }
 
@@ -497,8 +549,17 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space.sm,
   },
 
+  noteBox: {
+    backgroundColor: theme.color.warningBg,
+    borderRadius: theme.radius.md,
+    padding: theme.space.md,
+    marginTop: theme.space.sm,
+  },
+  bookingsNote: { marginTop: theme.space.xs },
+  clearOverrideRow: { marginTop: -theme.space.xs },
   legend: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: theme.space.lg,
     marginTop: theme.space.md,
     alignItems: 'center',

@@ -1,51 +1,54 @@
 /**
- * Host earnings (M4).
+ * Host earnings (Phase 3 rework).
  *
  * Two segments:
- *   - Payouts     — rows from `payouts` (gross → commission → net), grouped by
- *     status, with headline summaries (upcoming vs paid).
- *   - Per booking — the host's money-committed bookings (confirmed / checked-in
- *     / completed) with total → commission → host payout.
+ *   - Payouts     — rows from `payouts` (gross → commission → net), with two
+ *     headline summaries: "Upcoming" (not-yet-paid net) vs "Paid total".
+ *   - Per booking — money-committed bookings (confirmed / checked-in / completed)
+ *     with total → commission → host payout. Confirmed/checked-in bookings get a
+ *     host-side "Cancel booking" action with a refund preview (quote_refund).
  *
- * All amounts use formatDZD and are server-finalized (never client-computed).
- * Designed skeleton + empty + error states; pull-to-refresh.
+ * Built on @/ui (Screen/Header/Text/Card/SegmentedControl/Button/ConfirmSheet/
+ * Toast/Skeleton/Empty/Error). All amounts use formatDZD (server-finalized).
  */
 
 import { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  SafeAreaView,
-  I18nManager,
-} from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatDZD, type Locale } from '@dyafa/i18n';
 import {
   listPayouts,
   listEarningBookings,
+  cancelBooking,
+  quoteRefund,
   type PayoutRow,
   type PayoutStatus,
   type EarningBooking,
 } from '@/lib/host';
 import { localizedName } from '@/lib/listings';
-import { SkeletonList, ErrorState, EmptyState } from '@/components/ui';
+import {
+  Screen,
+  Header,
+  Text,
+  Card,
+  Button,
+  StatusPill,
+  BottomSheet,
+  TextField,
+  SegmentedControl,
+  SkeletonList,
+  ErrorState,
+  EmptyState,
+  useToast,
+  haptics,
+} from '@/ui';
+import type { Tone } from '@/ui';
 import { L, pick, type LMessage } from '@/lib/copy';
 import { formatRange } from '@/lib/dateFormat';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
-
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
 type Tab = 'payouts' | 'bookings';
-const TABS: { key: Tab; label: LMessage }[] = [
-  { key: 'payouts', label: L.hostPayouts },
-  { key: 'bookings', label: L.hostPerBooking },
-];
 
 const PAYOUT_STATUS_LABEL: Record<PayoutStatus, LMessage> = {
   pending: L.payoutPending,
@@ -55,15 +58,14 @@ const PAYOUT_STATUS_LABEL: Record<PayoutStatus, LMessage> = {
   on_hold: L.payoutOnHold,
 };
 
-const PAYOUT_STATUS_TONE: Record<PayoutStatus, { bg: string; fg: string }> = {
-  pending: { bg: theme.color.warningBg, fg: theme.color.warning },
-  processing: { bg: theme.color.infoBg, fg: theme.color.info },
-  paid: { bg: theme.color.successBg, fg: theme.color.success },
-  failed: { bg: theme.color.errorBg, fg: theme.color.error },
-  on_hold: { bg: theme.color.surfaceSunken, fg: theme.color.textMuted },
+const PAYOUT_STATUS_TONE: Record<PayoutStatus, Tone> = {
+  pending: 'warning',
+  processing: 'info',
+  paid: 'success',
+  failed: 'error',
+  on_hold: 'neutral',
 };
 
-/** A payout counts as "paid" only when its status is paid; everything else is upcoming. */
 function isPaid(status: PayoutStatus): boolean {
   return status === 'paid';
 }
@@ -71,6 +73,7 @@ function isPaid(status: PayoutStatus): boolean {
 export default function HostEarningsScreen() {
   const { i18n } = useTranslation('common');
   const locale = (i18n.language ?? 'en') as Locale;
+  const toast = useToast();
 
   const [tab, setTab] = useState<Tab>('payouts');
   const [payouts, setPayouts] = useState<PayoutRow[] | null>(null);
@@ -105,7 +108,6 @@ export default function HostEarningsScreen() {
 
   const loading = payouts === null || bookings === null;
 
-  // Headline summaries from payouts: upcoming (not-yet-paid) vs paid net DZD.
   const upcomingTotal = (payouts ?? [])
     .filter((p) => !isPaid(p.status))
     .reduce((sum, p) => sum + p.net_dzd, 0);
@@ -113,17 +115,15 @@ export default function HostEarningsScreen() {
     .filter((p) => isPaid(p.status))
     .reduce((sum, p) => sum + p.net_dzd, 0);
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.topBar}>
-        <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.topBack}>{I18nManager.isRTL ? '→' : '←'}</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>{pick(L.hostEarningsTitle, locale)}</Text>
-        <View style={styles.topSpacer} />
-      </View>
+  const TABS: { value: Tab; label: string }[] = [
+    { value: 'payouts', label: pick(L.hostPayouts, locale) },
+    { value: 'bookings', label: pick(L.hostPerBooking, locale) },
+  ];
 
-      {/* Headline summaries */}
+  return (
+    <Screen>
+      <Header title={pick(L.hostEarningsTitle, locale)} />
+
       <View style={styles.summaryRow}>
         <SummaryCard
           label={pick(L.hostEarnUpcoming, locale)}
@@ -137,24 +137,8 @@ export default function HostEarningsScreen() {
         />
       </View>
 
-      {/* Segmented control */}
-      <View style={styles.segment}>
-        {TABS.map((t) => {
-          const active = t.key === tab;
-          return (
-            <Pressable
-              key={t.key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              onPress={() => setTab(t.key)}
-              style={[styles.segmentItem, active && styles.segmentItemActive]}
-            >
-              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                {pick(t.label, locale)}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.segmentWrap}>
+        <SegmentedControl options={TABS} value={tab} onChange={setTab} />
       </View>
 
       {loading ? (
@@ -166,11 +150,12 @@ export default function HostEarningsScreen() {
           data={payouts ?? []}
           keyExtractor={(p) => p.id}
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}
-          ListFooterComponent={<Text style={styles.note}>{pick(L.hostEarningsNote, locale)}</Text>}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.color.primary} colors={[theme.color.primary]} />
+          }
+          ListFooterComponent={<Text variant="caption" color="textMuted" center style={styles.note}>{pick(L.hostEarningsNote, locale)}</Text>}
           ListEmptyComponent={
             <EmptyState
-              emoji="💸"
               title={pick(L.hostPayoutsEmptyTitle, locale)}
               subtitle={pick(L.hostPayoutsEmptyBody, locale)}
             />
@@ -182,35 +167,39 @@ export default function HostEarningsScreen() {
           data={bookings ?? []}
           keyExtractor={(b) => b.id}
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}
-          ListFooterComponent={<Text style={styles.note}>{pick(L.hostEarningsNote, locale)}</Text>}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.color.primary} colors={[theme.color.primary]} />
+          }
+          ListFooterComponent={<Text variant="caption" color="textMuted" center style={styles.note}>{pick(L.hostEarningsNote, locale)}</Text>}
           ListEmptyComponent={
             <EmptyState
-              emoji="🧾"
               title={pick(L.hostEarnBookingsEmptyTitle, locale)}
               subtitle={pick(L.hostEarnBookingsEmptyBody, locale)}
             />
           }
-          renderItem={({ item }) => <EarningBookingCard booking={item} locale={locale} />}
+          renderItem={({ item }) => (
+            <EarningBookingCard
+              booking={item}
+              locale={locale}
+              onCancelled={() => void load()}
+              toastShow={toast.show}
+            />
+          )}
         />
       )}
-    </SafeAreaView>
+    </Screen>
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: 'info' | 'success';
-}) {
+function SummaryCard({ label, value, tone }: { label: string; value: string; tone: 'info' | 'success' }) {
   return (
     <View style={[styles.summaryCard, tone === 'success' && styles.summaryCardSuccess]}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue}>{value}</Text>
+      <Text variant="body-sm" color="textMuted">
+        {label}
+      </Text>
+      <Text variant="title" weight="bold" style={styles.ltr}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -218,37 +207,51 @@ function SummaryCard({
 function MoneyRow({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
     <View style={styles.moneyRow}>
-      <Text style={[styles.moneyLabel, strong && styles.moneyLabelStrong]}>{label}</Text>
-      <Text style={[styles.moneyValue, strong && styles.moneyValueStrong]}>{value}</Text>
+      <Text variant="body-sm" weight={strong ? 'semibold' : 'regular'} color={strong ? 'text' : 'textMuted'}>
+        {label}
+      </Text>
+      <Text variant={strong ? 'body' : 'body-sm'} weight={strong ? 'bold' : 'medium'} color={strong ? 'primary' : 'text'} style={styles.ltr}>
+        {value}
+      </Text>
     </View>
   );
 }
 
 function PayoutCard({ payout, locale }: { payout: PayoutRow; locale: Locale }) {
-  const tone = PAYOUT_STATUS_TONE[payout.status];
-  const label = pick(PAYOUT_STATUS_LABEL[payout.status], locale);
   return (
-    <View style={styles.card}>
+    <Card>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardPeriod}>
+        <Text variant="body" weight="semibold" style={[styles.flex, styles.ltr]}>
           {formatRange(payout.period_start, payout.period_end, locale)}
         </Text>
-        <View style={[styles.statusBadge, { backgroundColor: tone.bg }]}>
-          <Text style={[styles.statusBadgeText, { color: tone.fg }]}>{label}</Text>
-        </View>
+        <StatusPill label={pick(PAYOUT_STATUS_LABEL[payout.status], locale)} tone={PAYOUT_STATUS_TONE[payout.status]} />
       </View>
       <MoneyRow label={pick(L.hostGross, locale)} value={formatDZD(payout.gross_dzd, locale)} />
-      <MoneyRow
-        label={pick(L.hostCommission, locale)}
-        value={`− ${formatDZD(payout.commission_amount_dzd, locale)}`}
-      />
+      <MoneyRow label={pick(L.hostCommission, locale)} value={`− ${formatDZD(payout.commission_amount_dzd, locale)}`} />
       <View style={styles.divider} />
       <MoneyRow label={pick(L.hostNet, locale)} value={formatDZD(payout.net_dzd, locale)} strong />
-    </View>
+    </Card>
   );
 }
 
-function EarningBookingCard({ booking, locale }: { booking: EarningBooking; locale: Locale }) {
+function EarningBookingCard({
+  booking,
+  locale,
+  onCancelled,
+  toastShow,
+}: {
+  booking: EarningBooking;
+  locale: Locale;
+  onCancelled: () => void;
+  toastShow: (opts: { message: string; tone?: 'success' | 'error' }) => void;
+}) {
+  const [sheet, setSheet] = useState(false);
+  const [reason, setReason] = useState('');
+  const [refund, setRefund] = useState<number | null>(null);
+  const [quoting, setQuoting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const title = booking.property
     ? localizedName(
         {
@@ -259,51 +262,124 @@ function EarningBookingCard({ booking, locale }: { booking: EarningBooking; loca
         locale,
       )
     : '';
+
+  // Only confirmed/checked-in stays can be host-cancelled (not completed).
+  const cancellable = booking.status === 'confirmed' || booking.status === 'checked_in';
+
+  async function openCancel() {
+    setError(null);
+    setReason('');
+    setRefund(null);
+    setSheet(true);
+    setQuoting(true);
+    try {
+      setRefund(await quoteRefund(booking.id));
+    } catch {
+      setRefund(null);
+    } finally {
+      setQuoting(false);
+    }
+  }
+
+  async function onConfirmCancel() {
+    setCancelling(true);
+    setError(null);
+    try {
+      await cancelBooking(booking.id, reason.trim() || '—');
+      haptics.warning();
+      setSheet(false);
+      toastShow({ message: pick(L.hostCancelDone, locale), tone: 'success' });
+      onCancelled();
+    } catch {
+      setError(pick(L.hostCancelFailed, locale));
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   return (
-    <View style={styles.card}>
+    <Card>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle} numberOfLines={1}>
+        <Text variant="title" weight="semibold" numberOfLines={1} style={styles.flex}>
           {title || booking.code}
         </Text>
-        <Text style={styles.cardCode}>{booking.code}</Text>
+        <Text variant="caption" weight="medium" color="textMuted">
+          {booking.code}
+        </Text>
       </View>
-      <Text style={styles.cardMeta}>
+      <Text variant="body-sm" color="textMuted">
         {formatRange(booking.check_in, booking.check_out, locale)}
       </Text>
       <View style={styles.divider} />
       <MoneyRow label={pick(L.total, locale)} value={formatDZD(booking.total_dzd, locale)} />
-      <MoneyRow
-        label={pick(L.hostCommission, locale)}
-        value={`− ${formatDZD(booking.commission_amount_dzd, locale)}`}
-      />
+      <MoneyRow label={pick(L.hostCommission, locale)} value={`− ${formatDZD(booking.commission_amount_dzd, locale)}`} />
       <MoneyRow label={pick(L.hostPayout, locale)} value={formatDZD(booking.host_payout_dzd, locale)} strong />
-    </View>
+
+      {cancellable ? (
+        <View style={styles.cancelRow}>
+          <Button
+            label={pick(L.hostCancelBooking, locale)}
+            variant="danger"
+            size="sm"
+            fullWidth={false}
+            onPress={() => void openCancel()}
+          />
+        </View>
+      ) : null}
+
+      <BottomSheet visible={sheet} onClose={() => setSheet(false)} dismissible={!cancelling}>
+        <View style={styles.sheetBody}>
+          <Text variant="title" weight="semibold">
+            {pick(L.hostCancelTitle, locale)}
+          </Text>
+
+          <View style={styles.refundRow}>
+            <Text variant="body-sm" color="textMuted">
+              {pick(L.hostRefundPreview, locale)}
+            </Text>
+            <Text variant="body" weight="bold" color="accent" style={styles.ltr}>
+              {quoting ? '…' : refund != null ? formatDZD(refund, locale) : '—'}
+            </Text>
+          </View>
+
+          <TextField
+            label={pick(L.hostCancelBooking, locale)}
+            hint={pick(L.hostCancelReasonHint, locale)}
+            value={reason}
+            onChangeText={setReason}
+            placeholder={pick(L.hostCancelReasonHint, locale)}
+            multiline
+          />
+
+          {error ? (
+            <Text variant="body-sm" color="error">
+              {error}
+            </Text>
+          ) : null}
+
+          <View style={styles.sheetActions}>
+            <Button
+              label={pick(L.hostCancelConfirm, locale)}
+              variant="danger"
+              onPress={() => void onConfirmCancel()}
+              loading={cancelling}
+            />
+            <Button
+              label={pick(L.cancel, locale)}
+              variant="ghost"
+              onPress={() => setSheet(false)}
+              disabled={cancelling}
+            />
+          </View>
+        </View>
+      </BottomSheet>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
-
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.md,
-    gap: theme.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.color.border,
-    backgroundColor: theme.color.surface,
-  },
-  topBack: { fontFamily: RN_FONTS.bodyBold, fontSize: theme.fontSize['heading-3'], color: theme.color.text },
-  topTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: 'center',
-  },
-  topSpacer: { width: 24 },
+  flex: { flex: 1 },
+  ltr: { writingDirection: 'ltr' },
 
   summaryRow: {
     flexDirection: 'row',
@@ -319,48 +395,10 @@ const styles = StyleSheet.create({
     gap: theme.space.xs,
   },
   summaryCardSuccess: { backgroundColor: theme.color.successBg },
-  summaryLabel: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  summaryValue: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '700',
-    color: theme.color.text,
-    textAlign,
-    writingDirection: 'ltr',
-  },
 
-  segment: {
-    flexDirection: 'row',
-    marginHorizontal: theme.space.xl,
-    marginTop: theme.space.lg,
-    marginBottom: theme.space.sm,
-    backgroundColor: theme.color.surfaceSunken,
-    borderRadius: theme.radius.pill,
-    padding: 4,
-    gap: 4,
-  },
-  segmentItem: { flex: 1, paddingVertical: theme.space.sm, borderRadius: theme.radius.pill, alignItems: 'center' },
-  segmentItemActive: { backgroundColor: theme.color.surface, ...theme.shadow.xs },
-  segmentText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-  },
-  segmentTextActive: { color: theme.color.text, fontWeight: '600' },
-
+  segmentWrap: { paddingHorizontal: theme.space.xl, paddingVertical: theme.space.md },
   listContent: { padding: theme.space.xl, gap: theme.space.md, flexGrow: 1 },
-  card: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
-    gap: theme.space.xs,
-    ...theme.shadow.card,
-  },
+
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -368,84 +406,24 @@ const styles = StyleSheet.create({
     gap: theme.space.sm,
     marginBottom: theme.space.xs,
   },
-  cardPeriod: {
-    flex: 1,
-    fontFamily: RN_FONTS.bodySemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-    writingDirection: 'ltr',
-  },
-  cardTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  cardCode: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-  },
-  cardMeta: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  statusBadge: {
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: 2,
-  },
-  statusBadgeText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    fontWeight: '600',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: theme.color.border,
-    marginVertical: theme.space.xs,
-  },
+  divider: { height: 1, backgroundColor: theme.color.border, marginVertical: theme.space.xs },
   moneyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.md,
   },
-  moneyLabel: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
+  cancelRow: { marginTop: theme.space.md, alignItems: 'flex-start' },
+  note: { marginTop: theme.space.sm },
+
+  sheetBody: { gap: theme.space.md, paddingTop: theme.space.sm },
+  refundRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: theme.color.surfaceSunken,
+    borderRadius: theme.radius.md,
+    padding: theme.space.md,
   },
-  moneyLabelStrong: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontWeight: '600',
-    color: theme.color.text,
-  },
-  moneyValue: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
-    writingDirection: 'ltr',
-  },
-  moneyValueStrong: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '700',
-    color: theme.color.primary,
-  },
-  note: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign: 'center',
-    marginTop: theme.space.sm,
-    lineHeight: theme.lineHeight.caption,
-  },
+  sheetActions: { gap: theme.space.sm },
 });

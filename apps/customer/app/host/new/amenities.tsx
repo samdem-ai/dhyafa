@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, I18nManager } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { Locale } from '@dyafa/i18n';
@@ -18,8 +18,9 @@ import { useWizard } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
 import { Chip } from '@/components/fields';
 import { SkeletonList, ErrorState } from '@/components/ui';
+import { Text } from '@/ui';
+import { L, pick as pickL, type LMessage } from '@/lib/copy';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const COPY = {
   title: { ar: 'ما المرافق المتوفرة؟', fr: 'Quels équipements ?', en: 'What amenities?' },
@@ -31,11 +32,32 @@ const COPY = {
   loadError: { ar: 'تعذّر تحميل المرافق.', fr: 'Échec du chargement.', en: 'Failed to load amenities.' },
   retry: { ar: 'إعادة المحاولة', fr: 'Réessayer', en: 'Retry' },
   saveError: { ar: 'تعذّر الحفظ.', fr: "Échec de l'enregistrement.", en: 'Could not save.' },
-  other: { ar: 'أخرى', fr: 'Autres', en: 'Other' },
 } as const;
 
 function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
   return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
+}
+
+/** Map a DB amenity category slug → a localized heading (fallback: humanized slug). */
+const CATEGORY_LABEL: Record<string, LMessage> = {
+  essentials: L.amCatEssentials,
+  features: L.amCatFeatures,
+  safety: L.amCatSafety,
+  location: L.amCatLocation,
+  accessibility: L.amCatAccessibility,
+  kitchen: L.amCatKitchen,
+  bathroom: L.amCatBathroom,
+  outdoor: L.amCatOutdoor,
+  entertainment: L.amCatEntertainment,
+  other: L.amCatOther,
+};
+
+function categoryHeading(slug: string, locale: Locale): string {
+  const m = CATEGORY_LABEL[slug];
+  if (m) return pickL(m, locale);
+  // Humanize an unmapped slug: 'home_office' → 'Home office'.
+  const words = slug.replace(/[_-]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 export default function StepAmenities() {
@@ -65,13 +87,13 @@ export default function StepAmenities() {
   const grouped = useMemo(() => {
     const map = new Map<string, AmenityRow[]>();
     for (const a of amenities ?? []) {
-      const key = a.category ?? pick(COPY.other, locale);
+      const key = a.category ?? 'other';
       const arr = map.get(key) ?? [];
       arr.push(a);
       map.set(key, arr);
     }
     return [...map.entries()];
-  }, [amenities, locale]);
+  }, [amenities]);
 
   function toggle(id: number) {
     const set = new Set(draft.amenityIds);
@@ -120,7 +142,9 @@ export default function StepAmenities() {
     >
       {grouped.map(([category, items]) => (
         <View key={category} style={styles.group}>
-          <Text style={styles.groupTitle}>{category}</Text>
+          <Text variant="title" weight="semibold">
+            {categoryHeading(category, locale)}
+          </Text>
           <View style={styles.chips}>
             {items.map((a) => (
               <Chip
@@ -134,7 +158,13 @@ export default function StepAmenities() {
           </View>
         </View>
       ))}
-      {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
+      {saveError ? (
+        <View style={styles.errorBox}>
+          <Text variant="body-sm" color="error" center>
+            {saveError}
+          </Text>
+        </View>
+      ) : null}
     </WizardChrome>
   );
 }
@@ -142,22 +172,10 @@ export default function StepAmenities() {
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: theme.color.bg },
   group: { gap: theme.space.sm },
-  groupTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-    textTransform: 'capitalize',
-  },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
-  error: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
+  errorBox: {
     backgroundColor: theme.color.errorBg,
     padding: theme.space.md,
     borderRadius: theme.radius.md,
-    textAlign: 'center',
   },
 });

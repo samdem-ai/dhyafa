@@ -1,58 +1,69 @@
 /**
- * Wizard step 3 — photos. Pick from the library (expo-image-picker), upload to
- * the `listing-photos` bucket under ${userId}/${propertyId}/…, and show a grid.
- * At least one photo is required to continue (also enforced server-side on submit).
- * The first photo is marked as the cover.
+ * Wizard step 3 — photos.
+ *
+ * Multi-select from the library (expo-image-picker), upload to the
+ * `listing-photos` bucket under ${hostProfileId}/${propertyId}/… (storage RLS
+ * requires path[1] = my_host_id()), preview with expo-image, reorder (move
+ * left/right), and choose a cover. At least one photo is required to continue
+ * (also enforced server-side on submit).
+ *
+ * We do NOT create a draft property merely by visiting this step — the draft is
+ * created lazily on the first upload (ensureDraft) so abandoning the wizard here
+ * never orphans an empty server-side draft.
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  Image,
-  ActivityIndicator,
-  I18nManager,
-} from 'react-native';
+import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { Locale } from '@dyafa/i18n';
-import { supabase } from '@/lib/auth';
-import { pickListingImage } from '@/lib/imagePicker';
+import { getMyHostProfileId } from '@/lib/listings';
+import { pickListingImages } from '@/lib/imagePicker';
 import {
   uploadPhoto,
   listPhotos,
   deletePhoto,
+  reorderPhotos,
   photoPublicUrl,
   type PropertyPhotoRow,
 } from '@/lib/listings';
 import { useWizard } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
-import { Skeleton, ErrorState } from '@/components/ui';
+import { Text, Skeleton, ErrorState, haptics } from '@/ui';
+import { ChevronLeft, ChevronRight, Star, X, Plus } from 'lucide-react-native';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const COPY = {
   title: { ar: 'أضف صورًا', fr: 'Ajoutez des photos', en: 'Add photos' },
   subtitle: {
-    ar: 'الصور الجيدة تزيد الحجوزات. أضف صورة واحدة على الأقل.',
-    fr: 'De bonnes photos augmentent les réservations. Au moins une.',
-    en: 'Great photos boost bookings. Add at least one.',
+    ar: 'الصور الجيدة تزيد الحجوزات. أضف صورة واحدة على الأقل، وحدّد صورة الغلاف.',
+    fr: 'De bonnes photos augmentent les réservations. Au moins une ; choisissez la couverture.',
+    en: 'Great photos boost bookings. Add at least one and pick a cover.',
   },
-  add: { ar: '＋ إضافة صورة', fr: '＋ Ajouter', en: '＋ Add photo' },
+  add: { ar: 'إضافة صور', fr: 'Ajouter', en: 'Add photos' },
   cover: { ar: 'الغلاف', fr: 'Couverture', en: 'Cover' },
+  makeCover: { ar: 'اجعلها الغلاف', fr: 'Définir couverture', en: 'Set as cover' },
   permission: {
-    ar: 'نحتاج إذن الوصول إلى الصور.',
-    fr: "Autorisation d'accès aux photos requise.",
-    en: 'Photo library permission is required.',
+    ar: 'نحتاج إذن الوصول إلى الصور. فعّله من إعدادات النظام.',
+    fr: "Autorisation d'accès aux photos requise. Activez-la dans les réglages.",
+    en: 'Photo library permission is required. Enable it in system settings.',
   },
   unavailable: {
     ar: 'منتقي الصور غير متوفر على هذا الجهاز.',
     fr: "Le sélecteur d'images n'est pas disponible.",
     en: 'Image picker is not available on this device.',
   },
-  uploadError: { ar: 'تعذّر رفع الصورة.', fr: "Échec de l'envoi.", en: 'Upload failed.' },
+  authError: {
+    ar: 'تعذّر تجهيز حساب الاستضافة. أعد المحاولة.',
+    fr: "Impossible de préparer le compte hôte. Réessayez.",
+    en: 'Could not prepare your host account. Try again.',
+  },
+  uploadError: {
+    ar: 'تعذّر رفع الصورة. تحقّق من اتصالك.',
+    fr: "Échec de l'envoi. Vérifiez votre connexion.",
+    en: 'Upload failed. Check your connection.',
+  },
   loadError: { ar: 'تعذّر تحميل الصور.', fr: 'Échec du chargement.', en: 'Failed to load photos.' },
   retry: { ar: 'إعادة المحاولة', fr: 'Réessayer', en: 'Retry' },
   needOne: {
@@ -60,6 +71,7 @@ const COPY = {
     fr: 'Ajoutez au moins une photo pour continuer.',
     en: 'Add at least one photo to continue.',
   },
+  count: { ar: 'صور', fr: 'photos', en: 'photos' },
 } as const;
 
 function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
@@ -79,8 +91,12 @@ export default function StepPhotos() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const id = draft.propertyId ?? (await ensureDraft());
-      setPhotos(await listPhotos(id));
+      // Do NOT ensureDraft here — only read existing photos if a draft exists.
+      if (!draft.propertyId) {
+        setPhotos([]);
+        return;
+      }
+      setPhotos(await listPhotos(draft.propertyId));
     } catch {
       setError(pick(COPY.loadError, locale));
       setPhotos([]);
@@ -94,7 +110,7 @@ export default function StepPhotos() {
 
   async function onAdd() {
     setActionError(null);
-    const picked = await pickListingImage();
+    const picked = await pickListingImages();
     if (!picked.ok) {
       if (picked.reason === 'denied') setActionError(pick(COPY.permission, locale));
       else if (picked.reason === 'unavailable') setActionError(pick(COPY.unavailable, locale));
@@ -105,22 +121,35 @@ export default function StepPhotos() {
 
     setBusy(true);
     try {
-      const propertyId = draft.propertyId ?? (await ensureDraft());
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth.user?.id;
-      if (!userId) throw new Error('NO_USER');
+      // Lazily create the draft + host_id claim only now (first upload).
+      let propertyId: string;
+      try {
+        propertyId = draft.propertyId ?? (await ensureDraft());
+      } catch {
+        setActionError(pick(COPY.authError, locale));
+        return;
+      }
+      const hostProfileId = draft.hostProfileId ?? (await getMyHostProfileId());
+      if (!hostProfileId) {
+        setActionError(pick(COPY.authError, locale));
+        return;
+      }
 
-      const existing = photos ?? [];
-      const newPhoto = await uploadPhoto({
-        userId,
-        propertyId,
-        base64: picked.image.base64,
-        ext: picked.image.ext,
-        contentType: picked.image.mimeType,
-        isCover: existing.length === 0,
-        sortOrder: existing.length,
-      });
-      setPhotos([...existing, newPhoto]);
+      let current = photos ?? [];
+      for (const image of picked.images) {
+        const newPhoto = await uploadPhoto({
+          hostProfileId,
+          propertyId,
+          base64: image.base64,
+          ext: image.ext,
+          contentType: image.mimeType,
+          isCover: current.length === 0,
+          sortOrder: current.length,
+        });
+        current = [...current, newPhoto];
+        setPhotos(current);
+      }
+      haptics.success();
     } catch {
       setActionError(pick(COPY.uploadError, locale));
     } finally {
@@ -131,13 +160,47 @@ export default function StepPhotos() {
   async function onRemove(photo: PropertyPhotoRow) {
     setActionError(null);
     const prev = photos ?? [];
-    setPhotos(prev.filter((p) => p.id !== photo.id));
+    const next = prev.filter((p) => p.id !== photo.id);
+    // Promote a new cover if we removed the cover.
+    if (photo.is_cover && next[0]) next[0] = { ...next[0], is_cover: true };
+    setPhotos(next);
+    haptics.selection();
     try {
       await deletePhoto(photo);
+      if (next.length > 0) await reorderPhotos(next, coverIdOf(next));
     } catch {
       setActionError(pick(COPY.uploadError, locale));
       setPhotos(prev); // rollback
     }
+  }
+
+  async function persistOrder(next: PropertyPhotoRow[], coverId: string) {
+    const prev = photos ?? [];
+    setPhotos(next);
+    haptics.selection();
+    try {
+      await reorderPhotos(next, coverId);
+    } catch {
+      setActionError(pick(COPY.uploadError, locale));
+      setPhotos(prev);
+    }
+  }
+
+  function move(idx: number, dir: -1 | 1) {
+    const arr = [...(photos ?? [])];
+    const target = idx + dir;
+    if (target < 0 || target >= arr.length) return;
+    const a = arr[idx];
+    const b = arr[target];
+    if (!a || !b) return;
+    arr[idx] = b;
+    arr[target] = a;
+    void persistOrder(arr, coverIdOf(arr));
+  }
+
+  function makeCover(photo: PropertyPhotoRow) {
+    const arr = (photos ?? []).map((p) => ({ ...p, is_cover: p.id === photo.id }));
+    void persistOrder(arr, photo.id);
   }
 
   if (photos === null) {
@@ -168,25 +231,76 @@ export default function StepPhotos() {
       nextDisabled={photos.length === 0}
       onNext={() => router.push('/host/new/details')}
     >
+      {photos.length > 0 ? (
+        <Text variant="body-sm" color="textMuted">
+          {photos.length} {pick(COPY.count, locale)}
+        </Text>
+      ) : null}
+
       <View style={styles.grid}>
-        {photos.map((p, idx) => (
-          <View key={p.id} style={styles.tile}>
-            <Image source={{ uri: photoPublicUrl(p.storage_path) }} style={styles.tileImg} />
-            {idx === 0 || p.is_cover ? (
-              <View style={styles.coverBadge}>
-                <Text style={styles.coverBadgeText}>{pick(COPY.cover, locale)}</Text>
+        {photos.map((p, idx) => {
+          const isCover = p.is_cover || (idx === 0 && !photos.some((x) => x.is_cover));
+          return (
+            <View key={p.id} style={styles.tile}>
+              <Image
+                source={{ uri: photoPublicUrl(p.storage_path) }}
+                style={styles.tileImg}
+                contentFit="cover"
+                transition={150}
+              />
+
+              {isCover ? (
+                <View style={styles.coverBadge}>
+                  <Star size={11} color={theme.color.textOnPrimary} fill={theme.color.textOnPrimary} />
+                  <Text variant="caption" weight="semibold" color="textOnPrimary">
+                    {pick(COPY.cover, locale)}
+                  </Text>
+                </View>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={pick(COPY.makeCover, locale)}
+                  onPress={() => makeCover(p)}
+                  style={styles.makeCoverBtn}
+                  hitSlop={6}
+                >
+                  <Star size={14} color={theme.color.white} />
+                </Pressable>
+              )}
+
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void onRemove(p)}
+                style={styles.removeBtn}
+                hitSlop={6}
+              >
+                <X size={14} color={theme.color.white} />
+              </Pressable>
+
+              {/* Reorder controls */}
+              <View style={styles.reorderRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={idx === 0}
+                  onPress={() => move(idx, -1)}
+                  style={[styles.reorderBtn, idx === 0 && styles.reorderBtnDisabled]}
+                  hitSlop={4}
+                >
+                  <ChevronLeft size={16} color={theme.color.white} />
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={idx === photos.length - 1}
+                  onPress={() => move(idx, 1)}
+                  style={[styles.reorderBtn, idx === photos.length - 1 && styles.reorderBtnDisabled]}
+                  hitSlop={4}
+                >
+                  <ChevronRight size={16} color={theme.color.white} />
+                </Pressable>
               </View>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void onRemove(p)}
-              style={styles.removeBtn}
-              hitSlop={6}
-            >
-              <Text style={styles.removeText}>✕</Text>
-            </Pressable>
-          </View>
-        ))}
+            </View>
+          );
+        })}
 
         <Pressable
           accessibilityRole="button"
@@ -197,17 +311,35 @@ export default function StepPhotos() {
           {busy ? (
             <ActivityIndicator color={theme.color.primary} />
           ) : (
-            <Text style={styles.addText}>{pick(COPY.add, locale)}</Text>
+            <>
+              <Plus size={22} color={theme.color.primary} />
+              <Text variant="body-sm" weight="semibold" color="primary" center>
+                {pick(COPY.add, locale)}
+              </Text>
+            </>
           )}
         </Pressable>
       </View>
 
       {photos.length === 0 ? (
-        <Text style={styles.hint}>{pick(COPY.needOne, locale)}</Text>
+        <Text variant="body-sm" color="textMuted">
+          {pick(COPY.needOne, locale)}
+        </Text>
       ) : null}
-      {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+      {actionError ? (
+        <View style={styles.errorBox}>
+          <Text variant="body-sm" color="error" center>
+            {actionError}
+          </Text>
+        </View>
+      ) : null}
     </WizardChrome>
   );
+}
+
+/** The id of the cover photo (explicit flag, else the first photo). */
+function coverIdOf(arr: PropertyPhotoRow[]): string {
+  return (arr.find((p) => p.is_cover) ?? arr[0])?.id ?? '';
 }
 
 const TILE = '47%';
@@ -227,16 +359,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: theme.space.sm,
     start: theme.space.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     backgroundColor: theme.color.primary,
     borderRadius: theme.radius.pill,
     paddingHorizontal: theme.space.sm,
     paddingVertical: 2,
   },
-  coverBadgeText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textOnPrimary,
-    fontWeight: '600',
+  makeCoverBtn: {
+    position: 'absolute',
+    top: theme.space.sm,
+    start: theme.space.sm,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: theme.color.overlay,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   removeBtn: {
     position: 'absolute',
@@ -249,7 +389,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  removeText: { color: theme.color.white, fontSize: 14, fontWeight: '700' },
+  reorderRow: {
+    position: 'absolute',
+    bottom: theme.space.sm,
+    start: theme.space.sm,
+    end: theme.space.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  reorderBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: theme.color.overlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reorderBtnDisabled: { opacity: 0.3 },
   addTile: {
     width: TILE,
     aspectRatio: 1,
@@ -259,14 +415,8 @@ const styles = StyleSheet.create({
     borderColor: theme.color.borderStrong,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: theme.space.xs,
     backgroundColor: theme.color.surface,
-  },
-  addText: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.primary,
-    fontWeight: '600',
-    textAlign: 'center',
     paddingHorizontal: theme.space.sm,
   },
   skeletonGrid: {
@@ -276,19 +426,9 @@ const styles = StyleSheet.create({
     padding: theme.space.xl,
   },
   skeletonTile: { width: TILE, aspectRatio: 1, borderRadius: theme.radius.md },
-  hint: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
-  error: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
+  errorBox: {
     backgroundColor: theme.color.errorBg,
     padding: theme.space.md,
     borderRadius: theme.radius.md,
-    textAlign: 'center',
   },
 });

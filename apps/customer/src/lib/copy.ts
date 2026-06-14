@@ -23,6 +23,24 @@ export function pick(m: LMessage, locale: Locale): string {
   return locale === 'fr' ? m.fr : locale === 'en' ? m.en : m.ar;
 }
 
+/**
+ * Cancellation tier → its localized label + real refund-window summary.
+ * A function (not a const) so it reads from `L` after it's declared below.
+ */
+export function cancellationTierCopy(
+  tier: 'flexible' | 'moderate' | 'strict',
+): { label: LMessage; window: LMessage } {
+  switch (tier) {
+    case 'flexible':
+      return { label: L.tierFlexibleLabel, window: L.tierFlexibleWindow };
+    case 'strict':
+      return { label: L.tierStrictLabel, window: L.tierStrictWindow };
+    case 'moderate':
+    default:
+      return { label: L.tierModerateLabel, window: L.tierModerateWindow };
+  }
+}
+
 /** Shared discovery / booking / trips strings. */
 export const L = {
   // ── Search entry ─────────────────────────────────────────────────────────
@@ -242,6 +260,12 @@ export const L = {
   signOut: { ar: 'تسجيل الخروج', fr: 'Se déconnecter', en: 'Sign out' },
   signedOut: { ar: 'تم تسجيل الخروج', fr: 'Vous êtes déconnecté', en: 'You have been signed out' },
   switchToHosting: { ar: 'الانتقال إلى الاستضافة', fr: 'Passer en mode hôte', en: 'Switch to Hosting' },
+  switchToTravelling: { ar: 'العودة إلى وضع السفر', fr: 'Revenir au voyage', en: 'Switch to Travelling' },
+  hostSwitchFailed: {
+    ar: 'تعذّر تفعيل وضع الاستضافة. تحقّق من اتصالك وحاول مجددًا.',
+    fr: 'Impossible d’activer le mode hôte. Vérifiez votre connexion et réessayez.',
+    en: 'Could not enable hosting. Check your connection and try again.',
+  },
   language: { ar: 'اللغة', fr: 'Langue', en: 'Language' },
   myTrips: { ar: 'رحلاتي', fr: 'Mes voyages', en: 'My trips' },
   wishlists: { ar: 'المفضلة', fr: 'Favoris', en: 'Wishlists' },
@@ -488,5 +512,126 @@ export const L = {
     ar: 'انشر إعلانًا واستقبل حجوزًا لرؤية أدائك.',
     fr: 'Publiez une annonce et recevez des réservations pour voir vos performances.',
     en: 'Publish a listing and take bookings to see your performance.',
+  },
+
+  // ── Host shell / dashboard (Phase 3) ──────────────────────────────────────
+  hostNewHostTitle: { ar: 'مرحبًا بك كمضيف', fr: 'Bienvenue, hôte', en: 'Welcome, host' },
+  hostNewHostBody: {
+    ar: 'أنشئ أول إعلان لك لتبدأ استقبال الحجوزات.',
+    fr: 'Créez votre première annonce pour commencer à recevoir des réservations.',
+    en: 'Create your first listing to start taking bookings.',
+  },
+  hostClaimRefreshing: {
+    ar: 'جارٍ تجهيز حساب الاستضافة…',
+    fr: 'Préparation de votre compte hôte…',
+    en: 'Setting up your host account…',
+  },
+  hostManage: { ar: 'الإدارة', fr: 'Gérer', en: 'Manage' },
+
+  // ── Host reservations: awaiting payment + decline reason (Phase 3) ─────────
+  hostTabAwaiting: { ar: 'بانتظار الدفع', fr: 'Paiement attendu', en: 'Awaiting payment' },
+  hostAwaitingEmptyTitle: { ar: 'لا شيء بانتظار الدفع', fr: 'Rien en attente de paiement', en: 'Nothing awaiting payment' },
+  hostAwaitingEmptyBody: {
+    ar: 'الحجوزات التي قبلتها وتنتظر دفع الضيف ستظهر هنا.',
+    fr: 'Les réservations acceptées en attente de paiement du voyageur apparaîtront ici.',
+    en: 'Bookings you accepted that are awaiting the guest’s payment appear here.',
+  },
+  hostPayBy: { ar: 'موعد الدفع', fr: 'Paiement avant', en: 'Pay by' },
+  hostDeclineTitle: { ar: 'رفض الطلب؟', fr: 'Refuser la demande ?', en: 'Decline request?' },
+  hostDeclineReasonHint: {
+    ar: 'سبب الرفض (اختياري) — يُرسَل للضيف.',
+    fr: 'Motif du refus (facultatif) — partagé avec le voyageur.',
+    en: 'Reason for declining (optional) — shared with the guest.',
+  },
+  hostDeclineConfirm: { ar: 'تأكيد الرفض', fr: 'Confirmer le refus', en: 'Confirm decline' },
+  cancel: { ar: 'إلغاء', fr: 'Annuler', en: 'Cancel' },
+
+  // ── Host check-in/out (placeholder — RPC pending) ─────────────────────────
+  hostCheckIn: { ar: 'تسجيل الوصول', fr: 'Enregistrer l’arrivée', en: 'Check in' },
+  hostCheckOut: { ar: 'تسجيل المغادرة', fr: 'Enregistrer le départ', en: 'Check out' },
+
+  // ── Host cancel confirmed booking + refund preview (Phase 3) ──────────────
+  hostCancelBooking: { ar: 'إلغاء الحجز', fr: 'Annuler la réservation', en: 'Cancel booking' },
+  hostCancelTitle: { ar: 'إلغاء هذا الحجز؟', fr: 'Annuler cette réservation ?', en: 'Cancel this booking?' },
+  hostCancelReasonHint: {
+    ar: 'سبب الإلغاء — يُرسَل للضيف.',
+    fr: 'Motif de l’annulation — partagé avec le voyageur.',
+    en: 'Reason for cancelling — shared with the guest.',
+  },
+  hostRefundPreview: { ar: 'سيُسترد للضيف', fr: 'Remboursé au voyageur', en: 'Guest will be refunded' },
+  hostCancelConfirm: { ar: 'تأكيد الإلغاء', fr: 'Confirmer l’annulation', en: 'Confirm cancellation' },
+  hostCancelFailed: { ar: 'تعذّر إلغاء الحجز', fr: 'Échec de l’annulation', en: 'Could not cancel booking' },
+  hostCancelDone: { ar: 'تم إلغاء الحجز', fr: 'Réservation annulée', en: 'Booking cancelled' },
+
+  // ── Host calendar extras (Phase 3) ────────────────────────────────────────
+  hostClearOverride: { ar: 'مسح التخصيص', fr: 'Effacer le réglage', en: 'Clear override' },
+  hostLegendBooked: { ar: 'محجوز', fr: 'Réservé', en: 'Booked' },
+  hostLegendAvailable: { ar: 'متاح', fr: 'Disponible', en: 'Available' },
+  hostBookingsOverlayNote: {
+    ar: 'الأيام المحجوزة مميّزة؛ لا يمكن فتحها من هنا.',
+    fr: 'Les jours réservés sont marqués ; ils ne peuvent pas être ouverts ici.',
+    en: 'Booked days are marked and can’t be opened here.',
+  },
+  hostDraftListingNote: {
+    ar: 'هذا الإعلان مسودة — انشره ليصبح قابلًا للحجز.',
+    fr: 'Cette annonce est un brouillon — publiez-la pour la rendre réservable.',
+    en: 'This listing is a draft — publish it to make it bookable.',
+  },
+
+  // ── Host reviews: filter + aggregate (Phase 3) ────────────────────────────
+  hostReviewsAll: { ar: 'الكل', fr: 'Tous', en: 'All' },
+  hostReviewsUnreplied: { ar: 'بلا رد', fr: 'Sans réponse', en: 'Unreplied' },
+  hostReviewsAverage: { ar: 'المتوسط', fr: 'Moyenne', en: 'Average' },
+  hostReviewsTotal: { ar: 'إجمالي التقييمات', fr: 'Total des avis', en: 'Total reviews' },
+  hostReviewsUnrepliedEmptyTitle: { ar: 'لا توجد تقييمات بلا رد', fr: 'Aucun avis sans réponse', en: 'No unreplied reviews' },
+  hostReviewsUnrepliedEmptyBody: {
+    ar: 'رددت على كل تقييماتك. أحسنت!',
+    fr: 'Vous avez répondu à tous vos avis. Bravo !',
+    en: 'You’ve replied to every review. Nice!',
+  },
+
+  // ── Wizard extras (Phase 3) ───────────────────────────────────────────────
+  wizardSearchWilaya: { ar: 'ابحث عن ولاية…', fr: 'Rechercher une wilaya…', en: 'Search a wilaya…' },
+  wizardNoWilaya: { ar: 'لا توجد نتائج', fr: 'Aucun résultat', en: 'No matches' },
+  wizardDiscardTitle: { ar: 'تجاهل المسودة؟', fr: 'Abandonner le brouillon ?', en: 'Discard draft?' },
+  wizardDiscardBody: {
+    ar: 'سيُحفظ تقدّمك تلقائيًا. هل تريد المتابعة لاحقًا أم التجاهل؟',
+    fr: 'Votre progression est enregistrée. Continuer plus tard ou abandonner ?',
+    en: 'Your progress is saved automatically. Continue later or discard?',
+  },
+  wizardSaveExit: { ar: 'حفظ والخروج', fr: 'Enregistrer et quitter', en: 'Save & exit' },
+  wizardDiscard: { ar: 'تجاهل', fr: 'Abandonner', en: 'Discard' },
+  wizardKeepEditing: { ar: 'متابعة التعديل', fr: 'Continuer', en: 'Keep editing' },
+
+  // ── Amenity category headings (DB slugs → localized) ──────────────────────
+  amCatEssentials: { ar: 'الأساسيات', fr: 'Essentiels', en: 'Essentials' },
+  amCatFeatures: { ar: 'المميزات', fr: 'Caractéristiques', en: 'Features' },
+  amCatSafety: { ar: 'السلامة', fr: 'Sécurité', en: 'Safety' },
+  amCatLocation: { ar: 'الموقع', fr: 'Emplacement', en: 'Location' },
+  amCatAccessibility: { ar: 'إمكانية الوصول', fr: 'Accessibilité', en: 'Accessibility' },
+  amCatKitchen: { ar: 'المطبخ', fr: 'Cuisine', en: 'Kitchen' },
+  amCatBathroom: { ar: 'الحمام', fr: 'Salle de bain', en: 'Bathroom' },
+  amCatOutdoor: { ar: 'في الخارج', fr: 'Extérieur', en: 'Outdoor' },
+  amCatEntertainment: { ar: 'الترفيه', fr: 'Divertissement', en: 'Entertainment' },
+  amCatOther: { ar: 'أخرى', fr: 'Autres', en: 'Other' },
+
+  // ── Cancellation tier labels + refund windows (policy/review) ─────────────
+  tierFlexibleLabel: { ar: 'مرنة', fr: 'Flexible', en: 'Flexible' },
+  tierModerateLabel: { ar: 'متوسطة', fr: 'Modérée', en: 'Moderate' },
+  tierStrictLabel: { ar: 'صارمة', fr: 'Stricte', en: 'Strict' },
+  tierFlexibleWindow: {
+    ar: 'استرداد كامل حتى 24 ساعة قبل الوصول.',
+    fr: 'Remboursement intégral jusqu’à 24 h avant l’arrivée.',
+    en: 'Full refund up to 24h before check-in.',
+  },
+  tierModerateWindow: {
+    ar: 'استرداد كامل حتى 5 أيام قبل الوصول.',
+    fr: 'Remboursement intégral jusqu’à 5 jours avant l’arrivée.',
+    en: 'Full refund up to 5 days before check-in.',
+  },
+  tierStrictWindow: {
+    ar: 'استرداد 50% حتى 7 أيام قبل الوصول، ثم لا استرداد.',
+    fr: 'Remboursement de 50 % jusqu’à 7 jours avant, puis aucun.',
+    en: '50% refund up to 7 days before, none after.',
   },
 } as const satisfies Record<string, LMessage>;

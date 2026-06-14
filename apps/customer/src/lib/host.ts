@@ -118,6 +118,22 @@ export async function listUpcomingStays(): Promise<HostBooking[]> {
   return ((data ?? []) as unknown as RawHostBooking[]).map(toHostBooking);
 }
 
+/**
+ * Bookings the host accepted that are now awaiting guest payment
+ * (status='awaiting_payment'), soonest payment deadline first. Without this view
+ * these accepted-but-unpaid bookings would vanish from both Requests (no longer
+ * 'requested') and Upcoming (not yet 'confirmed').
+ */
+export async function listAwaitingPaymentStays(): Promise<HostBooking[]> {
+  const { data, error } = await supabaseClient
+    .from('bookings')
+    .select(HOST_BOOKING_SELECT)
+    .eq('status', 'awaiting_payment')
+    .order('payment_deadline', { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return ((data ?? []) as unknown as RawHostBooking[]).map(toHostBooking);
+}
+
 /** Accept a pending booking request → moves it toward payment/confirmation. */
 export async function acceptBookingRequest(bookingId: string): Promise<void> {
   const { error } = await supabaseClient.rpc('accept_booking_request', {
@@ -143,6 +159,15 @@ export async function cancelBooking(bookingId: string, reason: string): Promise<
   const { data, error } = await supabaseClient.rpc('cancel_booking', {
     p_booking_id: bookingId,
     p_reason: reason,
+  });
+  if (error) throw new Error(error.message);
+  return typeof data === 'number' ? data : 0;
+}
+
+/** Preview the guest refund (whole DZD) for cancelling a booking now. */
+export async function quoteRefund(bookingId: string): Promise<number> {
+  const { data, error } = await supabaseClient.rpc('quote_refund', {
+    p_booking_id: bookingId,
   });
   if (error) throw new Error(error.message);
   return typeof data === 'number' ? data : 0;
@@ -187,9 +212,10 @@ export async function listAvailability(
 
 export interface SetAvailabilityRangeInput {
   roomTypeId: string;
-  /** YYYY-MM-DD (inclusive). */
+  /** First night to edit, YYYY-MM-DD (inclusive). */
   from: string;
-  /** YYYY-MM-DD (inclusive). */
+  /** Last night to edit, YYYY-MM-DD (INCLUSIVE). Converted to the exclusive
+   *  `p_to` the RPC expects internally. */
   to: string;
   /** Close (block) or open the range. */
   isClosed?: boolean;
@@ -199,9 +225,27 @@ export interface SetAvailabilityRangeInput {
   minStay?: number | null;
 }
 
+/** Add `days` to a YYYY-MM-DD date string, returning a YYYY-MM-DD string. */
+function addDaysStr(dateStr: string, days: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+  const d = m
+    ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    : new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const mo = `${d.getMonth() + 1}`.padStart(2, '0');
+  const da = `${d.getDate()}`.padStart(2, '0');
+  return `${y}-${mo}-${da}`;
+}
+
 /**
  * Bulk-edit availability across a date range via the server RPC (one call per
  * range). Returns the number of affected day-rows.
+ *
+ * The `set_availability_range` RPC treats `p_to` as EXCLUSIVE and raises
+ * INVALID_RANGE when `p_to <= p_from` (it loops `while v_d < p_to`). Callers
+ * pass an INCLUSIVE `to` (the last night to edit); we add one day so that last
+ * night is written and single-day selections (from === to) work.
  */
 export async function setAvailabilityRange(
   input: SetAvailabilityRangeInput,
@@ -216,7 +260,8 @@ export async function setAvailabilityRange(
   } = {
     p_room_type_id: input.roomTypeId,
     p_from: input.from,
-    p_to: input.to,
+    // Inclusive `to` → exclusive `p_to` (the night after the last one we edit).
+    p_to: addDaysStr(input.to, 1),
   };
   if (typeof input.isClosed === 'boolean') args.p_is_closed = input.isClosed;
   if (typeof input.priceOverrideDzd === 'number') {
@@ -227,6 +272,58 @@ export async function setAvailabilityRange(
   const { data, error } = await supabaseClient.rpc('set_availability_range', args);
   if (error) throw new Error(error.message);
   return typeof data === 'number' ? data : 0;
+}
+
+/**
+ * Clear the nightly price override (back to the room's base price) for an
+ * inclusive date range, via a direct UPDATE (the RPC only ever COALESCEs an
+ * override in and can't clear it). RLS scopes this to the host's own rooms.
+ */
+export async function clearAvailabilityOverride(
+  roomTypeId: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  const { error } = await supabaseClient
+    .from('availability')
+    .update({ price_override_dzd: null })
+    .eq('room_type_id', roomTypeId)
+    .gte('date', from)
+    .lte('date', to);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Booked day-dates (YYYY-MM-DD) for one room type within a window — for the
+ * calendar bookings overlay. Counts money-committed stays (confirmed/checked_in)
+ * and accepted-unpaid (awaiting_payment) holds.
+ */
+export async function listBookedDates(
+  roomTypeId: string,
+  from: string,
+  to: string,
+): Promise<string[]> {
+  const { data, error } = await supabaseClient
+    .from('bookings')
+    .select('check_in, check_out, status')
+    .eq('room_type_id', roomTypeId)
+    .in('status', ['confirmed', 'checked_in', 'awaiting_payment'])
+    .lt('check_in', to)
+    .gt('check_out', from);
+  if (error) throw error;
+  const dates = new Set<string>();
+  for (const b of (data ?? []) as { check_in: string; check_out: string }[]) {
+    let d = new Date(`${b.check_in}T00:00:00`);
+    const end = new Date(`${b.check_out}T00:00:00`); // checkout exclusive
+    while (d < end) {
+      const y = d.getFullYear();
+      const m = `${d.getMonth() + 1}`.padStart(2, '0');
+      const day = `${d.getDate()}`.padStart(2, '0');
+      dates.add(`${y}-${m}-${day}`);
+      d = new Date(d.getTime() + 86_400_000);
+    }
+  }
+  return [...dates];
 }
 
 // ---------------------------------------------------------------------------

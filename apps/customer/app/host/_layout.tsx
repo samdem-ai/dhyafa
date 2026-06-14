@@ -1,13 +1,17 @@
 /**
  * Host area layout. Gates the whole `host/` group behind auth — if there's no
  * session once it resolves, redirect to sign-in (with a redirect back to host).
+ *
+ * Every host screen renders its own <Header> (localized, with a persistent
+ * "Switch to Travelling" affordance on the dashboard), so the stack itself is
+ * headerless. The hardcoded Arabic native title is gone.
  */
 
 import { Redirect, Stack } from 'expo-router';
-import { View, ActivityIndicator, StyleSheet, I18nManager } from 'react-native';
+import { View, StyleSheet, I18nManager } from 'react-native';
 import { useSession } from '@/lib/auth';
+import { Splash } from '@/ui';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 export default function HostLayout() {
   const { loading, user } = useSession();
@@ -15,7 +19,7 @@ export default function HostLayout() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={theme.color.primary} />
+        <Splash />
       </View>
     );
   }
@@ -27,25 +31,11 @@ export default function HostLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: theme.color.surface },
-        headerTintColor: theme.color.text,
-        headerTitleStyle: {
-          fontFamily: RN_FONTS.arabicSemiBold,
-          color: theme.color.text,
-        },
-        headerBackButtonDisplayMode: 'minimal',
+        headerShown: false,
         contentStyle: { backgroundColor: theme.color.bg },
         animation: I18nManager.isRTL ? 'slide_from_left' : 'slide_from_right',
       }}
-    >
-      <Stack.Screen name="index" options={{ title: 'استضافتي' }} />
-      <Stack.Screen name="new" options={{ headerShown: false }} />
-      <Stack.Screen name="reviews" options={{ headerShown: false }} />
-      <Stack.Screen name="reservations" options={{ headerShown: false }} />
-      <Stack.Screen name="calendar" options={{ headerShown: false }} />
-      <Stack.Screen name="earnings" options={{ headerShown: false }} />
-      <Stack.Screen name="performance" options={{ headerShown: false }} />
-    </Stack>
+    />
   );
 }
 

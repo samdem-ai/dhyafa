@@ -12,16 +12,16 @@
  */
 
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, I18nManager } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { formatDZD, type Locale } from '@dyafa/i18n';
+import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
 import { useWizard, emptyRoom, type RoomTypeDraft } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
-import { TextField, Card } from '@/components/fields';
+import { TextField, LocaleTabs, Card } from '@/components/fields';
 import { FieldLabel } from '@/components/ui';
+import { Text } from '@/ui';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const COPY = {
   titleSingle: { ar: 'التسعير', fr: 'Tarification', en: 'Pricing' },
@@ -59,9 +59,26 @@ function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
   return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
 }
 
+/**
+ * Parse a user-typed amount to a whole number. Strips spaces + thousands
+ * separators (',' '.' '٬' ' ') used as grouping, keeps a single decimal point,
+ * then floors. So '8 000' → 8000, '8,000' → 8000, and '8.5' → 8 (NOT 85, the
+ * old strip-all-non-digits bug).
+ */
 function toInt(v: string): number {
-  const n = parseInt(v.replace(/[^\d]/g, ''), 10);
-  return Number.isFinite(n) ? n : 0;
+  if (!v) return 0;
+  // Normalize Arabic-Indic digits to Latin.
+  const latin = v.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+  // Remove grouping separators (spaces, commas, Arabic thousands sep), keep '.'.
+  const cleaned = latin.replace(/[\s,٬]/g, '');
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? Math.floor(n) : 0;
+}
+
+/** Display a typed amount with locale thousands grouping (or '' when empty/0). */
+function formatThousands(v: string, locale: Locale): string {
+  const n = toInt(v);
+  return n > 0 ? formatNumber(n, locale) : '';
 }
 
 function roomValid(r: RoomTypeDraft): boolean {
@@ -73,12 +90,23 @@ export default function StepPricing() {
   const locale = (i18n.language ?? 'en') as Locale;
   const { draft, setRooms } = useWizard();
   const [touched, setTouched] = useState(false);
+  // Which locale the room-name field edits (shared across rooms).
+  const [nameTab, setNameTab] = useState<Locale>(locale);
 
   const isSingle = draft.listingKind === 'single_unit';
   const rooms = draft.rooms.length > 0 ? draft.rooms : [emptyRoom(true)];
 
   function updateRoom(idx: number, patch: Partial<RoomTypeDraft>) {
     setRooms(rooms.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  }
+
+  function roomNameFor(r: RoomTypeDraft, l: Locale): string {
+    return l === 'ar' ? r.nameAr : l === 'fr' ? r.nameFr : r.nameEn;
+  }
+  function setRoomName(idx: number, l: Locale, t: string) {
+    if (l === 'ar') updateRoom(idx, { nameAr: t });
+    else if (l === 'fr') updateRoom(idx, { nameFr: t });
+    else updateRoom(idx, { nameEn: t });
   }
   function addRoom() {
     setRooms([...rooms, emptyRoom(false)]);
@@ -113,30 +141,36 @@ export default function StepPricing() {
           <Card key={room.key}>
             {!isSingle && (
               <View style={styles.roomHeader}>
-                <Text style={styles.roomHeaderText}>
-                  {pick(COPY.roomN, locale)} {idx + 1}
+                <Text variant="title" weight="semibold">
+                  {pick(COPY.roomN, locale)} {formatNumber(idx + 1, locale)}
                 </Text>
                 {rooms.length > 1 ? (
                   <Pressable onPress={() => removeRoom(idx)} hitSlop={6}>
-                    <Text style={styles.removeText}>{pick(COPY.remove, locale)}</Text>
+                    <Text variant="body-sm" weight="medium" color="error">
+                      {pick(COPY.remove, locale)}
+                    </Text>
                   </Pressable>
                 ) : null}
               </View>
             )}
 
             {!isSingle && (
-              <TextField
-                label={pick(COPY.roomName, locale)}
-                value={room.nameAr || room.nameFr || room.nameEn}
-                onChangeText={(t) => updateRoom(idx, { nameAr: t })}
-                placeholder={pick(COPY.roomNamePh, locale)}
-              />
+              <>
+                <FieldLabel label={pick(COPY.roomName, locale)} />
+                <LocaleTabs active={nameTab} onChange={setNameTab} />
+                <TextField
+                  value={roomNameFor(room, nameTab)}
+                  onChangeText={(t) => setRoomName(idx, nameTab, t)}
+                  placeholder={pick(COPY.roomNamePh, locale)}
+                />
+              </>
             )}
 
             <View style={styles.row}>
               <View style={styles.col}>
                 <TextField
                   label={pick(COPY.basePrice, locale)}
+                  hint={formatThousands(room.basePriceDzd, locale) || undefined}
                   value={room.basePriceDzd}
                   onChangeText={(t) => updateRoom(idx, { basePriceDzd: t })}
                   placeholder="8000"
@@ -186,9 +220,11 @@ export default function StepPricing() {
             )}
 
             {price > 0 ? (
-              <Text style={styles.preview}>
+              <Text variant="body-sm" color="textMuted">
                 {pick(COPY.preview, locale)}{' '}
-                <Text style={styles.previewPrice}>{formatDZD(price, locale)}</Text>{' '}
+                <Text variant="body-sm" weight="bold" color="accent">
+                  {formatDZD(price, locale)}
+                </Text>{' '}
                 {pick(COPY.perNight, locale)}
               </Text>
             ) : null}
@@ -198,12 +234,18 @@ export default function StepPricing() {
 
       {!isSingle ? (
         <Pressable accessibilityRole="button" onPress={addRoom} style={styles.addBtn}>
-          <Text style={styles.addText}>{pick(COPY.addRoom, locale)}</Text>
+          <Text variant="body" weight="semibold" color="primary">
+            {pick(COPY.addRoom, locale)}
+          </Text>
         </Pressable>
       ) : null}
 
       {touched && !allValid ? (
-        <Text style={styles.error}>{pick(COPY.needPrice, locale)}</Text>
+        <View style={styles.errorBox}>
+          <Text variant="body-sm" color="error" center>
+            {pick(COPY.needPrice, locale)}
+          </Text>
+        </View>
       ) : null}
     </WizardChrome>
   );
@@ -215,30 +257,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  roomHeaderText: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-  },
-  removeText: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
-  },
   row: { flexDirection: 'row', gap: theme.space.md },
   col: { flex: 1 },
-  preview: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
-  previewPrice: {
-    fontFamily: RN_FONTS.bodyBold,
-    color: theme.color.accent,
-    fontWeight: '700',
-  },
   addBtn: {
     borderWidth: 2,
     borderStyle: 'dashed',
@@ -247,19 +267,9 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space.lg,
     alignItems: 'center',
   },
-  addText: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    color: theme.color.primary,
-    fontWeight: '600',
-  },
-  error: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
+  errorBox: {
     backgroundColor: theme.color.errorBg,
     padding: theme.space.md,
     borderRadius: theme.radius.md,
-    textAlign: 'center',
   },
 });

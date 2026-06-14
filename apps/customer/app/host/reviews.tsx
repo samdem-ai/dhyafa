@@ -1,28 +1,21 @@
 /**
- * Host reviews (M3).
+ * Host reviews (Phase 3 rework).
  *
- * Lists every review on the signed-in host's own properties (newest first),
- * each showing the score, category breakdown, comment, author, and property
- * title. Reviews without a reply get a "Reply" composer that calls
- * host_reply_review; once posted, the reply renders inline.
+ * Aggregate header (average score + total reviews), a filter (All / Unreplied),
+ * and a list of reviews on the host's properties (newest first). Reviews without
+ * a reply get a composer that calls host_reply_review; once posted the reply
+ * renders inline and the row drops out of the Unreplied filter.
  *
- * Designed skeleton + empty + error states; pull-to-refresh re-fetches.
+ * Built on @/ui (Screen/Header/Text/Card/Button/SegmentedControl/RatingStars/
+ * Skeleton/Empty/Error), full RTL, pull-to-refresh. localizedName is imported
+ * from the single canonical source (@/lib/listings).
  */
 
-import { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Pressable,
-  TextInput,
-  RefreshControl,
-  SafeAreaView,
-  I18nManager,
-} from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import { View, StyleSheet, FlatList, TextInput, RefreshControl, I18nManager } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Star } from 'lucide-react-native';
 import { formatNumber, type Locale } from '@dyafa/i18n';
 import {
   listHostReviews,
@@ -31,15 +24,28 @@ import {
   type HostReviewItem,
   type ReviewCategory,
 } from '@/lib/reviews';
-import { localizedName } from '@/lib/discovery';
-import { StarRating } from '@/components/StarRating';
-import { SkeletonList, ErrorState, EmptyState, PrimaryButton } from '@/components/ui';
+import { localizedName } from '@/lib/listings';
+import {
+  Screen,
+  Header,
+  Text,
+  Card,
+  Button,
+  RatingStars,
+  SegmentedControl,
+  SkeletonList,
+  ErrorState,
+  EmptyState,
+  haptics,
+} from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { formatDateTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
 import { RN_FONTS } from '@/lib/fonts';
 
 const textAlign = I18nManager.isRTL ? 'right' : 'left';
+
+type Filter = 'all' | 'unreplied';
 
 const CAT_LABEL: Record<ReviewCategory, keyof typeof L> = {
   cleanliness: 'reviewCleanliness',
@@ -57,12 +63,12 @@ export default function HostReviewsScreen() {
   const [data, setData] = useState<HostReviewItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [filter, setFilter] = useState<Filter>('all');
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const rows = await listHostReviews();
-      setData(rows);
+      setData(await listHostReviews());
     } catch {
       setError(pick(L.loadError, locale));
       setData([]);
@@ -81,7 +87,6 @@ export default function HostReviewsScreen() {
     setRefreshing(false);
   }, [load]);
 
-  /** Patch one review row in place after a reply is posted. */
   const onReplied = useCallback((reviewId: string, body: string, createdAt: string) => {
     setData((prev) =>
       (prev ?? []).map((r) =>
@@ -90,37 +95,84 @@ export default function HostReviewsScreen() {
     );
   }, []);
 
+  const all = data ?? [];
+  const average = all.length > 0 ? all.reduce((s, r) => s + r.overall, 0) / all.length : 0;
+  const visible = useMemo(
+    () => (filter === 'unreplied' ? all.filter((r) => !r.reply) : all),
+    [all, filter],
+  );
+
+  const FILTERS: { value: Filter; label: string }[] = [
+    { value: 'all', label: pick(L.hostReviewsAll, locale) },
+    { value: 'unreplied', label: pick(L.hostReviewsUnreplied, locale) },
+  ];
+
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.topBar}>
-        <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.topBack}>{I18nManager.isRTL ? '→' : '←'}</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>{pick(L.hostReviewsTitle, locale)}</Text>
-        <View style={styles.topSpacer} />
-      </View>
+    <Screen>
+      <Header title={pick(L.hostReviewsTitle, locale)} />
 
       {data === null ? (
         <SkeletonList count={4} />
-      ) : error && data.length === 0 ? (
+      ) : error && all.length === 0 ? (
         <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.search, locale)} />
       ) : (
         <FlatList
-          data={data}
+          data={visible}
           keyExtractor={(r) => r.id}
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.color.primary} colors={[theme.color.primary]} />
+          }
+          ListHeaderComponent={
+            all.length > 0 ? (
+              <View style={styles.headerWrap}>
+                <Card>
+                  <View style={styles.aggregateRow}>
+                    <View style={styles.aggregateCol}>
+                      <View style={styles.avgRow}>
+                        <Star size={18} color={theme.color.ratingStar} fill={theme.color.ratingStar} />
+                        <Text variant="title" weight="bold" style={styles.ltr}>
+                          {average.toFixed(1)}
+                        </Text>
+                      </View>
+                      <Text variant="caption" color="textMuted">
+                        {pick(L.hostReviewsAverage, locale)}
+                      </Text>
+                    </View>
+                    <View style={styles.aggregateDivider} />
+                    <View style={styles.aggregateCol}>
+                      <Text variant="title" weight="bold">
+                        {formatNumber(all.length, locale)}
+                      </Text>
+                      <Text variant="caption" color="textMuted">
+                        {pick(L.hostReviewsTotal, locale)}
+                      </Text>
+                    </View>
+                  </View>
+                </Card>
+                <View style={styles.filterWrap}>
+                  <SegmentedControl options={FILTERS} value={filter} onChange={setFilter} />
+                </View>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
-            <EmptyState
-              emoji="⭐"
-              title={pick(L.hostReviewsEmptyTitle, locale)}
-              subtitle={pick(L.hostReviewsEmptyBody, locale)}
-            />
+            filter === 'unreplied' ? (
+              <EmptyState
+                title={pick(L.hostReviewsUnrepliedEmptyTitle, locale)}
+                subtitle={pick(L.hostReviewsUnrepliedEmptyBody, locale)}
+              />
+            ) : (
+              <EmptyState
+                title={pick(L.hostReviewsEmptyTitle, locale)}
+                subtitle={pick(L.hostReviewsEmptyBody, locale)}
+              />
+            )
           }
           renderItem={({ item }) => <HostReviewCard review={item} locale={locale} onReplied={onReplied} />}
         />
       )}
-    </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -156,6 +208,7 @@ function HostReviewCard({
     setError(null);
     try {
       await hostReplyReview(review.id, text);
+      haptics.success();
       onReplied(review.id, text, new Date().toISOString());
       setComposing(false);
       setBody('');
@@ -167,48 +220,54 @@ function HostReviewCard({
   }
 
   return (
-    <View style={styles.card}>
+    <Card>
       <View style={styles.cardHeader}>
         <View style={styles.scoreWrap}>
-          <Text style={styles.scoreStar}>★</Text>
-          <Text style={styles.scoreValue}>{formatNumber(review.overall, locale)}</Text>
+          <Star size={16} color={theme.color.ratingStar} fill={theme.color.ratingStar} />
+          <Text variant="title" weight="bold">
+            {formatNumber(review.overall, locale)}
+          </Text>
         </View>
         {propertyTitle ? (
-          <Text style={styles.cardProperty} numberOfLines={1}>
+          <Text variant="body-sm" color="textMuted" numberOfLines={1} style={styles.cardProperty}>
             {propertyTitle}
           </Text>
         ) : null}
       </View>
 
-      <Text style={styles.author}>
+      <Text variant="caption" color="textMuted">
         {review.author?.display_name ?? ''}
         {review.author?.display_name ? ' · ' : ''}
         {formatDateTime(review.created_at, locale)}
       </Text>
 
-      {/* Category breakdown */}
       <View style={styles.cats}>
         {REVIEW_CATEGORIES.map((cat) => {
           const v = review[cat];
           if (typeof v !== 'number') return null;
           return (
             <View key={cat} style={styles.catRow}>
-              <Text style={styles.catLabel}>{pick(L[CAT_LABEL[cat]], locale)}</Text>
-              <StarRating value={v} size={14} />
+              <Text variant="body-sm" color="textMuted">
+                {pick(L[CAT_LABEL[cat]], locale)}
+              </Text>
+              <RatingStars value={v} size={14} />
             </View>
           );
         })}
       </View>
 
       {(review.comment_text ?? '').trim().length > 0 ? (
-        <Text style={styles.comment}>{review.comment_text}</Text>
+        <Text variant="body" style={styles.comment}>
+          {review.comment_text}
+        </Text>
       ) : null}
 
-      {/* Reply: existing, or a composer */}
       {review.reply ? (
         <View style={styles.replyBox}>
-          <Text style={styles.replyLabel}>{pick(L.hostReply, locale)}</Text>
-          <Text style={styles.replyText}>{review.reply.body}</Text>
+          <Text variant="caption" weight="semibold" color="primary">
+            {pick(L.hostReply, locale)}
+          </Text>
+          <Text variant="body-sm">{review.reply.body}</Text>
         </View>
       ) : composing ? (
         <View style={styles.composer}>
@@ -221,84 +280,42 @@ function HostReviewCard({
             multiline
             accessibilityLabel={pick(L.reply, locale)}
           />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <View style={styles.composerActions}>
-            <PrimaryButton
-              label={pick(L.replySubmit, locale)}
-              onPress={() => void onPost()}
-              loading={busy}
-              disabled={busy || body.trim().length === 0}
-            />
-          </View>
+          {error ? (
+            <Text variant="body-sm" color="error">
+              {error}
+            </Text>
+          ) : null}
+          <Button label={pick(L.replySubmit, locale)} onPress={() => void onPost()} loading={busy} disabled={busy || body.trim().length === 0} />
         </View>
       ) : (
         <View style={styles.replyCta}>
-          <PrimaryButton label={pick(L.reply, locale)} variant="secondary" onPress={() => setComposing(true)} />
+          <Button label={pick(L.reply, locale)} variant="secondary" onPress={() => setComposing(true)} />
         </View>
       )}
-    </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
-
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.md,
-    gap: theme.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.color.border,
-    backgroundColor: theme.color.surface,
-  },
-  topBack: { fontFamily: RN_FONTS.bodyBold, fontSize: theme.fontSize['heading-3'], color: theme.color.text },
-  topTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: 'center',
-  },
-  topSpacer: { width: 24 },
-
+  ltr: { writingDirection: 'ltr' },
   listContent: { padding: theme.space.xl, gap: theme.space.md, flexGrow: 1 },
-  card: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
-    gap: theme.space.sm,
-    ...theme.shadow.card,
-  },
+  headerWrap: { gap: theme.space.md, marginBottom: theme.space.md },
+
+  aggregateRow: { flexDirection: 'row', alignItems: 'center' },
+  aggregateCol: { flex: 1, alignItems: 'center', gap: 2 },
+  aggregateDivider: { width: 1, alignSelf: 'stretch', backgroundColor: theme.color.border },
+  avgRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
+  filterWrap: {},
+
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.sm,
   },
-  scoreWrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  scoreStar: { fontSize: 16, color: theme.color.ratingStar },
-  scoreValue: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '700',
-    color: theme.color.text,
-  },
-  cardProperty: {
-    flexShrink: 1,
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign: I18nManager.isRTL ? 'left' : 'right',
-  },
-  author: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign,
-  },
+  scoreWrap: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
+  cardProperty: { flexShrink: 1, textAlign: I18nManager.isRTL ? 'left' : 'right' },
+
   cats: { gap: theme.space.xs, marginTop: theme.space.xs },
   catRow: {
     flexDirection: 'row',
@@ -306,20 +323,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: theme.space.md,
   },
-  catLabel: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  comment: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    lineHeight: theme.lineHeight.body,
-    textAlign,
-    marginTop: theme.space.xs,
-  },
+  comment: { marginTop: theme.space.xs },
 
   replyBox: {
     marginTop: theme.space.sm,
@@ -328,21 +332,6 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     gap: 2,
   },
-  replyLabel: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.caption,
-    fontWeight: '600',
-    color: theme.color.primary,
-    textAlign,
-  },
-  replyText: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
-    lineHeight: theme.lineHeight['body-sm'],
-    textAlign,
-  },
-
   replyCta: { marginTop: theme.space.sm },
   composer: { marginTop: theme.space.sm, gap: theme.space.sm },
   input: {
@@ -354,15 +343,8 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space.md,
     minHeight: 90,
     textAlignVertical: 'top',
-    fontFamily: RN_FONTS.arabicRegular,
+    fontFamily: I18nManager.isRTL ? RN_FONTS.arabicRegular : RN_FONTS.bodyRegular,
     fontSize: theme.fontSize.body,
     color: theme.color.text,
-  },
-  composerActions: { alignItems: 'stretch' },
-  error: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
-    textAlign,
   },
 });

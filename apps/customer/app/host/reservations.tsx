@@ -1,33 +1,31 @@
 /**
- * Host reservations (M4).
+ * Host reservations (Phase 3 rework).
  *
- * Two segments:
- *   - Requests  — incoming bookings (status='requested'); each card has
- *     Accept / Decline (accept_booking_request / decline_booking_request).
- *   - Upcoming  — confirmed / checked-in stays with guest name, dates, payout.
+ * Three segments:
+ *   - Requests          — status='requested'; Accept / Decline (with reason) + message guest.
+ *   - Awaiting payment   — status='awaiting_payment' (accepted, unpaid); shows the
+ *                          payment deadline so these no longer vanish from view.
+ *   - Upcoming           — confirmed / checked-in stays; message guest.
  *
- * Pull-to-refresh, designed skeletons, and empty/error states throughout. A row
- * action accepts/declines optimistically (removing the card on success) and
- * surfaces a localized error inline on failure. Both tabs deep-link to the
- * guest thread via the existing conversation flow.
+ * Built on @/ui (Screen/Header/Text/Card/Button/StatusPill/SegmentedControl/
+ * ConfirmSheet/Toast/Skeleton/Empty/Error). Optimistic accept/decline reconciled
+ * with a refetch. Decline captures a reason via a ConfirmSheet + reason field.
+ *
+ * TODO(host-stay-lifecycle): the Upcoming tab will gain Check-in / Check-out /
+ * No-show actions once the parent wires the host_check_in / host_check_out /
+ * host_mark_no_show RPCs (migration 20260603130000 exists but the generated
+ * Database types don't expose them yet, so calling them now wouldn't typecheck).
  */
 
 import { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  SafeAreaView,
-  I18nManager,
-} from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { MessageCircle } from 'lucide-react-native';
 import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
 import {
   listBookingRequests,
+  listAwaitingPaymentStays,
   listUpcomingStays,
   acceptBookingRequest,
   declineBookingRequest,
@@ -35,24 +33,46 @@ import {
 } from '@/lib/host';
 import { getOrCreateConversation } from '@/lib/messaging';
 import { localizedName } from '@/lib/listings';
-import { BookingStatusBadge } from '@/components/discovery';
-import { PrimaryButton, SkeletonList, ErrorState, EmptyState } from '@/components/ui';
+import {
+  Screen,
+  Header,
+  Text,
+  Card,
+  Button,
+  StatusPill,
+  statusTone,
+  SegmentedControl,
+  BottomSheet,
+  TextField,
+  SkeletonList,
+  ErrorState,
+  EmptyState,
+  useToast,
+  haptics,
+} from '@/ui';
 import { L, pick, type LMessage } from '@/lib/copy';
-import { formatRange } from '@/lib/dateFormat';
+import { formatRange, formatDateTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
+type Tab = 'requests' | 'awaiting' | 'upcoming';
 
-type Tab = 'requests' | 'upcoming';
-const TABS: { key: Tab; label: LMessage }[] = [
-  { key: 'requests', label: L.hostTabRequests },
-  { key: 'upcoming', label: L.hostTabUpcoming },
-];
+const STATUS_LABEL: Record<string, LMessage> = {
+  requested: L.st_requested,
+  awaiting_payment: L.st_awaiting_payment,
+  confirmed: L.st_confirmed,
+  checked_in: L.st_checked_in,
+  completed: L.st_completed,
+};
+
+function statusLabel(status: string, locale: Locale): string {
+  const m = STATUS_LABEL[status];
+  return m ? pick(m, locale) : status;
+}
 
 export default function HostReservationsScreen() {
   const { i18n } = useTranslation('common');
   const locale = (i18n.language ?? 'en') as Locale;
+  const toast = useToast();
 
   const [tab, setTab] = useState<Tab>('requests');
   const [data, setData] = useState<HostBooking[] | null>(null);
@@ -63,7 +83,12 @@ export default function HostReservationsScreen() {
     async (t: Tab) => {
       setError(null);
       try {
-        const rows = t === 'requests' ? await listBookingRequests() : await listUpcomingStays();
+        const rows =
+          t === 'requests'
+            ? await listBookingRequests()
+            : t === 'awaiting'
+              ? await listAwaitingPaymentStays()
+              : await listUpcomingStays();
         setData(rows);
       } catch {
         setError(pick(L.loadError, locale));
@@ -86,76 +111,83 @@ export default function HostReservationsScreen() {
     setRefreshing(false);
   }, [tab, load]);
 
-  /** Drop a card after it's accepted/declined. */
-  const removeBooking = useCallback((id: string) => {
-    setData((prev) => (prev ?? []).filter((b) => b.id !== id));
-  }, []);
+  // After an optimistic accept/decline, reconcile with a fresh fetch (a request
+  // that became awaiting_payment should appear under the Awaiting tab).
+  const reconcile = useCallback(() => {
+    void load(tab);
+  }, [tab, load]);
+
+  const TABS: { value: Tab; label: string }[] = [
+    { value: 'requests', label: pick(L.hostTabRequests, locale) },
+    { value: 'awaiting', label: pick(L.hostTabAwaiting, locale) },
+    { value: 'upcoming', label: pick(L.hostTabUpcoming, locale) },
+  ];
+
+  function emptyFor(t: Tab) {
+    if (t === 'requests')
+      return (
+        <EmptyState
+          title={pick(L.hostRequestsEmptyTitle, locale)}
+          subtitle={pick(L.hostRequestsEmptyBody, locale)}
+        />
+      );
+    if (t === 'awaiting')
+      return (
+        <EmptyState
+          title={pick(L.hostAwaitingEmptyTitle, locale)}
+          subtitle={pick(L.hostAwaitingEmptyBody, locale)}
+        />
+      );
+    return (
+      <EmptyState
+        title={pick(L.hostUpcomingEmptyTitle, locale)}
+        subtitle={pick(L.hostUpcomingEmptyBody, locale)}
+      />
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.topBar}>
-        <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.topBack}>{I18nManager.isRTL ? '→' : '←'}</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>{pick(L.hostReservationsTitle, locale)}</Text>
-        <View style={styles.topSpacer} />
-      </View>
+    <Screen>
+      <Header title={pick(L.hostReservationsTitle, locale)} />
 
-      <View style={styles.segment}>
-        {TABS.map((t) => {
-          const active = t.key === tab;
-          return (
-            <Pressable
-              key={t.key}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              onPress={() => setTab(t.key)}
-              style={[styles.segmentItem, active && styles.segmentItemActive]}
-            >
-              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                {pick(t.label, locale)}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={styles.segmentWrap}>
+        <SegmentedControl options={TABS} value={tab} onChange={setTab} />
       </View>
 
       {data === null ? (
         <SkeletonList count={3} />
       ) : error && data.length === 0 ? (
-        <ErrorState message={error} onRetry={() => void load(tab)} retryLabel={pick(L.search, locale)} />
+        <ErrorState
+          message={error}
+          onRetry={() => void load(tab)}
+          retryLabel={pick(L.search, locale)}
+        />
       ) : (
         <FlatList
           data={data}
           keyExtractor={(b) => b.id}
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}
-          ListEmptyComponent={
-            tab === 'requests' ? (
-              <EmptyState
-                emoji="📥"
-                title={pick(L.hostRequestsEmptyTitle, locale)}
-                subtitle={pick(L.hostRequestsEmptyBody, locale)}
-              />
-            ) : (
-              <EmptyState
-                emoji="📅"
-                title={pick(L.hostUpcomingEmptyTitle, locale)}
-                subtitle={pick(L.hostUpcomingEmptyBody, locale)}
-              />
-            )
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void onRefresh()}
+              tintColor={theme.color.primary}
+              colors={[theme.color.primary]}
+            />
           }
+          ListEmptyComponent={emptyFor(tab)}
           renderItem={({ item }) => (
             <ReservationCard
               booking={item}
               locale={locale}
               tab={tab}
-              onResolved={removeBooking}
+              onReconcile={reconcile}
+              toastShow={toast.show}
             />
           )}
         />
       )}
-    </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -163,15 +195,19 @@ function ReservationCard({
   booking,
   locale,
   tab,
-  onResolved,
+  onReconcile,
+  toastShow,
 }: {
   booking: HostBooking;
   locale: Locale;
   tab: Tab;
-  onResolved: (id: string) => void;
+  onReconcile: () => void;
+  toastShow: (opts: { message: string; tone?: 'success' | 'error' }) => void;
 }) {
   const [busy, setBusy] = useState<null | 'accept' | 'decline' | 'message'>(null);
   const [error, setError] = useState<string | null>(null);
+  const [declineSheet, setDeclineSheet] = useState(false);
+  const [reason, setReason] = useState('');
 
   const title = booking.property
     ? localizedName(
@@ -201,7 +237,9 @@ function ReservationCard({
     setError(null);
     try {
       await acceptBookingRequest(booking.id);
-      onResolved(booking.id);
+      haptics.success();
+      toastShow({ message: statusLabel('awaiting_payment', locale), tone: 'success' });
+      onReconcile();
     } catch {
       setError(pick(L.hostAcceptFailed, locale));
       setBusy(null);
@@ -212,8 +250,11 @@ function ReservationCard({
     setBusy('decline');
     setError(null);
     try {
-      await declineBookingRequest(booking.id);
-      onResolved(booking.id);
+      await declineBookingRequest(booking.id, reason.trim() || undefined);
+      setDeclineSheet(false);
+      haptics.warning();
+      toastShow({ message: pick(L.st_declined, locale), tone: 'success' });
+      onReconcile();
     } catch {
       setError(pick(L.hostDeclineFailed, locale));
       setBusy(null);
@@ -234,123 +275,151 @@ function ReservationCard({
   }
 
   return (
-    <View style={styles.card}>
+    <Card>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle} numberOfLines={1}>
+        <Text variant="title" weight="semibold" numberOfLines={1} style={styles.flex}>
           {title}
         </Text>
-        <BookingStatusBadge status={booking.status} locale={locale} />
+        <StatusPill label={statusLabel(booking.status, locale)} tone={statusTone(booking.status)} />
       </View>
 
-      <Text style={styles.cardGuest}>
+      <Text variant="body" weight="medium">
         {pick(L.hostGuest, locale)}: {booking.guestName || '—'}
       </Text>
-      {room ? <Text style={styles.cardMeta}>{room}</Text> : null}
-      <Text style={styles.cardMeta}>{range}</Text>
-      <Text style={styles.cardMeta}>
+      {room ? (
+        <Text variant="body-sm" color="textMuted">
+          {room}
+        </Text>
+      ) : null}
+      <Text variant="body-sm" color="textMuted">
+        {range}
+      </Text>
+      <Text variant="body-sm" color="textMuted">
         {pick(L.hostGuests, locale)}: {formatNumber(guestTotal, locale)}
-        {booking.nights ? ` · ${formatNumber(booking.nights, locale)} ${pick(L.hostNights, locale)}` : ''}
+        {booking.nights
+          ? ` · ${formatNumber(booking.nights, locale)} ${pick(L.hostNights, locale)}`
+          : ''}
       </Text>
 
+      {/* Awaiting-payment deadline */}
+      {tab === 'awaiting' && booking.payment_deadline ? (
+        <View style={styles.deadlineRow}>
+          <Text variant="body-sm" color="warning" weight="semibold">
+            {pick(L.hostPayBy, locale)}: {formatDateTime(booking.payment_deadline, locale)}
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.payoutRow}>
-        <Text style={styles.payoutLabel}>{pick(L.hostPayout, locale)}</Text>
-        <Text style={styles.payoutValue}>{formatDZD(booking.host_payout_dzd, locale)}</Text>
+        <Text variant="body-sm" color="textMuted">
+          {pick(L.hostPayout, locale)}
+        </Text>
+        <Text variant="body" weight="bold" style={styles.ltr}>
+          {formatDZD(booking.host_payout_dzd, locale)}
+        </Text>
       </View>
 
       {booking.special_requests ? (
-        <Text style={styles.specialRequests} numberOfLines={3}>
+        <Text variant="body-sm" color="textMuted" style={styles.italic} numberOfLines={3}>
           “{booking.special_requests}”
         </Text>
       ) : null}
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <Text variant="body-sm" color="error">
+          {error}
+        </Text>
+      ) : null}
 
       {tab === 'requests' ? (
-        <View style={styles.actionsRow}>
-          <View style={styles.actionFlex}>
-            <PrimaryButton
-              label={pick(L.hostDecline, locale)}
-              variant="danger"
-              onPress={() => void onDecline()}
-              loading={busy === 'decline'}
+        <>
+          <View style={styles.actionsRow}>
+            <View style={styles.actionFlex}>
+              <Button
+                label={pick(L.hostDecline, locale)}
+                variant="danger"
+                onPress={() => setDeclineSheet(true)}
+                disabled={busy !== null}
+              />
+            </View>
+            <View style={styles.actionFlex}>
+              <Button
+                label={pick(L.hostAccept, locale)}
+                onPress={() => void onAccept()}
+                loading={busy === 'accept'}
+                disabled={busy !== null}
+              />
+            </View>
+          </View>
+          <View style={styles.messageRow}>
+            <Button
+              label={pick(L.hostMessageGuest, locale)}
+              variant="ghost"
+              icon={MessageCircle}
+              onPress={() => void onMessage()}
+              loading={busy === 'message'}
               disabled={busy !== null}
             />
           </View>
-          <View style={styles.actionFlex}>
-            <PrimaryButton
-              label={pick(L.hostAccept, locale)}
-              onPress={() => void onAccept()}
-              loading={busy === 'accept'}
-              disabled={busy !== null}
-            />
-          </View>
-        </View>
+        </>
       ) : (
         <View style={styles.messageRow}>
-          <PrimaryButton
+          <Button
             label={pick(L.hostMessageGuest, locale)}
             variant="secondary"
+            icon={MessageCircle}
             onPress={() => void onMessage()}
             loading={busy === 'message'}
             disabled={busy !== null}
           />
         </View>
       )}
-    </View>
+
+      {/* TODO(host-stay-lifecycle): Check-in / Check-out / No-show buttons go
+          here on the Upcoming tab once host_check_in/out/no_show RPCs are wired. */}
+
+      {/* Decline-with-reason sheet */}
+      <BottomSheet visible={declineSheet} onClose={() => setDeclineSheet(false)} dismissible={busy === null}>
+        <View style={styles.sheetBody}>
+          <Text variant="title" weight="semibold">
+            {pick(L.hostDeclineTitle, locale)}
+          </Text>
+          <TextField
+            label={pick(L.hostDecline, locale)}
+            hint={pick(L.hostDeclineReasonHint, locale)}
+            value={reason}
+            onChangeText={setReason}
+            placeholder={pick(L.hostDeclineReasonHint, locale)}
+            multiline
+          />
+          <View style={styles.sheetActions}>
+            <Button
+              label={pick(L.hostDeclineConfirm, locale)}
+              variant="danger"
+              onPress={() => void onDecline()}
+              loading={busy === 'decline'}
+            />
+            <Button
+              label={pick(L.cancel, locale)}
+              variant="ghost"
+              onPress={() => setDeclineSheet(false)}
+              disabled={busy === 'decline'}
+            />
+          </View>
+        </View>
+      </BottomSheet>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
+  flex: { flex: 1 },
+  ltr: { writingDirection: 'ltr' },
+  italic: { fontStyle: 'italic', marginTop: theme.space.sm },
 
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.md,
-    gap: theme.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.color.border,
-    backgroundColor: theme.color.surface,
-  },
-  topBack: { fontFamily: RN_FONTS.bodyBold, fontSize: theme.fontSize['heading-3'], color: theme.color.text },
-  topTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: 'center',
-  },
-  topSpacer: { width: 24 },
-
-  segment: {
-    flexDirection: 'row',
-    marginHorizontal: theme.space.xl,
-    marginTop: theme.space.md,
-    marginBottom: theme.space.sm,
-    backgroundColor: theme.color.surfaceSunken,
-    borderRadius: theme.radius.pill,
-    padding: 4,
-    gap: 4,
-  },
-  segmentItem: { flex: 1, paddingVertical: theme.space.sm, borderRadius: theme.radius.pill, alignItems: 'center' },
-  segmentItemActive: { backgroundColor: theme.color.surface, ...theme.shadow.xs },
-  segmentText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-  },
-  segmentTextActive: { color: theme.color.text, fontWeight: '600' },
-
+  segmentWrap: { paddingHorizontal: theme.space.xl, paddingVertical: theme.space.md },
   listContent: { padding: theme.space.xl, gap: theme.space.md, flexGrow: 1 },
-  card: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
-    gap: 2,
-    ...theme.shadow.card,
-  },
+
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -358,25 +427,11 @@ const styles = StyleSheet.create({
     gap: theme.space.sm,
     marginBottom: theme.space.xs,
   },
-  cardTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  cardGuest: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    textAlign,
-  },
-  cardMeta: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
+  deadlineRow: {
+    marginTop: theme.space.sm,
+    padding: theme.space.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.warningBg,
   },
   payoutRow: {
     flexDirection: 'row',
@@ -387,36 +442,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: theme.color.border,
   },
-  payoutLabel: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  payoutValue: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '700',
-    color: theme.color.text,
-    writingDirection: 'ltr',
-  },
-  specialRequests: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    fontStyle: 'italic',
-    marginTop: theme.space.sm,
-    lineHeight: theme.lineHeight['body-sm'],
-    textAlign,
-  },
-  error: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
-    marginTop: theme.space.sm,
-    textAlign,
-  },
   actionsRow: { flexDirection: 'row', gap: theme.space.md, marginTop: theme.space.md },
   actionFlex: { flex: 1 },
-  messageRow: { marginTop: theme.space.md },
+  messageRow: { marginTop: theme.space.sm },
+  sheetBody: { gap: theme.space.md, paddingTop: theme.space.sm },
+  sheetActions: { gap: theme.space.sm },
 });

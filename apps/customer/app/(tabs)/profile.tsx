@@ -21,7 +21,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { Locale } from '@dyafa/i18n';
 import { useSession, signOut } from '@/lib/auth';
-import { becomeHost } from '@/lib/listings';
+import { ensureHostAndRefresh } from '@/lib/listings';
 import { PrimaryButton } from '@/components/ui';
 import { L, pick } from '@/lib/copy';
 import { theme } from '@/theme';
@@ -68,10 +68,12 @@ export default function ProfileScreen() {
     setHosting(true);
     setHostError(null);
     try {
-      await becomeHost();
+      // become_host (non-hosts only) + refreshSession so the host_id JWT claim
+      // is minted before /host runs any host write (otherwise RLS-blocked).
+      await ensureHostAndRefresh();
       router.push('/host');
     } catch {
-      setHostError(pick(L.loadError, locale));
+      setHostError(pick(L.hostSwitchFailed, locale));
     } finally {
       setHosting(false);
     }

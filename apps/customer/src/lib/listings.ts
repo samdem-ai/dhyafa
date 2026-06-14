@@ -7,8 +7,17 @@
  * submit-for-review.
  *
  * RLS allows an authenticated host to insert/update their OWN draft property +
- * child rows (host_profiles.owner_id = auth.uid()), so all writes go directly
- * through supabase-js as the signed-in host.
+ * child rows. Authorization resolves through `public.my_host_id()` — the JWT
+ * `host_id` claim minted by `custom_access_token_hook` at token issue/refresh —
+ * NOT `auth.uid()`. A brand-new host therefore must call
+ * `supabase.auth.refreshSession()` after `become_host()` before any host write
+ * (see src/lib/wizard.tsx ensureDraft + app/(tabs)/profile.tsx), or the claim is
+ * NULL and every write is RLS-blocked. Writes go directly through supabase-js.
+ *
+ * Storage note: the `listing-photos` bucket RLS requires the first path segment
+ * to equal `my_host_id()::text` (the HOST PROFILE id, not the auth uid):
+ *   (storage.foldername(name))[1] = public.my_host_id()::text
+ * so photo paths MUST be `${hostProfileId}/${propertyId}/${filename}`.
  *
  * NOTE: the generated `Database` types in @dyafa/api-client predate the
  * become_host / submit_property_for_review RPCs and the listing enums, so the
@@ -94,6 +103,11 @@ export function localizedName(row: LocalizedNames, locale: Locale): string {
 /**
  * Lazily create the caller's host_profile + grant host_individual.
  * Idempotent; returns the host_profile id.
+ *
+ * NOTE: `become_host` grants the host role but the `host_id`/`role` JWT claims
+ * (read by `my_host_id()` in every host RLS predicate) are only minted at token
+ * issue/refresh via `custom_access_token_hook`. Callers MUST refresh the session
+ * before any host write — prefer `ensureHostAndRefresh()` which does both.
  */
 export async function becomeHost(displayName?: string): Promise<string> {
   const { data, error } = await rpcClient.rpc('become_host', {
@@ -101,6 +115,25 @@ export async function becomeHost(displayName?: string): Promise<string> {
   });
   if (error) throw new Error(error.message);
   return data as string;
+}
+
+/**
+ * Resolve the caller's host_profile id, creating it (become_host) only when the
+ * user isn't a host yet, and ALWAYS refreshing the session afterwards so the
+ * freshly-minted `host_id` claim is present before any host write. Returns the
+ * host_profile id. This is the single entry point for entering host mode.
+ *
+ * Refreshing for an existing host is cheap and harmless; doing it
+ * unconditionally guarantees the claim is current even if a prior token predates
+ * the hook being enabled.
+ */
+export async function ensureHostAndRefresh(displayName?: string): Promise<string> {
+  const existing = await getMyHostProfileId();
+  const hostProfileId = existing ?? (await becomeHost(displayName));
+  // Mint/refresh the host_id + role claims so my_host_id() resolves for writes.
+  const { error } = await supabase.auth.refreshSession();
+  if (error) throw error;
+  return hostProfileId;
 }
 
 /** Resolve the signed-in user's own host_profile id, or null if none yet. */
@@ -325,7 +358,11 @@ function base64ToBytes(base64: string): Uint8Array {
 }
 
 export interface UploadPhotoInput {
-  userId: string;
+  /**
+   * The HOST PROFILE id (my_host_id()), NOT the auth uid — storage RLS requires
+   * the first path segment to equal my_host_id()::text.
+   */
+  hostProfileId: string;
   propertyId: string;
   /** base64-encoded image bytes (from expo-image-picker with base64:true). */
   base64: string;
@@ -337,15 +374,15 @@ export interface UploadPhotoInput {
 }
 
 /**
- * Upload one photo to `listing-photos` under the owner folder
- * `${userId}/${propertyId}/...` and insert the property_photos row.
- * Returns the created photo row.
+ * Upload one photo to `listing-photos` under the host folder
+ * `${hostProfileId}/${propertyId}/${filename}` (storage RLS requires path[1] =
+ * my_host_id()) and insert the property_photos row. Returns the created row.
  */
 export async function uploadPhoto(input: UploadPhotoInput): Promise<PropertyPhotoRow> {
   const ext = input.ext ?? 'jpg';
   const contentType = input.contentType ?? 'image/jpeg';
   const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const path = `${input.userId}/${input.propertyId}/${filename}`;
+  const path = `${input.hostProfileId}/${input.propertyId}/${filename}`;
 
   const bytes = base64ToBytes(input.base64);
 
@@ -383,6 +420,28 @@ export async function deletePhoto(photo: PropertyPhotoRow): Promise<void> {
   await supabase.storage.from(STORAGE_BUCKET).remove([photo.storage_path]);
   const { error } = await supabase.from('property_photos').delete().eq('id', photo.id);
   if (error) throw error;
+}
+
+/**
+ * Persist the photo order + cover flag after a reorder / choose-cover. Writes
+ * `sort_order` = array index for every photo and `is_cover` = true only for the
+ * single cover id (false for the rest).
+ */
+export async function reorderPhotos(
+  photos: PropertyPhotoRow[],
+  coverId: string,
+): Promise<void> {
+  await Promise.all(
+    photos.map((p, idx) =>
+      supabase
+        .from('property_photos')
+        .update({ sort_order: idx, is_cover: p.id === coverId })
+        .eq('id', p.id)
+        .then(({ error }) => {
+          if (error) throw error;
+        }),
+    ),
+  );
 }
 
 /** Get a public URL for a stored photo path (preview in the wizard). */

@@ -88,6 +88,8 @@ export interface DayMeta {
   closed?: boolean;
   /** A nightly price override exists for this day — shows a small dot. */
   hasOverride?: boolean;
+  /** A booking covers this night — shows a terracotta booked dot. */
+  booked?: boolean;
 }
 
 export interface DateRangePickerProps {
@@ -206,7 +208,10 @@ export function DateRangePicker({
                     >
                       {day.getDate()}
                     </Text>
-                    {meta?.hasOverride && !isEdge ? <View style={styles.overrideDot} /> : null}
+                    {meta?.booked && !isEdge ? <View style={styles.bookedDot} /> : null}
+                    {meta?.hasOverride && !isEdge && !meta?.booked ? (
+                      <View style={styles.overrideDot} />
+                    ) : null}
                   </View>
                 </Pressable>
               );
@@ -277,5 +282,13 @@ const styles = StyleSheet.create({
     height: 5,
     borderRadius: theme.radius.pill,
     backgroundColor: theme.color.accent,
+  },
+  bookedDot: {
+    position: 'absolute',
+    bottom: 3,
+    width: 5,
+    height: 5,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.primary,
   },
 });

@@ -13,8 +13,8 @@ import type { CancellationTier } from '@/lib/listings';
 import { WizardChrome } from '@/components/WizardChrome';
 import { SelectCard, ToggleRow, TextField } from '@/components/fields';
 import { FieldLabel } from '@/components/ui';
+import { cancellationTierCopy, pick as pickL } from '@/lib/copy';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const COPY = {
   title: { ar: 'سياسة الحجز', fr: 'Politique de réservation', en: 'Booking policy' },
@@ -24,24 +24,6 @@ const COPY = {
     en: 'Choose your cancellation policy and how bookings work.',
   },
   cancellation: { ar: 'سياسة الإلغاء', fr: 'Politique d’annulation', en: 'Cancellation policy' },
-  flexible: { ar: 'مرنة', fr: 'Flexible', en: 'Flexible' },
-  flexibleSub: {
-    ar: 'استرداد كامل قبل الوصول بفترة قصيرة.',
-    fr: 'Remboursement intégral peu avant l’arrivée.',
-    en: 'Full refund up to shortly before arrival.',
-  },
-  moderate: { ar: 'متوسطة', fr: 'Modérée', en: 'Moderate' },
-  moderateSub: {
-    ar: 'استرداد كامل حتى بضعة أيام قبل الوصول.',
-    fr: 'Remboursement intégral jusqu’à quelques jours avant.',
-    en: 'Full refund until a few days before arrival.',
-  },
-  strict: { ar: 'صارمة', fr: 'Stricte', en: 'Strict' },
-  strictSub: {
-    ar: 'استرداد جزئي فقط ضمن نافذة محدودة.',
-    fr: 'Remboursement partiel dans une fenêtre limitée.',
-    en: 'Partial refund within a limited window only.',
-  },
   instant: { ar: 'الحجز الفوري', fr: 'Réservation instantanée', en: 'Instant book' },
   instantHint: {
     ar: 'يحجز الضيوف فورًا دون انتظار موافقتك.',
@@ -55,11 +37,7 @@ function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
   return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
 }
 
-const TIERS: { value: CancellationTier; label: keyof typeof COPY; sub: keyof typeof COPY }[] = [
-  { value: 'flexible', label: 'flexible', sub: 'flexibleSub' },
-  { value: 'moderate', label: 'moderate', sub: 'moderateSub' },
-  { value: 'strict', label: 'strict', sub: 'strictSub' },
-];
+const TIER_VALUES: CancellationTier[] = ['flexible', 'moderate', 'strict'];
 
 export default function StepPolicy() {
   const { i18n } = useTranslation('common');
@@ -82,15 +60,18 @@ export default function StepPolicy() {
     >
       <FieldLabel label={pick(COPY.cancellation, locale)} />
       <View style={styles.list}>
-        {TIERS.map((t) => (
-          <SelectCard
-            key={t.value}
-            title={pick(COPY[t.label], locale)}
-            subtitle={pick(COPY[t.sub], locale)}
-            selected={draft.cancellationTier === t.value}
-            onPress={() => patch({ cancellationTier: t.value })}
-          />
-        ))}
+        {TIER_VALUES.map((value) => {
+          const c = cancellationTierCopy(value);
+          return (
+            <SelectCard
+              key={value}
+              title={pickL(c.label, locale)}
+              subtitle={pickL(c.window, locale)}
+              selected={draft.cancellationTier === value}
+              onPress={() => patch({ cancellationTier: value })}
+            />
+          );
+        })}
       </View>
 
       <ToggleRow
