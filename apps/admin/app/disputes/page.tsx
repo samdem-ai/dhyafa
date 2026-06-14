@@ -18,7 +18,7 @@ import {
   statusOf,
   tl,
 } from '../../lib/admin-i18n';
-import { AdminShell } from '../../components/AdminShell';
+import { AdminAppShell } from '../../components/AdminAppShell';
 import { PageHeader, StatusPill, TableShell, Th, EmptyState, ErrorState } from '../../components/ui';
 import { FilterSelect, type FilterOption } from '../../components/FilterSelect';
 
@@ -95,7 +95,7 @@ export default async function DisputesPage({
   }));
 
   return (
-    <AdminShell locale={locale} pathname="/disputes">
+    <AdminAppShell locale={locale}>
       <PageHeader title={tl(T.title, locale)} subtitle={tl(T.subtitle, locale)} />
 
       <section className="flex flex-wrap items-center gap-sm">
@@ -154,6 +154,6 @@ export default async function DisputesPage({
           </ul>
         </TableShell>
       )}
-    </AdminShell>
+    </AdminAppShell>
   );
 }

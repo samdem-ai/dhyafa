@@ -21,7 +21,7 @@ import {
   tl,
   TXN_STATUS,
 } from '../../lib/admin-i18n';
-import { AdminShell } from '../../components/AdminShell';
+import { AdminAppShell } from '../../components/AdminAppShell';
 import { SectionCard, StatusPill, TableShell, Th, EmptyState, ErrorState } from '../../components/ui';
 import { FilterSelect, type FilterOption } from '../../components/FilterSelect';
 import { RunPayoutsForm, MarkPaidButton, RefundButton } from './PaymentControls';
@@ -154,7 +154,7 @@ export default async function PaymentsPage({
   }));
 
   return (
-    <AdminShell locale={locale} pathname="/payments">
+    <AdminAppShell locale={locale}>
       <PageHeaderInline title={tl(T.title, locale)} subtitle={tl(T.subtitle, locale)} />
 
       {error && <ErrorState locale={locale} message={error.message} />}
@@ -281,7 +281,7 @@ export default async function PaymentsPage({
           </ul>
         </TableShell>
       )}
-    </AdminShell>
+    </AdminAppShell>
   );
 }
 

@@ -11,7 +11,7 @@ import { resolveLocale } from '../../lib/i18n';
 import { adminSupabase } from '../../lib/supabase/server';
 import type { Locale } from '@dyafa/i18n';
 import { C, formatInt, tl, type L10n } from '../../lib/admin-i18n';
-import { AdminShell } from '../../components/AdminShell';
+import { AdminAppShell } from '../../components/AdminAppShell';
 import { PageHeader } from '../../components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -89,7 +89,7 @@ export default async function ContentHubPage() {
   ];
 
   return (
-    <AdminShell locale={locale} pathname="/content">
+    <AdminAppShell locale={locale}>
       <PageHeader title={tl(T.title, locale)} subtitle={tl(T.subtitle, locale)} />
 
       <section className="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3">
@@ -109,6 +109,6 @@ export default async function ContentHubPage() {
           </a>
         ))}
       </section>
-    </AdminShell>
+    </AdminAppShell>
   );
 }

@@ -12,7 +12,7 @@ import { resolveLocale } from '../../../lib/i18n';
 import { adminSupabase } from '../../../lib/supabase/server';
 import type { Locale } from '@dyafa/i18n';
 import { C, localized, tl } from '../../../lib/admin-i18n';
-import { AdminShell } from '../../../components/AdminShell';
+import { AdminAppShell } from '../../../components/AdminAppShell';
 import { SectionCard, EmptyState, ErrorState } from '../../../components/ui';
 import { Collapsible } from '../../../components/Collapsible';
 import { EntityEditor } from '../EntityEditor';
@@ -65,7 +65,7 @@ export default async function CollectionsPage() {
   const rows = (data ?? []) as unknown as CollectionRow[];
 
   return (
-    <AdminShell locale={locale} pathname="/content">
+    <AdminAppShell locale={locale}>
       <section className="flex flex-col gap-xs">
         <a href="/content" className="text-body-sm text-primary hover:underline">
           {tl(C.back, locale)}
@@ -144,6 +144,6 @@ export default async function CollectionsPage() {
           })}
         </ul>
       )}
-    </AdminShell>
+    </AdminAppShell>
   );
 }

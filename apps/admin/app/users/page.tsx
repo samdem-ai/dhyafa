@@ -17,7 +17,7 @@ import {
   tl,
   VERIFICATION_STATUS,
 } from '../../lib/admin-i18n';
-import { AdminShell } from '../../components/AdminShell';
+import { AdminAppShell } from '../../components/AdminAppShell';
 import { PageHeader, StatusPill, TableShell, Th, EmptyState, ErrorState } from '../../components/ui';
 import { SearchBar } from '../../components/SearchBar';
 
@@ -102,7 +102,7 @@ export default async function UsersPage({
   }
 
   return (
-    <AdminShell locale={locale} pathname="/users">
+    <AdminAppShell locale={locale}>
       <PageHeader
         title={tl(T.title, locale)}
         subtitle={tl(T.subtitle, locale)}
@@ -176,6 +176,6 @@ export default async function UsersPage({
           {tl(C.filters, locale)}: {tl(T.searchPlaceholder, locale)}
         </p>
       )}
-    </AdminShell>
+    </AdminAppShell>
   );
 }

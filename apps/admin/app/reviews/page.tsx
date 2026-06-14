@@ -22,7 +22,7 @@ import {
   statusOf,
   tl,
 } from '../../lib/admin-i18n';
-import { AdminShell } from '../../components/AdminShell';
+import { AdminAppShell } from '../../components/AdminAppShell';
 import { PageHeader, StatusPill, EmptyState, ErrorState } from '../../components/ui';
 import { FilterSelect, type FilterOption } from '../../components/FilterSelect';
 import { ReviewModeration } from './ReviewModeration';
@@ -193,7 +193,7 @@ export default async function ReviewsPage({
     }`;
 
   return (
-    <AdminShell locale={locale} pathname="/reviews">
+    <AdminAppShell locale={locale}>
       <PageHeader title={tl(T.title, locale)} subtitle={tl(T.subtitle, locale)} />
 
       {/* Tabs + (all-tab) status filter */}
@@ -238,6 +238,6 @@ export default async function ReviewsPage({
           ))}
         </ul>
       )}
-    </AdminShell>
+    </AdminAppShell>
   );
 }

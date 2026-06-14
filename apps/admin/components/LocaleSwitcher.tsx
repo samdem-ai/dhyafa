@@ -5,7 +5,7 @@
  *
  * Sets the `dyafa_locale` cookie (read server-side in layout.tsx / lib/i18n.ts)
  * and reloads so every Server Component re-renders in the chosen language +
- * direction. Kept as a small client island so AdminShell stays a Server
+ * direction. Kept as a small client island so its host page stays a Server
  * Component. Segmented control: en / ar / fr.
  */
 

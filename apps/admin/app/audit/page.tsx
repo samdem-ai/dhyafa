@@ -12,7 +12,7 @@ import { resolveLocale } from '../../lib/i18n';
 import { adminSupabase } from '../../lib/supabase/server';
 import type { Locale } from '@dyafa/i18n';
 import { C, formatDateTime, tl } from '../../lib/admin-i18n';
-import { AdminShell } from '../../components/AdminShell';
+import { AdminAppShell } from '../../components/AdminAppShell';
 import { PageHeader, EmptyState, ErrorState } from '../../components/ui';
 import { SearchBar } from '../../components/SearchBar';
 import { FilterSelect, type FilterOption } from '../../components/FilterSelect';
@@ -140,7 +140,7 @@ export default async function AuditPage({
   const targetOptions: FilterOption[] = TARGETS.map((t) => ({ value: t, label: t }));
 
   return (
-    <AdminShell locale={locale} pathname="/audit">
+    <AdminAppShell locale={locale}>
       <PageHeader title={tl(T.title, locale)} subtitle={tl(T.subtitle, locale)} />
 
       <section className="flex flex-wrap items-center gap-sm">
@@ -217,6 +217,6 @@ export default async function AuditPage({
           })}
         </ul>
       )}
-    </AdminShell>
+    </AdminAppShell>
   );
 }

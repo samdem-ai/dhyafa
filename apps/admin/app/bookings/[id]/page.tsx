@@ -23,7 +23,7 @@ import {
   tl,
   TXN_STATUS,
 } from '../../../lib/admin-i18n';
-import { AdminShell } from '../../../components/AdminShell';
+import { AdminAppShell } from '../../../components/AdminAppShell';
 import { SectionCard, MetaRow, StatusPill } from '../../../components/ui';
 import { CancelPanel } from './CancelPanel';
 
@@ -117,11 +117,11 @@ export default async function BookingDetailPage({ params }: { params: { id: stri
   if (error || !data) {
     if (error) {
       return (
-        <AdminShell locale={locale} pathname="/bookings">
+        <AdminAppShell locale={locale}>
           <div role="alert" className="rounded-card bg-error-bg text-error px-xl py-lg">
             {tl(C.errorTitle, locale)} — {error.message}
           </div>
-        </AdminShell>
+        </AdminAppShell>
       );
     }
     notFound();
@@ -156,7 +156,7 @@ export default async function BookingDetailPage({ params }: { params: { id: stri
     ) ?? '—';
 
   return (
-    <AdminShell locale={locale} pathname="/bookings">
+    <AdminAppShell locale={locale}>
       <section className="flex items-center justify-between gap-md flex-wrap">
         <div className="flex flex-col gap-xs">
           <a href="/bookings" className="text-body-sm text-primary hover:underline">
@@ -291,6 +291,6 @@ export default async function BookingDetailPage({ params }: { params: { id: stri
           )}
         </aside>
       </div>
-    </AdminShell>
+    </AdminAppShell>
   );
 }

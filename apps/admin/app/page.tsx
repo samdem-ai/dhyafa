@@ -14,7 +14,7 @@ import { adminSupabase } from '../lib/supabase/server';
 import { formatDZD, dir } from '@dyafa/i18n';
 import type { Locale } from '@dyafa/i18n';
 import { C, formatInt, formatPct, tl } from '../lib/admin-i18n';
-import { AdminShell } from '../components/AdminShell';
+import { AdminAppShell } from '../components/AdminAppShell';
 import { Card, StatCard, LinkButton, ErrorState, ArrowRightIcon, type TrendDir } from '../components/ui';
 import { BarChart, LineChart } from '../components/MiniChart';
 import {
@@ -185,7 +185,7 @@ export default async function AdminOverviewPage({
   const rangeSuffix = tl(T.inRange, locale);
 
   return (
-    <AdminShell locale={locale} pathname="/">
+    <AdminAppShell locale={locale}>
       {/* ── Title + range selector ──────────────────────────────────────── */}
       <section className="flex flex-wrap items-end justify-between gap-md">
         <div>
@@ -286,6 +286,6 @@ export default async function AdminOverviewPage({
           </LinkButton>
         </Card>
       </section>
-    </AdminShell>
+    </AdminAppShell>
   );
 }

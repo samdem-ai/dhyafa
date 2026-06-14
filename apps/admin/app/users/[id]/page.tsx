@@ -22,7 +22,7 @@ import {
   tl,
   VERIFICATION_STATUS,
 } from '../../../lib/admin-i18n';
-import { AdminShell } from '../../../components/AdminShell';
+import { AdminAppShell } from '../../../components/AdminAppShell';
 import { SectionCard, MetaRow, StatusPill, TableShell, Th, EmptyState } from '../../../components/ui';
 import { UserActionsPanel } from './UserActionsPanel';
 
@@ -75,11 +75,11 @@ export default async function UserProfilePage({ params }: { params: { id: string
   if (error || !profile) {
     if (error) {
       return (
-        <AdminShell locale={locale} pathname="/users">
+        <AdminAppShell locale={locale}>
           <div role="alert" className="rounded-card bg-error-bg text-error px-xl py-lg">
             {tl(C.errorTitle, locale)} — {error.message}
           </div>
-        </AdminShell>
+        </AdminAppShell>
       );
     }
     notFound();
@@ -105,7 +105,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
     : { text: tl(T.suspended, locale), tone: 'error' as const };
 
   return (
-    <AdminShell locale={locale} pathname="/users">
+    <AdminAppShell locale={locale}>
       <section className="flex items-center justify-between gap-md flex-wrap">
         <div className="flex flex-col gap-xs">
           <a href="/users" className="text-body-sm text-primary hover:underline">
@@ -221,6 +221,6 @@ export default async function UserProfilePage({ params }: { params: { id: string
           />
         </aside>
       </div>
-    </AdminShell>
+    </AdminAppShell>
   );
 }

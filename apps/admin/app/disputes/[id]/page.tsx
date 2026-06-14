@@ -19,7 +19,7 @@ import {
   statusOf,
   tl,
 } from '../../../lib/admin-i18n';
-import { AdminShell } from '../../../components/AdminShell';
+import { AdminAppShell } from '../../../components/AdminAppShell';
 import { SectionCard, MetaRow, StatusPill } from '../../../components/ui';
 import { ResolvePanel } from './ResolvePanel';
 
@@ -82,11 +82,11 @@ export default async function DisputeDetailPage({ params }: { params: { id: stri
   if (error || !data) {
     if (error) {
       return (
-        <AdminShell locale={locale} pathname="/disputes">
+        <AdminAppShell locale={locale}>
           <div role="alert" className="rounded-card bg-error-bg text-error px-xl py-lg">
             {tl(C.errorTitle, locale)} — {error.message}
           </div>
-        </AdminShell>
+        </AdminAppShell>
       );
     }
     notFound();
@@ -115,7 +115,7 @@ export default async function DisputeDetailPage({ params }: { params: { id: stri
   }
 
   return (
-    <AdminShell locale={locale} pathname="/disputes">
+    <AdminAppShell locale={locale}>
       <section className="flex items-center justify-between gap-md flex-wrap">
         <div className="flex flex-col gap-xs">
           <a href="/disputes" className="text-body-sm text-primary hover:underline">
@@ -216,6 +216,6 @@ export default async function DisputeDetailPage({ params }: { params: { id: stri
           <ResolvePanel disputeId={d.id} status={d.status} locale={locale} />
         </aside>
       </div>
-    </AdminShell>
+    </AdminAppShell>
   );
 }

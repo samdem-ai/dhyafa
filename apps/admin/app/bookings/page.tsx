@@ -20,7 +20,7 @@ import {
   statusOf,
   tl,
 } from '../../lib/admin-i18n';
-import { AdminShell } from '../../components/AdminShell';
+import { AdminAppShell } from '../../components/AdminAppShell';
 import { PageHeader, StatusPill, TableShell, Th, EmptyState, ErrorState } from '../../components/ui';
 import { SearchBar } from '../../components/SearchBar';
 import { FilterSelect, type FilterOption } from '../../components/FilterSelect';
@@ -140,7 +140,7 @@ export default async function BookingsPage({
   }));
 
   return (
-    <AdminShell locale={locale} pathname="/bookings">
+    <AdminAppShell locale={locale}>
       <PageHeader title={tl(T.title, locale)} subtitle={tl(T.subtitle, locale)} />
 
       {/* Filter bar */}
@@ -228,6 +228,6 @@ export default async function BookingsPage({
           {tl(C.filters, locale)} — {PAGE_SIZE}
         </p>
       )}
-    </AdminShell>
+    </AdminAppShell>
   );
 }

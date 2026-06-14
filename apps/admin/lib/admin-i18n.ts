@@ -8,18 +8,6 @@
  */
 
 import type { Locale } from '@dyafa/i18n';
-import {
-  OverviewIcon,
-  UsersIcon,
-  ListingIcon,
-  BookingIcon,
-  PaymentIcon,
-  ReviewIcon,
-  DisputeIcon,
-  ContentIcon,
-  AuditIcon,
-  type IconProps,
-} from '../components/icons';
 
 /** A string available in all three locales. */
 export type L10n = Record<Locale, string>;
@@ -147,58 +135,6 @@ export const C = {
   guest: { ar: 'الضيف', fr: 'Voyageur', en: 'Guest' },
   host: { ar: 'المضيف', fr: 'Hôte', en: 'Host' },
 } satisfies Record<string, L10n>;
-
-// ─── Navigation (shared admin shell) ─────────────────────────────────────────
-
-export interface NavItem {
-  href: string;
-  label: L10n;
-  /** Inline SVG icon component (forwards className). */
-  icon: (props: IconProps) => JSX.Element;
-}
-
-export interface NavGroup {
-  label: L10n;
-  items: readonly NavItem[];
-}
-
-/**
- * Sidebar nav, grouped with tiny uppercase section labels (design brief).
- * `NAV_ITEMS` is the flattened list (used for active-route / breadcrumb lookup).
- */
-export const NAV_GROUPS: readonly NavGroup[] = [
-  {
-    label: { ar: 'عام', fr: 'Général', en: 'General' },
-    items: [
-      { href: '/', label: { ar: 'نظرة عامة', fr: 'Vue d’ensemble', en: 'Overview' }, icon: OverviewIcon },
-    ],
-  },
-  {
-    label: { ar: 'العمليات', fr: 'Opérations', en: 'Operations' },
-    items: [
-      { href: '/users', label: { ar: 'المستخدمون', fr: 'Utilisateurs', en: 'Users' }, icon: UsersIcon },
-      { href: '/moderation', label: { ar: 'الإعلانات', fr: 'Annonces', en: 'Listings' }, icon: ListingIcon },
-      { href: '/bookings', label: { ar: 'الحجوزات', fr: 'Réservations', en: 'Bookings' }, icon: BookingIcon },
-    ],
-  },
-  {
-    label: { ar: 'المالية والثقة', fr: 'Finance & confiance', en: 'Finance & Trust' },
-    items: [
-      { href: '/payments', label: { ar: 'المدفوعات', fr: 'Paiements', en: 'Payments' }, icon: PaymentIcon },
-      { href: '/reviews', label: { ar: 'التقييمات', fr: 'Avis', en: 'Reviews' }, icon: ReviewIcon },
-      { href: '/disputes', label: { ar: 'النزاعات', fr: 'Litiges', en: 'Disputes' }, icon: DisputeIcon },
-    ],
-  },
-  {
-    label: { ar: 'النظام', fr: 'Système', en: 'System' },
-    items: [
-      { href: '/content', label: { ar: 'المحتوى', fr: 'Contenu', en: 'Content' }, icon: ContentIcon },
-      { href: '/audit', label: { ar: 'سجل التدقيق', fr: 'Journal d’audit', en: 'Audit' }, icon: AuditIcon },
-    ],
-  },
-] as const;
-
-export const NAV_ITEMS: readonly NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
 // ─── Status enum → localized labels ──────────────────────────────────────────
 
