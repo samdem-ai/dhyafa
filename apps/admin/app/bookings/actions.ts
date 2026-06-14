@@ -118,7 +118,7 @@ export async function forceCancelBooking(
   messages.push(
     await notify({
       userId: before.guest_id,
-      type: 'booking_cancelled_admin',
+      type: 'booking_cancelled',
       titleAr: 'تم إلغاء حجزك',
       titleFr: 'Votre réservation a été annulée',
       titleEn: 'Your booking was cancelled',
@@ -132,7 +132,7 @@ export async function forceCancelBooking(
     messages.push(
       await notify({
         userId: ownerId,
-        type: 'booking_cancelled_admin',
+        type: 'booking_cancelled',
         titleAr: 'تم إلغاء حجز',
         titleFr: 'Une réservation a été annulée',
         titleEn: 'A booking was cancelled',

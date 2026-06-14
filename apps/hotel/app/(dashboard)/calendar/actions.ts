@@ -80,11 +80,19 @@ export async function setAvailabilityRange(
     minStay = input.minStay;
   }
 
+  // set_availability_range treats p_to as EXCLUSIVE (loops while v_d < p_to and
+  // raises INVALID_RANGE when p_to <= p_from). The UI selects an INCLUSIVE end
+  // date, so send end + 1 day — this includes the last selected day and makes a
+  // single-day selection (from === to) a valid 1-day range instead of erroring.
+  const endExclusive = new Date(`${input.to}T00:00:00Z`);
+  endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+  const toExclusive = endExclusive.toISOString().slice(0, 10);
+
   const supabase = createUserClient(accessToken);
   const { data, error } = await supabase.rpc('set_availability_range', {
     p_room_type_id: input.roomTypeId,
     p_from: input.from,
-    p_to: input.to,
+    p_to: toExclusive,
     p_is_closed: input.isClosed,
     ...(price !== undefined ? { p_price_override_dzd: price } : {}),
     ...(minStay !== undefined ? { p_min_stay: minStay } : {}),
