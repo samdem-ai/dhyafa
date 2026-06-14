@@ -14,6 +14,7 @@ const nextConfig = {
     '@dyafa/i18n',
     '@dyafa/api-client',
     '@dyafa/types',
+    '@dyafa/ui',
   ],
 };
 

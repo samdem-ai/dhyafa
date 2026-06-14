@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { dir } from '@dyafa/i18n';
 import type { Locale } from '@dyafa/i18n';
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@dyafa/i18n';
+import { ToastProvider } from '@dyafa/ui';
 import './globals.css';
 
 // ─── Font loading (build-time via next/font — zero layout shift) ─────────────
@@ -68,7 +69,9 @@ export default function RootLayout({
   return (
     <html lang={locale} dir={direction} className={fontVars}>
       <body className="min-h-screen bg-bg text-text-default antialiased">
-        {children}
+        <ToastProvider closeLabel={locale === 'ar' ? 'إغلاق' : locale === 'fr' ? 'Fermer' : 'Dismiss'}>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

@@ -200,6 +200,12 @@ importers:
       '@dyafa/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@dyafa/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      lucide-react:
+        specifier: ^0.475.0
+        version: 0.475.0(react@18.3.1)
       next:
         specifier: 14.2.29
         version: 14.2.29(react-dom@18.3.1(react@18.3.1))(react@18.3.1)

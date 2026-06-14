@@ -16,7 +16,9 @@
     "@dyafa/design-tokens": "workspace:*",
     "@dyafa/i18n": "workspace:*",
     "@dyafa/api-client": "workspace:*",
-    "@dyafa/types": "workspace:*"
+    "@dyafa/types": "workspace:*",
+    "@dyafa/ui": "workspace:*",
+    "lucide-react": "^0.475.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
