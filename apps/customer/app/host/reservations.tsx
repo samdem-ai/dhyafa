@@ -27,6 +27,9 @@ import {
   listBookingRequests,
   listAwaitingPaymentStays,
   listUpcomingStays,
+  checkInBooking,
+  checkOutBooking,
+  markNoShow,
   acceptBookingRequest,
   declineBookingRequest,
   type HostBooking,
@@ -204,9 +207,12 @@ function ReservationCard({
   onReconcile: () => void;
   toastShow: (opts: { message: string; tone?: 'success' | 'error' }) => void;
 }) {
-  const [busy, setBusy] = useState<null | 'accept' | 'decline' | 'message'>(null);
+  const [busy, setBusy] = useState<
+    null | 'accept' | 'decline' | 'message' | 'checkin' | 'checkout' | 'noshow'
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [declineSheet, setDeclineSheet] = useState(false);
+  const [noShowSheet, setNoShowSheet] = useState(false);
   const [reason, setReason] = useState('');
 
   const title = booking.property
@@ -270,6 +276,49 @@ function ReservationCard({
       router.push(`/conversation/${conversationId}`);
     } catch {
       setError(pick(L.conversationFailed, locale));
+      setBusy(null);
+    }
+  }
+
+  async function onCheckIn() {
+    setBusy('checkin');
+    setError(null);
+    try {
+      await checkInBooking(booking.id);
+      haptics.success();
+      toastShow({ message: statusLabel('checked_in', locale), tone: 'success' });
+      onReconcile();
+    } catch {
+      setError(pick(L.hostCheckInFailed, locale));
+      setBusy(null);
+    }
+  }
+
+  async function onCheckOut() {
+    setBusy('checkout');
+    setError(null);
+    try {
+      await checkOutBooking(booking.id);
+      haptics.success();
+      toastShow({ message: statusLabel('completed', locale), tone: 'success' });
+      onReconcile();
+    } catch {
+      setError(pick(L.hostCheckOutFailed, locale));
+      setBusy(null);
+    }
+  }
+
+  async function onNoShow() {
+    setBusy('noshow');
+    setError(null);
+    try {
+      await markNoShow(booking.id);
+      setNoShowSheet(false);
+      haptics.warning();
+      toastShow({ message: statusLabel('no_show', locale), tone: 'success' });
+      onReconcile();
+    } catch {
+      setError(pick(L.hostNoShowFailed, locale));
       setBusy(null);
     }
   }
@@ -375,8 +424,37 @@ function ReservationCard({
         </View>
       )}
 
-      {/* TODO(host-stay-lifecycle): Check-in / Check-out / No-show buttons go
-          here on the Upcoming tab once host_check_in/out/no_show RPCs are wired. */}
+      {/* Front-desk lifecycle actions (Upcoming tab) */}
+      {tab === 'upcoming' && booking.status === 'confirmed' ? (
+        <View style={styles.actionsRow}>
+          <View style={styles.actionFlex}>
+            <Button
+              label={pick(L.hostNoShow, locale)}
+              variant="danger"
+              onPress={() => setNoShowSheet(true)}
+              disabled={busy !== null}
+            />
+          </View>
+          <View style={styles.actionFlex}>
+            <Button
+              label={pick(L.hostCheckIn, locale)}
+              onPress={() => void onCheckIn()}
+              loading={busy === 'checkin'}
+              disabled={busy !== null}
+            />
+          </View>
+        </View>
+      ) : null}
+      {tab === 'upcoming' && booking.status === 'checked_in' ? (
+        <View style={styles.messageRow}>
+          <Button
+            label={pick(L.hostCheckOut, locale)}
+            onPress={() => void onCheckOut()}
+            loading={busy === 'checkout'}
+            disabled={busy !== null}
+          />
+        </View>
+      ) : null}
 
       {/* Decline-with-reason sheet */}
       <BottomSheet visible={declineSheet} onClose={() => setDeclineSheet(false)} dismissible={busy === null}>
@@ -404,6 +482,32 @@ function ReservationCard({
               variant="ghost"
               onPress={() => setDeclineSheet(false)}
               disabled={busy === 'decline'}
+            />
+          </View>
+        </View>
+      </BottomSheet>
+
+      {/* No-show confirm sheet */}
+      <BottomSheet visible={noShowSheet} onClose={() => setNoShowSheet(false)} dismissible={busy === null}>
+        <View style={styles.sheetBody}>
+          <Text variant="title" weight="semibold">
+            {pick(L.hostNoShowTitle, locale)}
+          </Text>
+          <Text variant="body-sm" color="textMuted">
+            {pick(L.hostNoShowBody, locale)}
+          </Text>
+          <View style={styles.sheetActions}>
+            <Button
+              label={pick(L.hostNoShowConfirm, locale)}
+              variant="danger"
+              onPress={() => void onNoShow()}
+              loading={busy === 'noshow'}
+            />
+            <Button
+              label={pick(L.cancel, locale)}
+              variant="ghost"
+              onPress={() => setNoShowSheet(false)}
+              disabled={busy === 'noshow'}
             />
           </View>
         </View>

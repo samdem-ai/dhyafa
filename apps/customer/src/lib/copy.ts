@@ -411,6 +411,17 @@ export const L = {
   hostDecline: { ar: 'رفض', fr: 'Refuser', en: 'Decline' },
   hostAcceptFailed: { ar: 'تعذّر قبول الطلب', fr: 'Échec de l’acceptation', en: 'Could not accept request' },
   hostDeclineFailed: { ar: 'تعذّر رفض الطلب', fr: 'Échec du refus', en: 'Could not decline request' },
+  hostNoShow: { ar: 'لم يحضر', fr: 'Absence', en: 'No-show' },
+  hostCheckInFailed: { ar: 'تعذّر تسجيل الوصول', fr: 'Échec de l’enregistrement de l’arrivée', en: 'Could not check in' },
+  hostCheckOutFailed: { ar: 'تعذّر تسجيل المغادرة', fr: 'Échec de l’enregistrement du départ', en: 'Could not check out' },
+  hostNoShowFailed: { ar: 'تعذّر تحديد عدم الحضور', fr: 'Échec', en: 'Could not mark no-show' },
+  hostNoShowTitle: { ar: 'تحديد كعدم حضور؟', fr: 'Marquer comme absence ?', en: 'Mark as no-show?' },
+  hostNoShowBody: {
+    ar: 'سيتم تحديد هذا الحجز كعدم حضور. لا يمكن التراجع.',
+    fr: 'Cette réservation sera marquée comme absence. Action irréversible.',
+    en: 'This booking will be marked as a no-show. This cannot be undone.',
+  },
+  hostNoShowConfirm: { ar: 'تأكيد', fr: 'Confirmer', en: 'Confirm no-show' },
   hostRequestsEmptyTitle: { ar: 'لا توجد طلبات جديدة', fr: 'Aucune demande', en: 'No new requests' },
   hostRequestsEmptyBody: {
     ar: 'ستظهر طلبات الحجز الجديدة هنا لتقبلها أو ترفضها.',

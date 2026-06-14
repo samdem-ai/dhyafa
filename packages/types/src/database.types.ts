@@ -2586,6 +2586,9 @@ export type Database = {
         Returns: undefined
       }
       has_role: { Args: { r: string }; Returns: boolean }
+      host_check_in: { Args: { p_booking_id: string }; Returns: undefined }
+      host_check_out: { Args: { p_booking_id: string }; Returns: undefined }
+      host_mark_no_show: { Args: { p_booking_id: string }; Returns: undefined }
       host_reply_review: {
         Args: { p_body: string; p_review_id: string }
         Returns: string

@@ -142,6 +142,24 @@ export async function acceptBookingRequest(bookingId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Front-desk: check a confirmed booking in (confirmed -> checked_in). */
+export async function checkInBooking(bookingId: string): Promise<void> {
+  const { error } = await supabaseClient.rpc('host_check_in', { p_booking_id: bookingId });
+  if (error) throw new Error(error.message);
+}
+
+/** Front-desk: check a stay out (checked_in -> completed). */
+export async function checkOutBooking(bookingId: string): Promise<void> {
+  const { error } = await supabaseClient.rpc('host_check_out', { p_booking_id: bookingId });
+  if (error) throw new Error(error.message);
+}
+
+/** Mark a confirmed booking as a no-show (manager/owner). */
+export async function markNoShow(bookingId: string): Promise<void> {
+  const { error } = await supabaseClient.rpc('host_mark_no_show', { p_booking_id: bookingId });
+  if (error) throw new Error(error.message);
+}
+
 /** Decline a pending booking request (optional reason). */
 export async function declineBookingRequest(
   bookingId: string,
