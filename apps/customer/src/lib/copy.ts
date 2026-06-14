@@ -240,6 +240,7 @@ export const L = {
   guest: { ar: 'زائر', fr: 'Invité', en: 'Guest' },
   notSignedIn: { ar: 'لم تسجّل الدخول', fr: 'Non connecté', en: 'Not signed in' },
   signOut: { ar: 'تسجيل الخروج', fr: 'Se déconnecter', en: 'Sign out' },
+  signedOut: { ar: 'تم تسجيل الخروج', fr: 'Vous êtes déconnecté', en: 'You have been signed out' },
   switchToHosting: { ar: 'الانتقال إلى الاستضافة', fr: 'Passer en mode hôte', en: 'Switch to Hosting' },
   language: { ar: 'اللغة', fr: 'Langue', en: 'Language' },
   myTrips: { ar: 'رحلاتي', fr: 'Mes voyages', en: 'My trips' },

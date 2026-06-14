@@ -118,12 +118,12 @@ export default function ProfileScreen() {
 
         {/* Shortcuts */}
         <View style={styles.group}>
-          <Row glyph="🧳" label={pick(L.myTrips, locale)} onPress={() => router.replace('/(tabs)/trips')} />
+          <Row glyph="🧳" label={pick(L.myTrips, locale)} onPress={() => router.navigate('/(tabs)/trips')} />
           <Row
             glyph="🤍"
             label={pick(L.wishlists, locale)}
             value={pick(L.wishlistsSoon, locale)}
-            onPress={() => router.replace('/(tabs)/wishlists')}
+            onPress={() => router.navigate('/(tabs)/wishlists')}
           />
           <Row glyph="🌐" label={pick(L.language, locale)} onPress={() => router.push('/onboarding')} />
         </View>

@@ -1,21 +1,23 @@
 /**
- * Bottom-tab layout (guest mode): Explore / Trips / Wishlists / Profile.
+ * Bottom-tab layout (Travelling mode): Explore · Wishlists · Trips · Inbox · Profile.
  *
- * Implemented with <Slot/> + a custom <TabBar/> rather than expo-router's
- * <Tabs> because @react-navigation/bottom-tabs is not installed (and we must
- * not add native deps). The active child route renders above the bar.
+ * Migrated to expo-router's <Tabs> (built on @react-navigation/bottom-tabs, which
+ * ships transitively via expo-router). This replaces the old <Slot/> +
+ * router.replace() tab system that destroyed per-tab scroll/nav/data state and
+ * forced useFocusEffect refetch storms. We keep the brand look by passing a
+ * custom-styled <BrandTabBar> via the `tabBar={}` render prop, but get lazy
+ * mount, per-tab state preservation, and accessibility for free.
  *
  * Onboarding/auth/host/property/booking routes live OUTSIDE this group and keep
  * working — they are pushed on the root stack over the tabs.
  */
 
-import { View, StyleSheet } from 'react-native';
-import { Slot } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { Locale } from '@dyafa/i18n';
-import { TabBar } from '@/components/TabBar';
+import { BrandTabBar } from '@/components/BrandTabBar';
 import { usePushRegistration } from '@/lib/push';
-import { theme } from '@/theme';
+import { L, pick } from '@/lib/copy';
 
 export default function TabsLayout() {
   const { i18n } = useTranslation('common');
@@ -26,16 +28,15 @@ export default function TabsLayout() {
   usePushRegistration();
 
   return (
-    <View style={styles.root}>
-      <View style={styles.content}>
-        <Slot />
-      </View>
-      <TabBar locale={locale} />
-    </View>
+    <Tabs
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <BrandTabBar {...props} locale={locale} />}
+    >
+      <Tabs.Screen name="index" options={{ title: pick(L.exploreGreeting, locale) }} />
+      <Tabs.Screen name="wishlists" options={{ title: pick(L.wishlists, locale) }} />
+      <Tabs.Screen name="trips" options={{ title: pick(L.tripsTitle, locale) }} />
+      <Tabs.Screen name="inbox" options={{ title: pick(L.inbox, locale) }} />
+      <Tabs.Screen name="profile" options={{ title: pick(L.profileTitle, locale) }} />
+    </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.color.bg },
-  content: { flex: 1 },
-});

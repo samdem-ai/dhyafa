@@ -58,6 +58,7 @@ import {
 
 import { i18nInstance, initLocale } from '@/lib/i18n';
 import { queryClient } from '@/lib/query';
+import { AuthGate } from '@/lib/authContext';
 import { RN_FONTS } from '@/lib/fonts';
 import { theme } from '@/theme';
 import { ErrorBoundary, Splash, ToastProvider } from '@/ui';
@@ -120,6 +121,7 @@ export default function RootLayout() {
                       // Branded splash while fonts + locale resolve.
                       <Splash />
                     ) : (
+                      <AuthGate>
                       <Stack
                         screenOptions={{
                           headerStyle: { backgroundColor: theme.color.surface },
@@ -153,6 +155,7 @@ export default function RootLayout() {
                         <Stack.Screen name="conversation" options={{ headerShown: false }} />
                         <Stack.Screen name="notifications" options={{ headerShown: false }} />
                       </Stack>
+                      </AuthGate>
                     )}
                   </View>
                 </ErrorBoundary>

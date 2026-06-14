@@ -2,75 +2,34 @@
  * Auth helpers for the customer app.
  *
  * Re-exports the supabase client under the conventional `supabase` name and
- * exposes a `useSession` hook that tracks the current auth session/user and
- * stays in sync with supabase-js auth state changes (sign-in, sign-out,
- * token refresh, restore-from-storage on cold start).
+ * exposes a `useSession` hook that tracks the current auth session/user.
+ *
+ * As of Phase 2 the actual subscription lives in a single <AuthGate> at the
+ * layout level (src/lib/authContext.tsx) — `useSession()` now just reads that
+ * shared context, so every call site shares ONE onAuthStateChange subscription
+ * (no per-screen subscriptions, no refetch storms, global SIGNED_OUT handling).
+ * The `{ loading, session, user }` shape is unchanged for back-compat.
  *
  * Auth is email + password for M1 (phone OTP is deferred). See docs/02-auth-and-rls.md.
  */
 
-import { useEffect, useState } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
 import { supabaseClient } from './supabase';
+import { useAuth, type AuthState } from './authContext';
 
 // Conventional alias — most call sites import `supabase`.
 export const supabase = supabaseClient;
 
-export interface SessionState {
-  /** True until the initial getSession() resolves. */
-  loading: boolean;
-  session: Session | null;
-  user: User | null;
-}
+export type SessionState = AuthState;
 
 /**
- * Subscribe to the Supabase auth session.
+ * Read the current auth session from the shared <AuthGate> context.
  *
  * Returns `{ loading, session, user }`. `loading` is true only for the very
  * first resolution (cold-start session restore); afterwards updates arrive
- * synchronously via onAuthStateChange.
+ * synchronously via the single onAuthStateChange subscription in AuthGate.
  */
 export function useSession(): SessionState {
-  const [state, setState] = useState<SessionState>({
-    loading: true,
-    session: null,
-    user: null,
-  });
-
-  useEffect(() => {
-    let mounted = true;
-
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (!mounted) return;
-        setState({
-          loading: false,
-          session: data.session,
-          user: data.session?.user ?? null,
-        });
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setState({ loading: false, session: null, user: null });
-      });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      setState({
-        loading: false,
-        session,
-        user: session?.user ?? null,
-      });
-    });
-
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  return state;
+  return useAuth();
 }
 
 /** Sign in with email + password. Throws on failure. */
