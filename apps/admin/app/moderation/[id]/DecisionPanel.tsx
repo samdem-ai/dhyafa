@@ -3,18 +3,31 @@
 /**
  * Approve / Reject decision panel for the listing-review page.
  *
- * Client component: renders the two actions and calls the Server Actions
- * (approveListing / rejectListing). The actions re-verify admin authorization
- * server-side, so this component is purely presentational + form state.
+ * Client component built on @dyafa/ui primitives: Approve uses the `success`
+ * Button variant (NOT terracotta accent), Reject uses `destructive`. Both go
+ * through a ConfirmDialog and surface the outcome as a Toast. The underlying
+ * server actions (approveListing / rejectListing) are unchanged — they re-verify
+ * admin authorization server-side, so this component is presentational + state.
  */
 
-import { useState, type FormEvent } from 'react';
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  Button,
+  Card,
+  ConfirmDialog,
+  FormField,
+  Select,
+  Textarea,
+  useToast,
+} from '@dyafa/ui';
+import { Check, X } from 'lucide-react';
 import { approveListing, rejectListing, type ModerationResult } from '../actions';
 import {
   M,
   REJECTION_REASONS,
   isRejectionReason,
+  tl,
   type RejectionReason,
 } from '../../../lib/moderation-i18n';
 import type { Locale } from '@dyafa/i18n';
@@ -22,198 +35,164 @@ import type { Locale } from '@dyafa/i18n';
 function errorMessage(result: Extract<ModerationResult, { ok: false }>, locale: Locale): string {
   switch (result.code) {
     case 'not_authorized':
-      return M.errorNotAuthorized[locale];
+      return tl(M.errorNotAuthorized, locale);
     case 'invalid_input':
-      return M.errorReasonRequired[locale];
+      return tl(M.errorReasonRequired, locale);
     case 'not_found':
-      return M.notFoundBody[locale];
+      return tl(M.notFoundBody, locale);
     case 'partial':
-      // Decision applied, but a follow-up write (audit/notification) failed.
-      return `${M.errorTitle[locale]}${result.message ? ` — ${result.message}` : ''}`;
+      return `${tl(M.errorTitle, locale)}${result.message ? ` — ${result.message}` : ''}`;
     default:
-      return `${M.errorTitle[locale]}${result.message ? ` — ${result.message}` : ''}`;
+      return `${tl(M.errorTitle, locale)}${result.message ? ` — ${result.message}` : ''}`;
   }
 }
 
-export function DecisionPanel({
-  propertyId,
-  locale,
-}: {
-  propertyId: string;
-  locale: Locale;
-}) {
+export function DecisionPanel({ propertyId, locale }: { propertyId: string; locale: Locale }) {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
+  const { toast } = useToast();
+
   const [mode, setMode] = useState<'idle' | 'rejecting'>('idle');
   const [reason, setReason] = useState<RejectionReason | ''>('');
   const [note, setNote] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<null | 'approved' | 'rejected'>(null);
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const [confirmApprove, setConfirmApprove] = useState(false);
+  const [confirmReject, setConfirmReject] = useState(false);
 
-  function handleResult(result: ModerationResult) {
+  function handleResult(result: ModerationResult, kind: 'approved' | 'rejected') {
     if (result.ok) {
-      setError(null);
-      setDone(result.status);
-      // Refresh server data so the queue / status reflect the decision.
+      toast({
+        variant: 'success',
+        title: kind === 'approved' ? tl(M.toastApproved, locale) : tl(M.toastRejected, locale),
+      });
       router.refresh();
     } else {
-      setError(errorMessage(result, locale));
+      toast({ variant: 'error', title: errorMessage(result, locale) });
       if (result.code === 'not_authorized') {
-        // Session lost — send the admin back to sign-in.
         router.replace(`/sign-in?next=${encodeURIComponent(`/moderation/${propertyId}`)}`);
       }
     }
   }
 
-  async function onApprove() {
-    setError(null);
-    setPending(true);
-    try {
-      const result = await approveListing(propertyId);
-      handleResult(result);
-    } finally {
-      setPending(false);
-    }
+  async function doApprove() {
+    const result = await approveListing(propertyId);
+    setConfirmApprove(false);
+    handleResult(result, 'approved');
   }
 
-  async function onReject(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
+  async function doReject() {
     if (!isRejectionReason(reason)) {
-      setError(M.errorReasonRequired[locale]);
+      setConfirmReject(false);
       return;
     }
-    const chosen = reason;
-    const noteValue = note;
-    setPending(true);
-    try {
-      const result = await rejectListing(propertyId, chosen, noteValue);
-      handleResult(result);
-    } finally {
-      setPending(false);
-    }
+    const result = await rejectListing(propertyId, reason, note);
+    setConfirmReject(false);
+    handleResult(result, 'rejected');
   }
 
-  if (done) {
-    const isApproved = done === 'approved';
-    return (
-      <div
-        role="status"
-        className={`rounded-card px-xl py-lg flex flex-col gap-xs ${
-          isApproved ? 'bg-success-bg text-success' : 'bg-warning-bg text-warning'
-        }`}
-      >
-        <span className="text-title font-semibold">
-          {isApproved ? M.approved[locale] : M.rejected[locale]}
-        </span>
-        <a
-          href="/moderation"
-          className="text-body-sm underline underline-offset-2 hover:opacity-80"
-        >
-          {M.backToQueue[locale]}
-        </a>
-      </div>
-    );
+  function onRejectSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!isRejectionReason(reason)) {
+      setReasonError(tl(M.errorReasonRequired, locale));
+      return;
+    }
+    setReasonError(null);
+    setConfirmReject(true);
   }
 
   return (
-    <div className="rounded-card bg-surface shadow-card p-xl flex flex-col gap-lg">
-      <h2 className="font-display text-heading-2 font-semibold text-primary">
-        {M.decision[locale]}
-      </h2>
-
-      {error && (
-        <div role="alert" className="rounded-md bg-error-bg text-error text-body-sm px-md py-sm">
-          {error}
-        </div>
-      )}
-
-      {mode === 'idle' && (
+    <Card title={tl(M.decision, locale)} padding="lg">
+      {mode === 'idle' ? (
         <div className="flex flex-col gap-md">
           <div className="flex flex-col gap-xs">
-            <button
-              type="button"
-              onClick={onApprove}
-              disabled={pending}
-              className="rounded-md bg-accent text-text-on-primary text-body font-semibold px-lg py-md transition-opacity duration-fast hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            <Button
+              variant="success"
+              fullWidth
+              iconStart={<Check className="h-4 w-4" aria-hidden="true" />}
+              onClick={() => setConfirmApprove(true)}
             >
-              {pending ? M.submitting[locale] : M.approve[locale]}
-            </button>
-            <span className="text-caption text-text-muted">{M.approveHint[locale]}</span>
+              {tl(M.approve, locale)}
+            </Button>
+            <span className="text-caption text-text-muted">{tl(M.approveHint, locale)}</span>
           </div>
 
-          <button
-            type="button"
+          <Button
+            variant="destructive"
+            fullWidth
+            iconStart={<X className="h-4 w-4" aria-hidden="true" />}
             onClick={() => {
-              setError(null);
+              setReasonError(null);
               setMode('rejecting');
             }}
-            disabled={pending}
-            className="rounded-md border border-error/40 text-error text-body font-semibold px-lg py-md transition-colors duration-fast hover:bg-error-bg disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           >
-            {M.reject[locale]}
-          </button>
+            {tl(M.reject, locale)}
+          </Button>
         </div>
-      )}
+      ) : (
+        <form onSubmit={onRejectSubmit} className="flex flex-col gap-md" noValidate>
+          <FormField label={tl(M.rejectReasonLabel, locale)} error={reasonError ?? undefined} required>
+            {(ids) => (
+              <Select
+                {...ids}
+                options={REJECTION_REASONS.map((r) => ({ value: r.value, label: tl(r.label, locale) }))}
+                value={reason || null}
+                onChange={(v) => {
+                  setReason(v as RejectionReason);
+                  setReasonError(null);
+                }}
+                placeholder={tl(M.chooseReason, locale)}
+              />
+            )}
+          </FormField>
 
-      {mode === 'rejecting' && (
-        <form onSubmit={onReject} className="flex flex-col gap-md" noValidate>
-          <label className="flex flex-col gap-xs">
-            <span className="text-caption font-semibold text-text-default">
-              {M.rejectReasonLabel[locale]}
-            </span>
-            <select
-              required
-              value={reason}
-              onChange={(ev) => setReason(ev.target.value as RejectionReason | '')}
-              className="rounded-md border border-border-strong bg-surface px-md py-sm text-body text-text-default outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            >
-              <option value="" disabled>
-                {M.chooseReason[locale]}
-              </option>
-              {REJECTION_REASONS.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label[locale]}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-xs">
-            <span className="text-caption font-semibold text-text-default">
-              {M.rejectNoteLabel[locale]}
-            </span>
-            <textarea
-              value={note}
-              onChange={(ev) => setNote(ev.target.value)}
-              rows={3}
-              placeholder={M.rejectNotePlaceholder[locale]}
-              className="rounded-md border border-border-strong bg-surface px-md py-sm text-body text-text-default outline-none resize-y focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            />
-          </label>
+          <FormField label={tl(M.rejectNoteLabel, locale)}>
+            {(ids) => (
+              <Textarea
+                {...ids}
+                value={note}
+                onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setNote(e.target.value)}
+                rows={3}
+                placeholder={tl(M.rejectNotePlaceholder, locale)}
+              />
+            )}
+          </FormField>
 
           <div className="flex items-center gap-sm">
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-md bg-error text-text-on-primary text-body font-semibold px-lg py-md transition-opacity duration-fast hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            >
-              {pending ? M.submitting[locale] : M.reject[locale]}
-            </button>
-            <button
+            <Button type="submit" variant="destructive">
+              {tl(M.reject, locale)}
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
               onClick={() => {
                 setMode('idle');
-                setError(null);
+                setReasonError(null);
               }}
-              disabled={pending}
-              className="rounded-md px-lg py-md text-body font-medium text-text-muted hover:text-text-default transition-colors duration-fast disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             >
-              {locale === 'ar' ? 'إلغاء' : locale === 'fr' ? 'Annuler' : 'Cancel'}
-            </button>
+              {tl(M.cancel, locale)}
+            </Button>
           </div>
         </form>
       )}
-    </div>
+
+      <ConfirmDialog
+        open={confirmApprove}
+        onOpenChange={setConfirmApprove}
+        title={tl(M.confirmApproveTitle, locale)}
+        body={tl(M.confirmApproveBody, locale)}
+        confirmLabel={tl(M.approve, locale)}
+        cancelLabel={tl(M.cancel, locale)}
+        onConfirm={doApprove}
+      />
+      <ConfirmDialog
+        open={confirmReject}
+        onOpenChange={setConfirmReject}
+        title={tl(M.confirmRejectTitle, locale)}
+        body={tl(M.confirmRejectBody, locale)}
+        confirmLabel={tl(M.reject, locale)}
+        cancelLabel={tl(M.cancel, locale)}
+        destructive
+        onConfirm={doReject}
+      />
+    </Card>
   );
 }

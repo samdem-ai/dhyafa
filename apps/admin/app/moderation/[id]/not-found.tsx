@@ -1,34 +1,32 @@
 /**
  * Not-found surface for a listing that doesn't exist (or was already handled).
- * Rendered when the detail page calls `notFound()`.
+ * Rendered when the detail page calls `notFound()`. Uses the shared AppShell +
+ * EmptyState so it stays consistent with the migrated moderation flow.
  */
 
-import { dir } from '@dyafa/i18n';
+import Link from 'next/link';
+import { EmptyState } from '@dyafa/ui';
 import { resolveLocale } from '../../../lib/i18n';
+import { AdminAppShell } from '../../../components/AdminAppShell';
 import { M, tl } from '../../../lib/moderation-i18n';
 
 export default function ListingNotFound() {
   const locale = resolveLocale();
-  const direction = dir(locale);
   return (
-    <main dir={direction} className="min-h-screen bg-bg">
-      <header className="sticky top-0 z-header bg-primary px-xl py-md flex items-center shadow-card">
-        <span className="font-display text-heading-3 font-semibold text-text-on-primary">
-          {tl(M.brand, locale)}
-        </span>
-      </header>
-      <div className="max-w-screen-md mx-auto px-xl py-3xl flex flex-col items-center text-center gap-sm">
-        <span className="font-display text-heading-1 font-semibold text-primary">
-          {tl(M.notFoundTitle, locale)}
-        </span>
-        <p className="text-body-sm text-text-muted max-w-md">{tl(M.notFoundBody, locale)}</p>
-        <a
-          href="/moderation"
-          className="mt-md rounded-md bg-accent text-text-on-primary text-body font-semibold px-lg py-md hover:opacity-90 transition-opacity duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-        >
-          {tl(M.backToQueue, locale)}
-        </a>
-      </div>
-    </main>
+    <AdminAppShell locale={locale}>
+      <EmptyState
+        preset="no-results"
+        title={tl(M.notFoundTitle, locale)}
+        description={tl(M.notFoundBody, locale)}
+        action={
+          <Link
+            href="/moderation"
+            className="inline-flex h-10 items-center justify-center rounded-sm bg-primary px-lg text-body-sm font-semibold text-text-on-primary shadow-xs transition-colors duration-fast hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          >
+            {tl(M.backToQueue, locale)}
+          </Link>
+        }
+      />
+    </AdminAppShell>
   );
 }

@@ -25,6 +25,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "echo \"(lint) @dyafa/design-tokens — no linter configured yet\""
   },
+  "dependencies": {
+    "tailwindcss-animate": "^1.0.7"
+  },
   "devDependencies": {
     "tailwindcss": "^3.4.0"
   }

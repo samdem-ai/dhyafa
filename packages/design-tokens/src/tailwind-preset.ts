@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import animate from "tailwindcss-animate";
 import { color, space, radius, shadow, fontFamily, fontSize, lineHeight, fontWeight, motion, z, breakpoints } from "./tokens.js";
 
 /**
@@ -168,6 +169,7 @@ const preset: Partial<Config> = {
       screens: breakpoints,
     },
   },
+  plugins: [animate],
 };
 
 export default preset;

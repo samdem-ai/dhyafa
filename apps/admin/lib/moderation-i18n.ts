@@ -187,7 +187,66 @@ export const M = {
     en: 'This listing may have already been reviewed or removed.',
   },
   loading: { ar: 'جارٍ التحميل…', fr: 'Chargement…', en: 'Loading…' },
+  // ── Confirmation + toasts ────────────────────────────────────────────────
+  confirmApproveTitle: {
+    ar: 'الموافقة على هذا الإعلان؟',
+    fr: 'Approuver cette annonce ?',
+    en: 'Approve this listing?',
+  },
+  confirmApproveBody: {
+    ar: 'سيصبح الإعلان مرئيًا للضيوف فورًا ويُخطَر المضيف.',
+    fr: 'L’annonce deviendra immédiatement visible par les voyageurs et l’hôte sera notifié.',
+    en: 'The listing becomes visible to guests immediately and the host is notified.',
+  },
+  confirmRejectTitle: {
+    ar: 'رفض هذا الإعلان؟',
+    fr: 'Rejeter cette annonce ?',
+    en: 'Reject this listing?',
+  },
+  confirmRejectBody: {
+    ar: 'سيُخطَر المضيف بالسبب ويمكنه التعديل وإعادة الإرسال.',
+    fr: 'L’hôte sera notifié du motif et pourra modifier puis resoumettre.',
+    en: 'The host is notified with the reason and can edit and resubmit.',
+  },
+  toastApproved: {
+    ar: 'تمت الموافقة على الإعلان',
+    fr: 'Annonce approuvée',
+    en: 'Listing approved',
+  },
+  toastRejected: {
+    ar: 'تم رفض الإعلان',
+    fr: 'Annonce rejetée',
+    en: 'Listing rejected',
+  },
+  cancel: { ar: 'إلغاء', fr: 'Annuler', en: 'Cancel' },
+  openPhoto: { ar: 'فتح الصورة', fr: 'Ouvrir la photo', en: 'Open photo' },
+  closePhoto: { ar: 'إغلاق الصورة', fr: 'Fermer la photo', en: 'Close photo' },
+  coverLabel: { ar: 'الغلاف', fr: 'Couverture', en: 'Cover' },
 } satisfies Record<string, L10n>;
+
+/** property_status enum → localized label + pill variant key. */
+export const PROPERTY_STATUS: Record<
+  string,
+  { label: L10n; variant: 'neutral' | 'success' | 'warning' | 'error' | 'info' }
+> = {
+  draft: { label: { ar: 'مسودة', fr: 'Brouillon', en: 'Draft' }, variant: 'neutral' },
+  pending: { label: { ar: 'قيد المراجعة', fr: 'En attente', en: 'Pending' }, variant: 'warning' },
+  approved: { label: { ar: 'مُعتمد', fr: 'Approuvée', en: 'Approved' }, variant: 'success' },
+  rejected: { label: { ar: 'مرفوض', fr: 'Rejetée', en: 'Rejected' }, variant: 'error' },
+  suspended: { label: { ar: 'موقوف', fr: 'Suspendue', en: 'Suspended' }, variant: 'error' },
+};
+
+/** Resolve a property-status pill descriptor (neutral fallback for unknowns). */
+export function propertyStatusPill(
+  status: string | null | undefined,
+  locale: Locale,
+): { label: string; variant: 'neutral' | 'success' | 'warning' | 'error' | 'info' } {
+  if (status && PROPERTY_STATUS[status]) {
+    const s = PROPERTY_STATUS[status];
+    return { label: s.label[locale], variant: s.variant };
+  }
+  return { label: status ?? '—', variant: 'neutral' };
+}
 
 /** Format an ISO timestamp with Latin digits, per locale (docs/07 §6). */
 export function formatDateTime(iso: string | null, locale: Locale): string {

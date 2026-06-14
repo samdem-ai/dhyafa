@@ -1,0 +1,584 @@
+{
+  "admin": {
+    "dashboard": "apps/admin is a Next.js 14 App Router admin console. It is FAR more complete and polished than the user's \"plain/ugly + buggy\" complaint implies: there is a real design system (components/ui.tsx, AdminShell with a deep-teal sidebar, StatCard/TrendPill/StatusPill/TableShell/EmptyState/ErrorState), a robust auth bridge (lib/auth.ts httpOnly-cookie + service-role role re-check), full RTL via CSS logical utilities, en/ar/fr inline i18n, loading.tsx skeletons on most routes, and audit logging on every privileged write. The architecture (server-component reads via service-role; Server Actions re-verify admin; user-JWT client for self-authorizing RPCs cancel_booking/run_payouts) is sound and matches the spec. The biggest CONCRETE functional defect is a systemic one: several Server Actions insert notifications with `type` values that are NOT in the notifications.type CHECK constraint (schema.sql lines 667-674), so suspend/unsuspend user, verify host, and admin force-cancel booking all fail their notification insert and return a 'partial' error to the operator even though the primary mutation succeeded — making working features LOOK broken. The second-biggest issue is purely visual/structural: the entire Moderation section (the flagship admin flow) does NOT use AdminShell — it renders a bespoke bg-primary top bar with NO sidebar, so it looks like a different, plainer app than every other page. Beyond those, most routes are working with smaller bugs and UX gaps (no image-upload UI in CMS, property-UUID-paste-only collection management, no error.tsx boundaries, a few status/RPC edge-case mismatches).",
+    "routes": [
+      {
+        "route": "/ (app/page.tsx) — Overview / KPI dashboard",
+        "purpose": "Platform KPIs (bookings, GMV, commission, conversion, active listings, new users) over a ?range= window, with SVG bar/line charts, backed by mv_daily_metrics + mv_conversion_funnel and live property counts.",
+        "status": "working",
+        "issues": [
+          "Trend pills compare second-half vs first-half of the range from already-fetched daily rows — fine, but trendOf returns null for <4 days so 7d-ish ranges may show no trend silently.",
+          "Reads MVs (mv_daily_metrics, mv_conversion_funnel) which only reflect data as of the last refresh_analytics() run; if pg_cron/Edge refresh isn't wired in this environment the dashboard shows stale/zero numbers and there is no 'last refreshed' indicator. force-dynamic only re-runs the query, it does not refresh the MV.",
+          "activeListings/pending live counts come from base `properties` (always current), so they can disagree with the MV-derived tiles, which can look inconsistent."
+        ],
+        "ux_problems": [
+          "No skeleton/loading.tsx at the root route (other routes have one); first paint waits on 4 awaited queries.",
+          "Charts have empty-state text but no axis labels/tooltips; day labels are just day-of-month numbers."
+        ]
+      },
+      {
+        "route": "/moderation (list) — pending-listing queue",
+        "purpose": "Lists properties with status='pending' (newest submitted_at first) joining host/wilaya/type/photo-count; links to the review detail.",
+        "status": "buggy",
+        "issues": [
+          "Only ever shows status='pending'. There is NO way to view approved/rejected/suspended listings, re-open a decided listing, or SUSPEND a live (approved) listing — property_status enum has 'suspended' and notifications has 'listing_suspended', but no admin action sets it. Major missing capability for a 'Listings' nav item.",
+          "Cross-checks against schema are correct (status enum, submitted_at, property_photos(count) aggregate embedding is valid PostgREST)."
+        ],
+        "ux_problems": [
+          "Does NOT render inside AdminShell — uses a custom <header className='bg-primary'> with only a 'Back to dashboard' link and NO sidebar nav. Visually inconsistent with every other page and is the page the user most likely calls 'plain'.",
+          "No search/filter (can't filter by wilaya/host/date or sort).",
+          "No loading skeleton wired to this layout style (loading.tsx exists but the bespoke header won't match).",
+          "Mobile: the 6-col grid collapses to stacked rows with no field labels, so columns are ambiguous."
+        ]
+      },
+      {
+        "route": "/moderation/[id] — listing review + approve/reject",
+        "purpose": "Full property detail (photos from listing-photos bucket, all-locale title/description/house-rules, room types, amenities, host/location/meta) with DecisionPanel to approve or reject (reason enum + note).",
+        "status": "partial",
+        "issues": [
+          "approveListing/rejectListing themselves are correct: status guarded on .eq('status','pending'), audit_log + notification (listing_approved/listing_rejected ARE valid notification types). Logic is sound.",
+          "Bucket is correct (listing-photos is the canonical bucket per rls.sql).",
+          "Reused as the generic 'property detail' target from /bookings (Property link -> /moderation/{id}); renders any property regardless of status, but the page chrome/title hard-codes a 'Pending' badge so an already-approved property still shows a yellow 'Pending' pill — misleading."
+        ],
+        "ux_problems": [
+          "Like the list, does NOT use AdminShell — bespoke bg-primary header, no sidebar.",
+          "Approve button is styled bg-accent (terracotta) — terracotta reads as a warning/accent, not a positive 'approve'; success/teal would be clearer. Reject is correctly error-styled.",
+          "Photos use raw <img> (no next/image), no lightbox/zoom for moderation scrutiny.",
+          "Hardcoded 'Pending' badge regardless of actual status."
+        ]
+      },
+      {
+        "route": "/users (list)",
+        "purpose": "Search profiles by display_name/full_name/phone (?q=), show host badge + identity verification + active/suspended pill, link to profile.",
+        "status": "working",
+        "issues": [
+          "Hosts resolved via a second query on host_profiles.owner_id IN (...) — correct.",
+          "PAGE_SIZE=25 with no real pagination; the 'more results' hint just prints the filter label/placeholder text (lines 174-178) which is meaningless to the operator (looks like a bug)."
+        ],
+        "ux_problems": [
+          "No status/role filter (guest vs host, active vs suspended) — only free-text search.",
+          "The 'rows.length === PAGE_SIZE' footer renders `{filters}: {searchPlaceholder}` i.e. 'Filters: Name or phone…' — confusing copy, not a Load-more control.",
+          "Suspended users still show but there's no bulk action or quick suspend from the list."
+        ]
+      },
+      {
+        "route": "/users/[id] + UserActionsPanel + actions.ts",
+        "purpose": "Profile + host account + guest booking history; suspend/unsuspend (profiles.is_active) and verifyHost (host_profiles.identity_status='verified').",
+        "status": "buggy",
+        "issues": [
+          "BUG (data): suspendUser/unsuspendUser insert notifications with type 'account_suspended'/'account_reactivated' and verifyHost inserts 'host_verified'. NONE of these are in the notifications.type CHECK constraint (allowed set in schema.sql lines 667-674). The notification INSERT fails, so EVERY suspend/unsuspend/verify returns code:'partial' with a CHECK-violation message even though profiles/host_profiles was updated correctly. Operator sees 'Action failed — new row violates check constraint'.",
+          "Suspending only flips profiles.is_active=false; nothing in auth/RLS actually blocks a suspended user from signing in or acting — so 'suspend' has no enforcement teeth (product gap).",
+          "verifyHost can only set 'verified' — no way to set 'rejected' or 'pending' identity_status, and no payout_status verification action despite the column existing.",
+          "revalidatePath('/users/${before.owner_id}') in verifyHost is correct (users route is keyed by profile id = owner_id)."
+        ],
+        "ux_problems": [
+          "Because of the CHECK bug, the success path shows a red error toast — the single worst 'looks broken' UX in the app.",
+          "Suspend uses bg-error fill; verify uses bg-accent (terracotta) which doesn't read as a positive/verify action.",
+          "Booking history capped at 50 with no pagination or link to full bookings filtered by guest."
+        ]
+      },
+      {
+        "route": "/bookings (list)",
+        "purpose": "All bookings, filter by status/wilaya/from/to and search by code; joins property+wilaya.",
+        "status": "working",
+        "issues": [
+          "Uses properties!inner join and filters properties.wilaya_code — valid. status/date/code filters correct.",
+          "PAGE_SIZE=30, no real pagination; footer hint prints 'Filters — 30' (line 226-229) which is not a control.",
+          "Guest-name search is advertised in the file header ('searchable by booking code or guest name') but only code is searched (ilike on code); guest name is not actually queried."
+        ],
+        "ux_problems": [
+          "Footer 'load more' is fake (static text).",
+          "No total count / result count shown.",
+          "Date filter applies to check_in only; label doesn't clarify which date field."
+        ]
+      },
+      {
+        "route": "/bookings/[id] + CancelPanel + actions.ts (force-cancel)",
+        "purpose": "Booking breakdown, parties, transactions, linked dispute, admin force-cancel via cancel_booking RPC (admin-JWT path) computing refund.",
+        "status": "buggy",
+        "issues": [
+          "BUG (data): forceCancelBooking notifies guest AND host with type 'booking_cancelled_admin', which is NOT in the notifications.type CHECK list (the valid value is 'booking_cancelled'). Both notification inserts fail, so a successful force-cancel returns code:'partial' with check-violation message(s). The cancel + refund themselves succeed.",
+          "BUG (logic): CANCELLABLE set includes 'checked_in', but the cancel_booking RPC only handles requested/awaiting_payment/confirmed and raises ILLEGAL_TRANSITION for checked_in — so force-cancelling a checked_in booking fails with rpc_failed.",
+          "Depends on the custom_access_token_hook injecting app_roles into the admin JWT so cancel_booking's internal is_staff()/has_role('admin') passes via userSupabase(); if the hook isn't configured the RPC returns FORBIDDEN.",
+          "Property link points to /moderation/{id} (the only property-detail page), which mislabels the property as a moderation item."
+        ],
+        "ux_problems": [
+          "Force-cancel success surface is warning-toned but the notification failure flips it to a red 'Action failed' due to the CHECK bug.",
+          "No way to issue a partial/custom refund or override the computed refund; refund amount is RPC-driven only.",
+          "Transactions list has no refund action here (only on /payments)."
+        ]
+      },
+      {
+        "route": "/payments + PaymentControls + actions.ts",
+        "purpose": "Commission KPIs, payouts (run_payouts admin-JWT + markPayoutPaid service-role), transactions with manual refund recording.",
+        "status": "partial",
+        "issues": [
+          "KPI 'Collected (paid)' sums amount_dzd across status in (paid, partially_refunded, refunded) WITHOUT filtering kind='payment' — so refund-kind transactions and fully-refunded payments are counted as collected revenue, overstating GMV/commission. 'Refunded' KPI sums refunded_dzd which is fine, but the gross figure is inaccurate.",
+          "markPayoutPaid notifies with 'payout_paid' (VALID type) — this one is correct. runPayouts/markTransactionRefunded write audit only (no notification) — correct.",
+          "markTransactionRefunded only records a refund row-state change (status + refunded_dzd); it does NOT call any provider refund and does NOT create a refund-kind transaction or touch the booking.refund_amount_dzd — purely a bookkeeping flag, which can diverge from cancel_booking's refund transactions.",
+          "run_payouts RPC self-checks has_role('admin') via the admin JWT (userSupabase) — depends on the access-token hook being configured."
+        ],
+        "ux_problems": [
+          "KPIs are all-time with no date range (file says 'rolling, all-time for v1').",
+          "Payouts/transactions both capped at 30 with no pagination.",
+          "RunPayoutsForm has two raw date inputs and a Run button with no preview of how many bookings/hosts will be included before committing.",
+          "No statement_path / PDF handling for payouts despite the column existing."
+        ]
+      },
+      {
+        "route": "/reviews + ReviewModeration + actions.ts",
+        "purpose": "Reported tab (reviews flagged via disputes category='other' from report_review RPC) + All tab (filter by status); hide/remove/restore.",
+        "status": "partial",
+        "issues": [
+          "setReviewStatus is correct (sets status, audits as review.remove, no notification so no CHECK risk).",
+          "Reported tab heuristic is fragile: it loads ALL disputes with category='other' and joins reviews by booking_id, but category='other' is a general dispute category — a genuine 'other' booking dispute (not a review report) whose booking happens to have a review will surface that review in the Reported tab with the dispute description shown as the 'report reason'. report_review prefixes the description with 'Reported review <id>:' but the query does not filter on that prefix, so false positives are possible.",
+          "Restoring a review sets status='published' but does NOT set published_at; property_review_stats MV filters status='published' (works) but properties.rating_avg/review_count recompute depends on a trigger (not verified here)."
+        ],
+        "ux_problems": [
+          "No way to see the full review (all category sub-scores) or the property/booking context inline; only overall ★ + comment.",
+          "Reported tab can show reviews intermixed from non-review disputes (see issues).",
+          "Hide/Remove/Restore are tiny ghost buttons at the card footer; remove has an optional-note inline input but no confirm modal for the destructive 'removed'."
+        ]
+      },
+      {
+        "route": "/disputes (list)",
+        "purpose": "All disputes, filter by status + category; joins booking code + opener.",
+        "status": "working",
+        "issues": [
+          "Query/joins/enums all match schema. Default order is created_at desc (the file comment claims open/under-review float to top 'by default' but there is no such ordering — it's purely newest-first).",
+          "PAGE_SIZE=40, no pagination."
+        ],
+        "ux_problems": [
+          "No 'against' party column; no quick-resolve from the list.",
+          "Open/under_review are not visually prioritized despite the stated intent."
+        ]
+      },
+      {
+        "route": "/disputes/[id] + ResolvePanel + actions.ts",
+        "purpose": "Dispute context + message thread + take-under-review/resolve/reject (note required on final); notifies both parties.",
+        "status": "partial",
+        "issues": [
+          "resolveDispute uses notification type 'dispute_resolved' (VALID) — correct, no CHECK bug here.",
+          "Resolution never touches disputes.refund_amount_dzd nor issues any refund/booking change — disputes are resolved as text-only outcomes even for category='refund'; the refund_amount_dzd column is dead in the admin flow.",
+          "On 'rejected' the booking detail page still renders resolution_note inside a GREEN success-styled box (bookings/[id] and disputes/[id] both style resolution_note as bg-success), which misrepresents a rejection as a positive resolution.",
+          "No state-machine guard on transitions (e.g., can 'resolve' straight from 'open' without 'under_review' — acceptable, but also can re-resolve since update isn't guarded on current status; ResolvePanel hides controls when closed, but the action itself doesn't .eq on a non-final status)."
+        ],
+        "ux_problems": [
+          "evidence_path is shown as a raw storage path string, not a viewable link/thumbnail.",
+          "Admin cannot post a message into the dispute thread (no compose box) — resolution note is the only channel.",
+          "No refund/compensation control in the resolve flow."
+        ]
+      },
+      {
+        "route": "/audit",
+        "purpose": "Read-only append-only audit_log viewer, filter by action/target/actor with before/after JSON in <details>.",
+        "status": "working",
+        "issues": [
+          "Solid. Actor names resolved via one follow-up profiles query. Filters validated against allow-lists. No write path (correct).",
+          "PAGE_SIZE=60, no pagination/date filter — old entries fall off."
+        ],
+        "ux_problems": [
+          "No date-range filter and no pagination, so high-volume logs are not navigable.",
+          "before/after shown as raw single-line JSON in a code span (hard to diff)."
+        ]
+      },
+      {
+        "route": "/content (hub)",
+        "purpose": "CMS index with live counts per catalog (collections, banners, rails, property_types, amenities, wilayas).",
+        "status": "working",
+        "issues": [
+          "Six head/count queries in parallel — correct."
+        ],
+        "ux_problems": [
+          "Cards are functional but flat; counts only, no last-updated or active/inactive breakdown."
+        ]
+      },
+      {
+        "route": "/content/collections + CollectionItems + EntityEditor",
+        "purpose": "CRUD featured_collections and manage collection_items.",
+        "status": "partial",
+        "issues": [
+          "saveCollection/toggle/delete/add/removeItem all correct (service-role + audit). deleteCollection manually clears collection_items first (collection_items FK is ON DELETE CASCADE in schema, so the manual delete is harmless/redundant).",
+          "EntityEditor has no field for cover_photo_path, so a collection's cover image can never be set from admin."
+        ],
+        "ux_problems": [
+          "Adding properties to a collection requires pasting raw property UUIDs (CollectionItems) — no search/typeahead/picker; operator must copy ids from other pages.",
+          "No drag-reorder; sort order is a manual number input.",
+          "No image upload (cover) UI."
+        ]
+      },
+      {
+        "route": "/content/banners",
+        "purpose": "CRUD promo_banners with schedule + target URL.",
+        "status": "partial",
+        "issues": [
+          "Actions correct (image_path required, schedule slice(0,16) for datetime-local). No notification risk."
+        ],
+        "ux_problems": [
+          "image_path is a free-text storage-path input — no upload widget and no preview, so operators must already know the exact storage object path (impractical).",
+          "List title falls back to image_path when no title — shows a raw path as the heading."
+        ]
+      },
+      {
+        "route": "/content/rails",
+        "purpose": "Edit-only home_rails (labels/sort/active).",
+        "status": "working",
+        "issues": [
+          "Edit-only by design (key+kind fixed). saveRail correct."
+        ],
+        "ux_problems": [
+          "No reorder UI; sort is a number. Cannot preview where each rail appears on the storefront."
+        ]
+      },
+      {
+        "route": "/content/property-types",
+        "purpose": "CRUD property_types (numeric PK assigned via max(id)+1).",
+        "status": "buggy",
+        "issues": [
+          "savePropertyType computes new id as max(id)+1 client-... server-side via a query (property_types.id is a non-identity smallint PK). This is RACE-PRONE (two concurrent creates collide on PK) and will eventually exceed smallint range only theoretically — the real risk is the concurrent-insert PK conflict returning a generic update_failed.",
+          "Otherwise correct (kind validated, l10n name columns)."
+        ],
+        "ux_problems": [
+          "icon is a free-text string (no icon picker); kind is a bare select of enum literals."
+        ]
+      },
+      {
+        "route": "/content/amenities",
+        "purpose": "CRUD amenities (numeric PK via max(id)+1).",
+        "status": "buggy",
+        "issues": [
+          "Same max(id)+1 race condition as property-types for amenities.id (smallint PK).",
+          "category is free-text but the DB has a CHECK (category in general/kitchen/bathroom/safety/accessibility/outdoor); typing any other value will fail the CHECK with a generic update_failed and no field-level hint."
+        ],
+        "ux_problems": [
+          "category should be a select constrained to the 6 allowed values; as a free-text input it invites CHECK-violation failures.",
+          "No icon picker."
+        ]
+      },
+      {
+        "route": "/content/wilayas",
+        "purpose": "Toggle wilaya is_active; show commune counts (read-only).",
+        "status": "working",
+        "issues": [
+          "toggleWilayaActive correct; communes read-only by design."
+        ],
+        "ux_problems": [
+          "69 wilayas in one ungrouped/unsearchable list; no filter for active/inactive."
+        ]
+      },
+      {
+        "route": "/(auth)/sign-in + /api/session",
+        "purpose": "Email/password sign-in -> POST tokens to /api/session (httpOnly cookies) -> redirect.",
+        "status": "working",
+        "issues": [
+          "Solid. Friendly client-side admin pre-check + authoritative server gate. Secure cookie flag derived from x-forwarded-proto (correct fix for plain-HTTP VPS). DELETE clears cookies.",
+          "Default post-login destination is /moderation (not / overview) — minor.",
+          "No refresh-token rotation: access cookie capped at 1h; when it expires the next server request sees no valid token and redirects to sign-in (the stored refresh token is never used to mint a new access token server-side), so admins get bounced to sign-in roughly hourly."
+        ],
+        "ux_problems": [
+          "Polished split-panel layout (good). Mobile wraps the teal LocaleSwitcher in a dark chip (good).",
+          "Hourly forced re-login due to no refresh flow is an operational annoyance."
+        ]
+      }
+    ],
+    "cross_cutting_bugs": [
+      "NOTIFICATION CHECK-CONSTRAINT VIOLATIONS (highest-impact functional bug): lib/audit.ts notify() inserts whatever `type` string it is given, but notifications.type has a CHECK constraint (schema.sql 667-674). The admin actions use invented types that are NOT in the list: 'account_suspended' & 'account_reactivated' (users/actions.ts suspend/unsuspend), 'host_verified' (users/actions.ts verifyHost), and 'booking_cancelled_admin' (bookings/actions.ts forceCancel, sent to BOTH guest and host). Every one of these mutations succeeds on the primary write but then fails the notification insert and returns code:'partial' with a 'violates check constraint' message — so core admin actions appear broken to the operator. Fix: map to allowed types (booking_cancelled, listing_suspended, etc.) or extend the CHECK constraint via migration. ('payout_paid' and 'dispute_resolved' are correctly within the allowed set.)",
+      "MODERATION SECTION DOESN'T USE AdminShell: app/moderation/page.tsx and app/moderation/[id]/page.tsx render a bespoke <header className='bg-primary'> with NO sidebar nav, while every other route uses AdminShell (teal rail + top bar + breadcrumb). This is the single biggest 'plain/ugly + inconsistent' visual problem and it's on the flagship moderation flow. Bring both under AdminShell.",
+      "FAKE PAGINATION across all list pages: /users, /bookings, /payments, /reviews, /disputes, /audit all cap at a PAGE_SIZE and either show nothing or print a static placeholder string as a 'load more' footer (e.g. /users prints 'Filters: Name or phone…', /bookings prints 'Filters — 30'). There is no offset/cursor paging anywhere, so data beyond the first page is unreachable.",
+      "max(id)+1 PRIMARY-KEY ASSIGNMENT for property_types and amenities (content/actions.ts) is race-prone for the non-identity smallint PKs; concurrent creates can collide and surface as a generic update_failed.",
+      "FREE-TEXT INPUTS THAT MAP TO DB CHECK/ENUM COLUMNS: amenities.category is a free-text field but the DB constrains it to 6 values; banner/collection image paths are free-text storage paths with no upload UI — both invite CHECK violations or broken images with no field-level validation.",
+      "NO error.tsx BOUNDARIES anywhere in app/: detail pages handle the single .maybeSingle() DB error inline, but the multi-query Promise.all reads (overview, payments) and any unexpected throw fall through to Next's default unstyled error screen instead of a branded ErrorState.",
+      "NO MIDDLEWARE / edge auth: every page calls requireAdmin() individually (correct and safe), but there's no middleware.ts as defense-in-depth; a newly added route that forgets requireAdmin() would be unprotected.",
+      "SESSION REFRESH GAP: /api/session stores a refresh token but nothing ever uses it server-side; the access cookie is capped at 1h and requireAdmin() only validates the access token, so admins are redirected to sign-in ~hourly with no silent refresh.",
+      "RESOLUTION-NOTE STYLING: bookings/[id] and disputes/[id] render disputes.resolution_note inside a green success box even when the dispute was 'rejected', misrepresenting a rejection as a positive outcome.",
+      "STALE COMMENT vs behavior: lib/i18n.ts says it 'Falls back to Arabic (DEFAULT_LOCALE)' but @dyafa/i18n DEFAULT_LOCALE is 'en' (matches the spec's English-default/LTR lock). Behavior is correct; the comment is wrong and could mislead maintainers. (DB profiles.preferred_locale defaults to 'ar', which is a separate, intended user-preference default.)",
+      "ACCENT (terracotta) USED FOR POSITIVE ACTIONS: Approve listing, Verify host, and most CMS Save buttons use bg-accent (terracotta). Terracotta is the brand accent, not a success color, so positive/destructive affordances aren't visually differentiated (approve vs reject both feel 'colored'). Consider success/teal for confirmations."
+    ],
+    "missing_features": [
+      "Listing lifecycle beyond pending: no way to view approved/rejected/suspended listings, browse/search all listings, or SUSPEND a live listing (property_status 'suspended' + notification 'listing_suspended' exist in the schema but no admin action uses them). The 'Listings' nav effectively means 'pending queue only'.",
+      "Host identity workflow is one-way: verifyHost only sets 'verified' — no reject/reset to pending, no view of KYC docs (id_doc_path / kyc-docs bucket), and no payout_status verification action.",
+      "Dispute resolution issues no money: disputes.refund_amount_dzd is never written and no refund/booking action is taken on resolve, even for category='refund'. Admins also cannot post into the dispute message thread.",
+      "Image upload UI is entirely absent in the CMS: banners, collections (cover_photo_path), property_types/amenities icons all require typing raw storage paths/strings; no Supabase Storage upload component anywhere.",
+      "Collection item management has no property picker — operators must paste UUIDs; no search/typeahead and no drag-reorder.",
+      "No platform_settings editor: commission_bps, payout_period, payment_window_minutes, geo_fuzz_meters, feature_flags are all in the DB with no admin UI to change them.",
+      "Manual/partial refund control is weak: markTransactionRefunded only flips a bookkeeping flag (no provider refund, no refund transaction, no booking.refund_amount_dzd update); force-cancel offers no override of the RPC-computed refund.",
+      "No role-management UI: grant_role RPC (super_admin only) and the super_admin vs admin distinction exist, but there's no screen to grant/revoke admin/staff roles; primaryRole is computed but never gates any UI (an 'admin' sees identical capabilities to 'super_admin').",
+      "No date-range/pagination on payments KPIs and audit log; no CSV/export anywhere.",
+      "No analytics depth: the rich MVs (mv_top_destinations, mv_host_performance, mv_revenue_by_period) are never surfaced — only mv_daily_metrics + mv_conversion_funnel feed the overview.",
+      "No way to trigger refresh_analytics() from the UI, so MV-backed KPIs can silently go stale.",
+      "Guest-name booking search is documented but not implemented (only booking code is searched)."
+    ],
+    "top_priorities": [
+      "Fix the notifications.type CHECK violations: change 'account_suspended'/'account_reactivated' (users actions), 'host_verified' (verifyHost), and 'booking_cancelled_admin' (forceCancel) to allowed types — e.g. use existing 'booking_cancelled', and add new types ('account_suspended','account_reactivated','host_verified', or a generic 'account_update') via a migration that extends the notifications.type CHECK. This single fix makes suspend/unsuspend/verify-host/force-cancel stop reporting 'Action failed' on success.",
+      "Put /moderation and /moderation/[id] inside AdminShell (sidebar + top bar) so the flagship flow matches the rest of the app; this is the biggest visual-consistency win and likely the core of the user's 'plain/ugly' complaint.",
+      "Implement real pagination (offset or cursor) on /users, /bookings, /payments, /reviews, /disputes, /audit and remove the fake 'load more' placeholder footers.",
+      "Add an image-upload component (Supabase Storage) for promo banners, collection covers, and type/amenity icons; replace raw storage-path/text inputs. Constrain amenities.category to a select of the 6 allowed values.",
+      "Expand listing management: a Listings view that filters by status (pending/approved/rejected/suspended), plus a 'suspend listing' admin action (property_status='suspended' + 'listing_suspended' notification + audit).",
+      "Fix the property_type/amenity create race by using a DB sequence/identity or an atomic upsert, and add field-level validation/error surfacing instead of generic update_failed.",
+      "Correct force-cancel state coverage (remove 'checked_in' from CANCELLABLE or handle it in cancel_booking) and the Payments 'Collected (paid)' KPI (filter kind='payment' and exclude refunded gross) so revenue numbers are accurate.",
+      "Add platform_settings and role-management (grant_role) admin screens, and gate super_admin-only capabilities by session.primaryRole.",
+      "Wire dispute resolution to real outcomes for refund-category disputes (write refund_amount_dzd / trigger a refund) and let admins reply in the dispute thread; stop showing resolution_note in green for 'rejected' disputes.",
+      "Add a session refresh path (use the stored refresh token to mint a new access token, or adopt @supabase/ssr) so admins aren't bounced to sign-in roughly every hour; add error.tsx boundaries and a root loading.tsx."
+    ]
+  },
+  "hotel": {
+    "dashboard": "hotel",
+    "routes": [
+      {
+        "route": "/(auth)/sign-in",
+        "purpose": "Email+password sign-in; client signs in with anon Supabase, then POSTs tokens to /api/session for httpOnly cookie bridge. Server requireHost() re-checks role.",
+        "status": "buggy",
+        "issues": [
+          "No token-refresh anywhere in the app: the access-token cookie is capped at 1h (route.ts accessMaxAge = min(expires_in, 3600)) and nothing ever uses the 30-day refresh cookie to mint a new access token. After ~1h getHostSession() finds no access cookie and requireHost() redirects to /sign-in — the user is silently logged out every hour. There is no middleware or refresh route. This is the single biggest 'it keeps logging me out / not working' driver.",
+          "Pre-check reads user_roles via the in-memory anon session before the cookie exists; if RLS hides the row the code intentionally proceeds, so a non-host can briefly pass the client gate (server requireHost still blocks — acceptable but the UX shows a flash).",
+          "No 'forgot password', no resend, no rate-limit feedback; bad-credentials and not-host are the only two error states."
+        ],
+        "ux_problems": [
+          "Locale on sign-in is read from cookie only on the client (resolveLocaleFromCookie) so the marketing aside can flash the wrong direction on first paint.",
+          "No loading state on the social/feature column; otherwise visually polished."
+        ]
+      },
+      {
+        "route": "/(dashboard) [layout]",
+        "purpose": "Gates the whole group via requireHost('/'), resolves locale + capability flags (canManage/isOwner/staffRoleLabel), renders Sidebar shell.",
+        "status": "working",
+        "issues": [
+          "export const dynamic='force-dynamic' on every page plus per-request adminSupabase.auth.getUser(token) + 3 service-role lookups in getHostSession() on EVERY navigation — getHostSession is called twice per page (once in layout, once in the page) doubling the auth round-trips. No caching (e.g. React cache()) so each dashboard view fires 6+ privileged auth/role/profile queries."
+        ],
+        "ux_problems": [
+          "Capability gating is correct as an affordance, but it advertises features that are not actually wired (see Reservations / capability matrix mismatch)."
+        ]
+      },
+      {
+        "route": "/(dashboard)/ (Overview)",
+        "purpose": "Landing KPIs: check-ins/check-outs today, occupancy %, net revenue this month, pending-actions queue (requests + unread messages), upcoming reservations.",
+        "status": "partial",
+        "issues": [
+          "Unread-message KPI never decreases: messages are counted with read_at IS NULL AND sender_id<>me, but NO screen ever sets messages.read_at (MessagesClient opens a thread without marking read; no mark_messages_read RPC is called). The 'N unread guest messages' pending action is therefore permanently stuck.",
+          "Occupancy denominator uses CURRENT total inventory_count * daysInMonth across ALL active room types, while the numerator (booked room-nights) is filtered by check_in within the month only — multi-night stays that started last month but occupy this month are excluded, and inventory added/removed mid-month skews it. Occupancy is at best a rough estimate, often misleading.",
+          "Conversations are fetched with .limit(500) then messages counted via .in('conversation_id', convoIds) — breaks for hosts with >500 conversations and sends a huge IN list.",
+          "Check-ins/check-outs KPIs are informational only — there is no action anywhere to actually perform a check-in or check-out (see cross-cutting)."
+        ],
+        "ux_problems": [
+          "Pending-action links use plain <a> (full page reload) instead of next/link.",
+          "No date/time-zone indicator; 'today' is computed in UTC (todayIso uses toISOString) so for Algeria (UTC+1) late-evening arrivals can roll to the wrong day."
+        ]
+      },
+      {
+        "route": "/(dashboard)/reservations",
+        "purpose": "Filterable/searchable booking list (?status=&q=) with per-row Accept/Decline/Cancel actions.",
+        "status": "buggy",
+        "issues": [
+          "RECEPTION ACCEPT/DECLINE IS BROKEN. The page shows Accept/Decline for every 'requested' booking regardless of capability (showActions includes narrowed==='requested' unconditionally) and actions.ts comment claims 'Accept/decline is allowed for reception too'. But accept_booking_request / decline_booking_request RPCs require can_act_on_property(..., 'manager') OR is_staff() (admin). A reception user clicking Accept gets FORBIDDEN from the RPC, surfaced as a raw error. The documented capability matrix (stfCapReception: 'accept/decline requests') is false.",
+          "No check-in / check-out / no-show actions at all. confirmed→checked_in, checked_in→completed, confirmed→no_show are permitted by the trigger guard and bookings_update RLS, but there is no UI or action to do them. Core reception-desk workflow is missing.",
+          "Guest-name search is post-filtered client-side over only the rows already returned by the code-only ilike DB query (.ilike('code', q)); a guest-name search that doesn't also match a code returns 0 rows from the DB, so name search effectively never works unless the name happens to be in the first 100 code-matched rows.",
+          "List capped at .limit(100) with no pagination — older reservations are invisible.",
+          "No way to open the guest conversation or view full booking detail from a row (startConversation action exists in messages/actions.ts but is never wired here)."
+        ],
+        "ux_problems": [
+          "Cards-in-a-list layout is heavy; no compact table option, no column sorting, no count.",
+          "Cancel reason is required but there is no confirmation summary of refund amount (quote_refund exists but is not surfaced before cancelling).",
+          "Filter select fires router.replace on every change (ok) but the search needs an explicit submit; inconsistent interaction."
+        ]
+      },
+      {
+        "route": "/(dashboard)/calendar",
+        "purpose": "Per-room-type month grid of availability + bulk close/open/price-override/min-stay via set_availability_range; read-only rate-plan table.",
+        "status": "buggy",
+        "issues": [
+          "OFF-BY-ONE / SINGLE-DAY FAILURE (critical). set_availability_range treats p_to as EXCLUSIVE ('while v_d < p_to') and raises INVALID_RANGE when p_to <= p_from. CalendarBoard passes to = the user's inclusively-selected end date (to = rangeEnd ?? rangeStart) straight through actions.setAvailabilityRange. Result: (a) the LAST selected day is never updated; (b) selecting a SINGLE day (from===to) always fails with an RPC error ('INVALID_RANGE'). The action even allows from===to (only rejects from>to), so the failure is guaranteed. Bulk close/open is silently one day short and single-day blocking is impossible.",
+          "set_availability_range INSERTs availability rows with units_open = room_types.inventory_count and on conflict only coalesces is_closed/price/min_stay — opening a previously-closed range never restores units_open to a custom value, and closing doesn't zero units_open (relies on is_closed flag only). Effective-availability still works via is_closed, but units_open drift is possible.",
+          "Reception can open the calendar and the Close/Open buttons are shown (only the price field is hidden). availability_reception_write RLS DOES allow reception to write availability, so this is consistent — but the action strips price for reception correctly; OK. The min-stay write by reception is allowed by RLS too. (No bug, noted for completeness.)",
+          "Room-type picker uses plain <a href> per room → full reload on every room switch."
+        ],
+        "ux_problems": [
+          "Price override shown on a day cell uses override.toLocaleString('en-US') (raw number, no DZD, always en-US grouping) — inconsistent with formatDZD used elsewhere and ignores locale.",
+          "No way to clear a price override (passing empty leaves it; the RPC coalesces so an existing override can never be removed from the UI).",
+          "No legend for min-stay; min-stay set on days is invisible on the grid.",
+          "Selecting a range across a month boundary is awkward (must navigate; selection persists but the grid only shows one month)."
+        ]
+      },
+      {
+        "route": "/(dashboard)/properties",
+        "purpose": "Grid of the host's properties (RLS-scoped) with cover, status, wilaya, room-type count, rating.",
+        "status": "partial",
+        "issues": [
+          "room_types ( count ) counts ALL room types incl. inactive/soft-removed ones, so the 'N room types' badge overstates the live count (detail page filters is_active, list does not).",
+          "No way to create a property from the web at all (empty-state copy says 'create from the mobile app'); submit_property_for_review RPC exists but is unused — a host with only draft listings can do nothing here."
+        ],
+        "ux_problems": [
+          "Uses <img> with no width/height (CLS) and plain <a> cards (full reload).",
+          "No filter/sort by status; a host with many listings can't filter to drafts/pending."
+        ]
+      },
+      {
+        "route": "/(dashboard)/properties/[id]",
+        "purpose": "Property detail: header/status, photo gallery, description, room-type list with inline price/inventory editor (RoomTypeEditor) + add room (RoomTypeForm), amenities. Reception read-only.",
+        "status": "partial",
+        "issues": [
+          "Title, description, address, house rules, check-in/out times, cancellation tier, instant_book, amenities and photos are ALL read-only — none can be edited from the dashboard (properties_host_update RLS would allow manager edits). The only editable property data is room-type base/weekend price + inventory. For a 'property-manager dashboard' this is a large functional gap.",
+          "No photo upload/reorder/cover management despite storage buckets + property_photos RLS supporting it.",
+          "createRoomType never sets is_default; if a property somehow has no default room type the booking/pricing fallbacks that assume a default are unaffected here, but newly created rooms can never be made default from the UI."
+        ],
+        "ux_problems": [
+          "Gallery has no lightbox; cover star is tiny.",
+          "Read-only notice for reception is a single info banner; individual controls just disappear, which can read as 'missing' rather than 'restricted'."
+        ]
+      },
+      {
+        "route": "/(dashboard)/properties/[id] RoomTypeForm (Add room type)",
+        "purpose": "Inline create-room-type form (manager/owner) → createRoomType server action → RLS-scoped insert.",
+        "status": "working",
+        "issues": [
+          "Only name_en is written (name_ar/name_fr left null); for an Arabic-default platform the room shows the English name to Arabic guests until edited elsewhere (mobile). bed_config, size, max_adults/children, extra_guest_fee, cleaning default 0 — limited.",
+          "Validation requires base>0 client+server; consistent. No server check that maxOccupancy/baseOccupancy fit DB smallint ranges (fine for realistic values)."
+        ],
+        "ux_problems": [
+          "No success toast (form just closes + router.refresh); the new room appears but with no confirmation."
+        ]
+      },
+      {
+        "route": "/(dashboard)/properties/[id] RoomTypeEditor (inline price/inventory)",
+        "purpose": "Edit base/weekend price + inventory (manager/owner) → updateRoomType; soft-remove (is_active=false) with last-room guard + window.confirm.",
+        "status": "working",
+        "issues": [
+          "Lowering inventory_count below the count of overlapping live bookings is not validated (DB has no guard on update); could let a manager oversell-correct in a way that breaks single-unit assumptions, but no integrity error is surfaced.",
+          "updateRoomType writes updated_at manually though a trg_set_updated_at_room_types trigger already does it — harmless redundancy."
+        ],
+        "ux_problems": [
+          "Remove uses window.confirm (not the design-system modal) — jarring vs the rest of the polished UI.",
+          "'Saved' status text is transient state only (savedAt) with no auto-dismiss; minor."
+        ]
+      },
+      {
+        "route": "/(dashboard)/calendar (rate plans table)",
+        "purpose": "Read-only list of base/weekend/seasonal/long-stay rate plans for the selected room.",
+        "status": "partial",
+        "issues": [
+          "Entirely read-only: no add/edit/deactivate rate plan (calAddRatePlan string exists but no UI). weekdayMaskLabels assumes bit 0 = Sunday, but schema comments the mask as 'Sat..Fri' — the weekday decode is likely shifted/wrong relative to how rate plans are authored on mobile.",
+          "Percent adjust display shows raw adjust_value_dzd as a % (e.g. '+10%') but the column is named *_dzd; if mobile stores percent in a different field this label is misleading."
+        ],
+        "ux_problems": [
+          "Plain HTML table not using the shared TableCard/Th/Td primitives, so styling/RTL is inconsistent with Staff table."
+        ]
+      },
+      {
+        "route": "/(dashboard)/messages",
+        "purpose": "Inbox (server-loaded conversations) + client thread with realtime INSERT subscription; send via send_message RPC.",
+        "status": "buggy",
+        "issues": [
+          "Messages are NEVER marked read. Opening a conversation only loads + subscribes; there is no UPDATE of read_at (no mark_messages_read RPC, though messages_update RLS would permit it). Consequence: Overview's unread badge never clears and there is no per-conversation unread indicator.",
+          "No unread badges/counts in the conversation list at all — can't tell which threads need attention.",
+          "startConversation/get_or_create_conversation is implemented in actions.ts but unreachable from the UI — a host cannot initiate a conversation with a guest from a booking.",
+          "Realtime only subscribes to the ACTIVE conversation; new messages in other conversations don't bump the list or last_message_at live (list is server-rendered once). The Overview's 'live' claim is overstated; bookings/notifications realtime (published) is not used anywhere.",
+          "Optimistic send appends a temp message; if the realtime event for staff is filtered out by RLS timing, dedupe relies on id match — generally OK but tmp-id rows can linger if the RPC returns '' (data not a string)."
+        ],
+        "ux_problems": [
+          "No conversation search/filter; capped at 100.",
+          "Attachments (messages.attachment_path exists) unsupported.",
+          "Textarea is rows=1 with resize-none and no auto-grow; long messages are cramped.",
+          "No avatars or guest context (property/booking code) in the thread header."
+        ]
+      },
+      {
+        "route": "/(dashboard)/reviews",
+        "purpose": "Published reviews for the host's approved properties with a one-time host reply (manager/owner) via host_reply_review.",
+        "status": "partial",
+        "issues": [
+          "Only shows reviews of APPROVED properties (RLS reviews_public_read requires the property to be approved OR caller is author/admin; host is neither). Reviews for suspended/pending properties are invisible to the host.",
+          "Only renders overall stars; the 6 category scores (cleanliness/accuracy/communication/location/value/checkin) stored on the row are fetched-but-not-shown — no breakdown.",
+          "No aggregate header (avg rating / count / distribution); property_review_stats MV exists but is unused (and like other MVs is not granted to authenticated).",
+          "No 'report review' affordance though report_review RPC exists."
+        ],
+        "ux_problems": [
+          "No filter by property or rating; capped at 100, no pagination.",
+          "Reception sees the list with no indication replies are manager-only (reply button just absent)."
+        ]
+      },
+      {
+        "route": "/(dashboard)/analytics",
+        "purpose": "KPIs (occupancy, ADR, conversion, avg rating) + MV stats (gmv, bookings, response/cancel rate) + revenue/bookings columns, top room types, review trend. Reception: occupancy only.",
+        "status": "buggy",
+        "issues": [
+          "mv_host_performance is queried by the user-token (authenticated) client but NO 'grant select' exists for any analytics MV (only favorites + properties_public views are granted in the views migration). authenticated almost certainly gets 'permission denied for materialized view mv_host_performance'; perfRes.error is ignored, so avg_rating/gmv/bookings/response_rate/cancellation_rate KPIs silently render '—' on every host's dashboard.",
+          "SECURITY: if that grant is added naively, materialized views bypass RLS — the page filters by .eq('host_profile_id', session.hostProfileId) in app code only, so any authenticated user could read ANY host's gmv/response-rate by querying the MV with a different id. Needs a SECURITY DEFINER accessor or per-host view, not a blanket grant.",
+          "Occupancy denominator = current totalUnits * daysInWindow (≈ full 6-month window) but numerator only counts bookings whose check_in is within the window — long/edge stays are mis-bucketed and inventory changes over 6 months are ignored, so occupancy% is unreliable.",
+          "Conversion% = realized/total over bookings whose check_in>=windowStart (not bookings CREATED in window), conflating future-dated bookings; mv_conversion_funnel (created-at based) is the correct source but is unused.",
+          "bookings query .limit(2000) with no host filter relies entirely on RLS; for large hosts the cap silently truncates analytics."
+        ],
+        "ux_problems": [
+          "Reception view is a single lonely occupancy tile (which itself is the unreliable estimate) — feels broken/empty.",
+          "Charts have no y-axis values, no tooltips beyond title attr, no totals/deltas; 'flat' compared to the rest of the polish."
+        ]
+      },
+      {
+        "route": "/(dashboard)/payouts",
+        "purpose": "Payout statements (owner/manager; reception gated) with total-paid/pending tiles and gross→commission→net breakdown.",
+        "status": "partial",
+        "issues": [
+          "Read-only and depends entirely on run_payouts (admin-only) having been run; a host with confirmed bookings but no generated payout sees only an empty state with no explanation of WHEN/HOW payouts are created.",
+          "statement_path (PDF in payout-statements bucket) is not surfaced — no download link for the statement, though the bucket + RLS exist.",
+          "destination_rib displayed in full (unmasked) — potential PII exposure on screen."
+        ],
+        "ux_problems": [
+          "No date-range filter; capped at 100.",
+          "No empty-vs-not-yet-generated distinction; 'No payouts yet' is ambiguous (could mean 'never earned' or 'not yet processed')."
+        ]
+      },
+      {
+        "route": "/(dashboard)/staff",
+        "purpose": "List hotel_staff (owner-only) and add a member via add_hotel_staff(user_id, role).",
+        "status": "buggy",
+        "issues": [
+          "ADD-STAFF IS PRACTICALLY UNUSABLE. AddStaffForm requires pasting the member's raw auth user UUID (stfUserIdHint: 'Paste the member's account UUID'). There is no email/phone lookup, and no owner has another user's UUID. The schema has invite_token/invited_at/accepted_at for an email-invite flow that is completely unimplemented; add_hotel_staff also requires the user to already exist as a Dyafa account.",
+          "No way to deactivate/remove a staff member or change their role from the UI (hotel_staff_owner_update/_delete RLS exist; no action calls them). Once added, staff are permanent from the dashboard's perspective.",
+          "Status column labels !is_active as 'Invited' (stfInvited) — but add_hotel_staff always inserts is_active=true with accepted_at=now(), so 'Invited' never appears and is_active=false (a removed member) would be mislabeled 'Invited' rather than 'Inactive'.",
+          "Capability legend (stfCapReception) advertises reception can 'check-in/out' and 'accept/decline requests' — both are false in the actual app (no check-in UI; accept/decline RPC rejects reception)."
+        ],
+        "ux_problems": [
+          "Period column header reuses poPeriod ('Period') for what is actually the join/accepted date — mislabeled.",
+          "No search; UUID input is error-prone with only a regex validity check."
+        ]
+      }
+    ],
+    "cross_cutting_bugs": [
+      "AUTH/SESSION: No refresh-token rotation. /api/session stores a 30-day refresh cookie but nothing ever exchanges it; the access cookie maxAge is capped at 1h and getHostSession() only reads the access cookie. After ~1 hour every user is bounced to /sign-in mid-session. This is the most likely root cause of the 'buggy/keeps logging out' complaint. Needs a refresh path (middleware or a /api/session refresh that calls supabase.auth.setSession/refreshSession).",
+      "DATA FETCHING: getHostSession() runs adminSupabase.auth.getUser(token) + a user_roles query + host_profiles query (+ maybe hotel_staff) on EVERY request, and is invoked twice per page (layout + page) with no React cache()/memoization. Every dashboard navigation = 6-10 privileged round-trips. Should be wrapped in cache() per request.",
+      "CAPABILITY MATRIX MISMATCH: The app advertises (sidebar gating + staff legend) that reception can accept/decline bookings and do check-in/out, but (a) accept/decline RPCs require manager and reject reception, and (b) no check-in/out UI exists. The reception role is effectively read-only for operations despite being marketed as the front-desk role.",
+      "MISSING BOOKING LIFECYCLE: confirmed→checked_in, checked_in→completed, confirmed→no_show are supported by the trigger guard + bookings_update RLS but have NO server action and NO UI anywhere. The entire arrival/departure desk workflow is absent; Overview check-in/out KPIs are decorative.",
+      "ANALYTICS MV ACCESS: mv_host_performance (and all mv_* / property_review_stats) have no GRANT SELECT to authenticated, so the user-token client can't read them — analytics secondary KPIs silently blank. And materialized views bypass RLS, so a blanket grant would leak cross-host financials (app-side .eq filter is not a security boundary).",
+      "REALTIME: Only messages (active conversation) uses realtime. bookings + notifications + availability are in the supabase_realtime publication but no screen subscribes — new requests/messages/calendar changes don't appear live; Overview/Reservations require manual refresh. read_at is never written so unread state is permanently stale.",
+      "TIME ZONE: 'today'/month bounds computed via toISOString() (UTC) across Overview/Calendar/Analytics. Algeria is UTC+1, so late-evening operations can land on the wrong calendar day for check-in/out counts and availability edits.",
+      "PERFORMANCE/SCALE: Hard .limit() caps with no pagination on reservations(100), messages(100), conversations(500), reviews(100), payouts(100), analytics bookings(2000); guest/property/room names resolved via separate .in() lookups per page (N+1-ish). Large hosts silently lose data.",
+      "RTL/i18n: Fully translated (ar/fr/en) and mostly RTL-aware (logical spacing, <bdi>, rtl: utilities). Exceptions: calendar day-cell price uses toLocaleString('en-US') (ignores locale/DZD); dashboard-i18n header comment falsely says Arabic is default (DEFAULT_LOCALE is 'en' per spec). Sign-in/error/not-found read locale from cookie client-side → possible direction flash.",
+      "NAVIGATION: Many internal links use plain <a href> (Overview pending actions, properties cards, calendar room picker, room-type calendar link) causing full page reloads instead of next/link client transitions.",
+      "FEEDBACK/CONFIRMATIONS: Inconsistent — RoomTypeEditor remove uses window.confirm; most successful mutations only router.refresh() with no toast; cancel-booking doesn't show the refund quote before committing; raw RPC error.message is shown to users on the 'rpc_failed' path (e.g. 'INVALID_RANGE', 'FORBIDDEN')."
+    ],
+    "missing_features": [
+      "Email/phone-based staff invitation flow (use invite_token/invited_at; let owner invite by email instead of pasting a UUID) + deactivate/remove staff + change staff role.",
+      "Check-in / check-out / no-show actions on reservations (direct bookings UPDATE through a guarded server action) — the core front-desk workflow.",
+      "Booking detail view (per-reservation page) with full money breakdown, guest contact, special requests, and an 'Open conversation' button (wire startConversation).",
+      "Mark-messages-read (so unread badges work) + per-conversation unread counts + a conversation-level realtime/list refresh; message attachments.",
+      "Editing core property fields from the web (title/description/house rules/check-in-out times/cancellation tier/instant_book) and photo upload/reorder/cover management.",
+      "Rate-plan create/edit/deactivate UI (currently read-only) and a way to clear a price override / restore units_open on the calendar.",
+      "Property creation + submit-for-review from the web (submit_property_for_review RPC is unused).",
+      "Review enhancements: category-score breakdown, aggregate rating header (use property_review_stats), filter by property/rating, report-review.",
+      "Payout statement PDF download (statement_path), RIB masking, and an explanation of the payout schedule when none exist.",
+      "Notifications surface (bell): notifications table + mark_notifications_read RPC exist but there is no notifications UI in the dashboard.",
+      "Pagination / infinite scroll across all list pages (reservations, messages, reviews, payouts) and analytics windows.",
+      "A reception-appropriate dashboard: today's arrivals/departures as an actionable worklist rather than a static count."
+    ],
+    "top_priorities": [
+      "Fix the hourly logout: implement access-token refresh (middleware or a refresh endpoint using the stored refresh cookie + supabase.auth.setSession), so sessions survive past 1h. Highest-impact 'it's broken' fix.",
+      "Fix the calendar off-by-one / single-day failure: send p_to as end+1 (exclusive) from CalendarBoard/actions so the last selected day is included and single-day close/open works (currently always errors with INVALID_RANGE).",
+      "Reconcile reception capability with reality: either (a) allow reception accept/decline by relaxing the RPC to can_act_on_property('reception'), or (b) hide accept/decline from reception in the UI — and stop advertising it. Show a clean error instead of raw RPC messages.",
+      "Add the missing booking lifecycle actions (check-in / check-out / no-show) with a guarded server action; make Overview's check-in/out KPIs actionable. This is the front-desk workflow the dashboard exists for.",
+      "Fix analytics MV access securely: expose host performance via a SECURITY DEFINER RPC (or a per-host RLS-checked view) instead of a raw MV read; stop silently swallowing perfRes.error. Today the secondary KPIs are always blank.",
+      "Make messaging usable: mark messages read on open (clears the stuck unread badge), add unread counts in the inbox, and wire 'Open conversation' from a booking; consider realtime for the inbox list.",
+      "Replace UUID-only add-staff with an email/phone invite flow and add remove/role-change; fix the 'Invited' vs 'Inactive' status mislabel.",
+      "Add property editing + photo management from the web (title/description/rules/times/policy + photos), so managers aren't forced back to mobile for everything beyond price/inventory.",
+      "Recompute occupancy/ADR/conversion correctly (proper room-night overlap math, created-at based conversion via mv_conversion_funnel) and localize the calendar price label; fix UTC→Africa/Algiers date boundaries.",
+      "Add pagination + better feedback (design-system confirm modals, success toasts, refund-quote preview before cancel) across the list/mutation flows; switch plain <a> internal links to next/link."
+    ]
+  }
+}
