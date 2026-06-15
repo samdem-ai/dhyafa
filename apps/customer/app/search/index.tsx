@@ -1,25 +1,19 @@
 /**
- * Search entry (M2).
+ * Search entry (Phase 4 rework).
  *
- * Destination (wilaya picker), date range (calendar), and guests (steppers).
- * Each opens as an in-screen panel (no extra routes). "Search" pushes to the
- * results screen with the state serialized as route params.
+ * Built on src/ui: Screen + Header, a searchable wilaya BottomSheet picker (all
+ * 69 wilayas, not a clipped 320px slice), a DateRangePicker in a BottomSheet
+ * (not nested in the page ScrollView), a guests stepper sheet with an "any
+ * guests" option, and recent/popular destinations. Navigates to results with
+ * typed params.
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  TextInput,
-  I18nManager,
-} from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, type Locale } from '@dyafa/i18n';
+import { MapPin, Calendar as CalendarIcon, Users, Search as SearchIcon, ChevronRight } from 'lucide-react-native';
 import {
   listActiveWilayas,
   listWilayasWithListings,
@@ -28,21 +22,29 @@ import {
 } from '@/lib/discovery';
 import { DateRangePicker } from '@/components/Calendar';
 import { GuestStepperRow } from '@/components/discovery';
-import { PrimaryButton } from '@/components/ui';
+import {
+  Screen,
+  Header,
+  Text,
+  Heading,
+  Button,
+  SearchBar,
+  Chip,
+  BottomSheet,
+} from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { toDateParam } from '@/lib/bookings';
 import { toParams, type SearchState } from '@/lib/searchParams';
 import { formatRange } from '@/lib/dateFormat';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
-type Panel = 'destination' | 'dates' | 'guests' | null;
+type Sheet = 'destination' | 'dates' | 'guests' | null;
 
 export default function SearchEntryScreen() {
   const { i18n } = useTranslation('common');
   const locale = (i18n.language ?? 'en') as Locale;
 
-  const [panel, setPanel] = useState<Panel>('destination');
+  const [sheet, setSheet] = useState<Sheet>(null);
 
   const [wilayas, setWilayas] = useState<WilayaLite[]>([]);
   const [withListings, setWithListings] = useState<Set<number>>(new Set());
@@ -52,6 +54,7 @@ export default function SearchEntryScreen() {
   const [checkIn, setCheckIn] = useState<Date | null>(null);
   const [checkOut, setCheckOut] = useState<Date | null>(null);
 
+  const [anyGuests, setAnyGuests] = useState(true);
   const [adults, setAdults] = useState(1);
   const [children, setChildren] = useState(0);
 
@@ -71,19 +74,28 @@ export default function SearchEntryScreen() {
     };
   }, []);
 
-  const filteredWilayas = useMemo(() => {
-    const q = wilayaQuery.trim().toLowerCase();
-    // Surface wilayas that have listings first, then the rest.
-    const sorted = [...wilayas].sort((a, b) => {
+  const sortedWilayas = useMemo(() => {
+    // Wilayas with listings first, then by code.
+    return [...wilayas].sort((a, b) => {
       const aHas = withListings.has(a.code) ? 0 : 1;
       const bHas = withListings.has(b.code) ? 0 : 1;
       return aHas - bHas || a.code - b.code;
     });
-    if (!q) return sorted;
-    return sorted.filter((w) =>
+  }, [wilayas, withListings]);
+
+  const filteredWilayas = useMemo(() => {
+    const q = wilayaQuery.trim().toLowerCase();
+    if (!q) return sortedWilayas;
+    return sortedWilayas.filter((w) =>
       [w.name_ar, w.name_fr, w.name_en].some((n) => (n ?? '').toLowerCase().includes(q)),
     );
-  }, [wilayas, withListings, wilayaQuery]);
+  }, [sortedWilayas, wilayaQuery]);
+
+  // "Popular destinations" = wilayas that actually have approved listings (top 6).
+  const popular = useMemo(
+    () => sortedWilayas.filter((w) => withListings.has(w.code)).slice(0, 6),
+    [sortedWilayas, withListings],
+  );
 
   const selectedWilayaName = useMemo(() => {
     if (wilayaCode == null) return pick(L.anyDestination, locale);
@@ -93,19 +105,27 @@ export default function SearchEntryScreen() {
 
   const datesLabel =
     checkIn && checkOut ? formatRange(checkIn, checkOut, locale) : pick(L.anyDates, locale);
+
   const guestsTotal = adults + children;
-  const guestsLabel = `${formatNumber(guestsTotal, locale)} ${
-    guestsTotal === 1 ? pick(L.guestsCount, locale) : pick(L.guestsCountPlural, locale)
-  }`;
+  const guestsLabel = anyGuests
+    ? pick(L.anyGuests, locale)
+    : `${formatNumber(guestsTotal, locale)} ${
+        guestsTotal === 1 ? pick(L.guestsCount, locale) : pick(L.guestsCountPlural, locale)
+      }`;
+
+  function pickWilaya(code: number | null) {
+    setWilayaCode(code);
+    setSheet(null);
+  }
 
   function onSearch() {
     const state: SearchState = {
       wilayaCode,
       checkIn: checkIn ? toDateParam(checkIn) : null,
       checkOut: checkOut ? toDateParam(checkOut) : null,
-      adults,
-      children,
-      guests: guestsTotal,
+      adults: anyGuests ? undefined : adults,
+      children: anyGuests ? undefined : children,
+      guests: anyGuests ? null : guestsTotal,
     };
     router.push({ pathname: '/search/results', params: toParams(state) });
   }
@@ -114,268 +134,254 @@ export default function SearchEntryScreen() {
     setWilayaCode(null);
     setCheckIn(null);
     setCheckOut(null);
+    setAnyGuests(true);
     setAdults(1);
     setChildren(0);
     setWilayaQuery('');
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Header */}
-      <View style={styles.topBar}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={pick(L.done, locale)}
-          onPress={() => router.back()}
-          hitSlop={8}
-        >
-          <Text style={styles.close}>✕</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>{pick(L.searchTitle, locale)}</Text>
-        <Pressable accessibilityRole="button" onPress={onClear} hitSlop={8}>
-          <Text style={styles.clear}>{pick(L.clear, locale)}</Text>
-        </Pressable>
-      </View>
+    <Screen
+      edges={['top']}
+      footer={<Button label={pick(L.search, locale)} icon={SearchIcon} onPress={onSearch} />}
+    >
+      <Header
+        title={pick(L.searchTitle, locale)}
+        rightSlot={
+          <Pressable accessibilityRole="button" onPress={onClear} hitSlop={8} style={styles.clearBtn}>
+            <Text variant="body-sm" color="accent" weight="semibold">
+              {pick(L.clear, locale)}
+            </Text>
+          </Pressable>
+        }
+      />
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {/* Destination section */}
-        <SectionCard
+        <FieldRow
+          icon={MapPin}
           label={pick(L.destination, locale)}
           value={selectedWilayaName}
-          open={panel === 'destination'}
-          onToggle={() => setPanel(panel === 'destination' ? null : 'destination')}
-        >
-          <TextInput
-            style={[styles.input, { textAlign: I18nManager.isRTL ? 'right' : 'left' }]}
-            placeholder={pick(L.chooseWilaya, locale)}
-            placeholderTextColor={theme.color.textMuted}
-            value={wilayaQuery}
-            onChangeText={setWilayaQuery}
-          />
-          <View style={styles.wilayaList}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                setWilayaCode(null);
-                setPanel('dates');
-              }}
-              style={({ pressed }) => [styles.wilayaRow, pressed && styles.pressed]}
-            >
-              <Text style={styles.wilayaName}>{pick(L.anyDestination, locale)}</Text>
-            </Pressable>
-            {filteredWilayas.slice(0, 30).map((w) => {
-              const selected = w.code === wilayaCode;
-              const has = withListings.has(w.code);
-              return (
-                <Pressable
-                  key={w.code}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => {
-                    setWilayaCode(w.code);
-                    setPanel('dates');
-                  }}
-                  style={({ pressed }) => [styles.wilayaRow, pressed && styles.pressed]}
-                >
-                  <Text style={[styles.wilayaName, selected && styles.wilayaNameSelected]}>
-                    {localizedName(w, locale)}
-                  </Text>
-                  {has ? <View style={styles.hasDot} /> : null}
-                  {selected ? <Text style={styles.check}>✓</Text> : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        </SectionCard>
-
-        {/* Dates section */}
-        <SectionCard
+          onPress={() => setSheet('destination')}
+        />
+        <FieldRow
+          icon={CalendarIcon}
           label={pick(L.dates, locale)}
           value={datesLabel}
-          open={panel === 'dates'}
-          onToggle={() => setPanel(panel === 'dates' ? null : 'dates')}
-        >
-          <View style={styles.calendarWrap}>
-            <DateRangePicker
-              locale={locale}
-              checkIn={checkIn}
-              checkOut={checkOut}
-              onChange={({ checkIn: ci, checkOut: co }) => {
-                setCheckIn(ci);
-                setCheckOut(co);
-                if (ci && co) setPanel('guests');
-              }}
-            />
-          </View>
-        </SectionCard>
-
-        {/* Guests section */}
-        <SectionCard
+          onPress={() => setSheet('dates')}
+        />
+        <FieldRow
+          icon={Users}
           label={pick(L.guests, locale)}
           value={guestsLabel}
-          open={panel === 'guests'}
-          onToggle={() => setPanel(panel === 'guests' ? null : 'guests')}
-        >
-          <View style={styles.guestRows}>
-            <GuestStepperRow
-              label={pick(L.adults, locale)}
-              value={adults}
-              min={1}
-              max={16}
-              onChange={setAdults}
-            />
-            <View style={styles.divider} />
-            <GuestStepperRow
-              label={pick(L.children, locale)}
-              value={children}
-              min={0}
-              max={10}
-              onChange={setChildren}
-            />
+          onPress={() => setSheet('guests')}
+        />
+
+        {/* Popular destinations */}
+        {popular.length > 0 ? (
+          <View style={styles.popularWrap}>
+            <Text variant="overline" color="textMuted" weight="semibold" style={styles.popularLabel}>
+              {pick(L.popularDestinations, locale)}
+            </Text>
+            <View style={styles.chipWrap}>
+              {popular.map((w) => (
+                <Chip
+                  key={w.code}
+                  label={localizedName(w, locale)}
+                  selected={w.code === wilayaCode}
+                  onPress={() => setWilayaCode(w.code)}
+                />
+              ))}
+            </View>
           </View>
-        </SectionCard>
+        ) : null}
       </ScrollView>
 
-      {/* Footer */}
-      <View style={styles.footer}>
-        <PrimaryButton label={pick(L.search, locale)} onPress={onSearch} />
-      </View>
-    </SafeAreaView>
+      {/* Destination sheet */}
+      <BottomSheet
+        visible={sheet === 'destination'}
+        onClose={() => setSheet(null)}
+        snapPoints={['85%']}
+      >
+        <Heading level={3} style={styles.sheetTitle}>
+          {pick(L.destination, locale)}
+        </Heading>
+        <SearchBar
+          value={wilayaQuery}
+          onChangeText={setWilayaQuery}
+          placeholder={pick(L.searchWilayaPlaceholder, locale)}
+          clearLabel={pick(L.clear, locale)}
+        />
+        <ScrollView style={styles.wilayaList} keyboardShouldPersistTaps="handled">
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => pickWilaya(null)}
+            style={({ pressed }) => [styles.wilayaRow, pressed && styles.pressed]}
+          >
+            <Text variant="body-lg" color={wilayaCode == null ? 'primary' : 'text'}>
+              {pick(L.anyDestination, locale)}
+            </Text>
+          </Pressable>
+          {filteredWilayas.map((w) => {
+            const selected = w.code === wilayaCode;
+            const has = withListings.has(w.code);
+            return (
+              <Pressable
+                key={w.code}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => pickWilaya(w.code)}
+                style={({ pressed }) => [styles.wilayaRow, pressed && styles.pressed]}
+              >
+                <Text variant="body-lg" color={selected ? 'primary' : 'text'} style={styles.flex}>
+                  {localizedName(w, locale)}
+                </Text>
+                {has ? <View style={styles.hasDot} /> : null}
+              </Pressable>
+            );
+          })}
+          {filteredWilayas.length === 0 ? (
+            <Text variant="body" color="textMuted" center style={styles.noMatch}>
+              {pick(L.searchNoMatches, locale)}
+            </Text>
+          ) : null}
+        </ScrollView>
+      </BottomSheet>
+
+      {/* Dates sheet */}
+      <BottomSheet visible={sheet === 'dates'} onClose={() => setSheet(null)} snapPoints={['85%']}>
+        <Heading level={3} style={styles.sheetTitle}>
+          {pick(L.dates, locale)}
+        </Heading>
+        <View style={styles.calendarWrap}>
+          <DateRangePicker
+            locale={locale}
+            checkIn={checkIn}
+            checkOut={checkOut}
+            onChange={({ checkIn: ci, checkOut: co }) => {
+              setCheckIn(ci);
+              setCheckOut(co);
+            }}
+          />
+        </View>
+        <Button label={pick(L.done, locale)} onPress={() => setSheet(null)} />
+      </BottomSheet>
+
+      {/* Guests sheet */}
+      <BottomSheet visible={sheet === 'guests'} onClose={() => setSheet(null)}>
+        <Heading level={3} style={styles.sheetTitle}>
+          {pick(L.guests, locale)}
+        </Heading>
+        <View style={styles.guestRows}>
+          <Chip
+            label={pick(L.anyGuests, locale)}
+            selected={anyGuests}
+            onPress={() => setAnyGuests((v) => !v)}
+          />
+          {!anyGuests ? (
+            <>
+              <GuestStepperRow
+                label={pick(L.adults, locale)}
+                value={adults}
+                min={1}
+                max={16}
+                onChange={setAdults}
+              />
+              <View style={styles.divider} />
+              <GuestStepperRow
+                label={pick(L.children, locale)}
+                value={children}
+                min={0}
+                max={10}
+                onChange={setChildren}
+              />
+            </>
+          ) : null}
+        </View>
+        <Button label={pick(L.done, locale)} onPress={() => setSheet(null)} />
+      </BottomSheet>
+    </Screen>
   );
 }
 
-function SectionCard({
+function FieldRow({
+  icon: Icon,
   label,
   value,
-  open,
-  onToggle,
-  children,
+  onPress,
 }: {
+  icon: typeof MapPin;
   label: string;
   value: string;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
+  onPress: () => void;
 }) {
   return (
-    <View style={[styles.section, open && styles.sectionOpen]}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        onPress={onToggle}
-        style={styles.sectionHeader}
-      >
-        <Text style={styles.sectionLabel}>{label}</Text>
-        <Text style={styles.sectionValue} numberOfLines={1}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.fieldRow, pressed && styles.pressed]}
+    >
+      <View style={styles.fieldIcon}>
+        <Icon size={20} color={theme.color.primary} />
+      </View>
+      <View style={styles.fieldBody}>
+        <Text variant="caption" color="textMuted">
+          {label}
+        </Text>
+        <Text variant="body" weight="semibold" numberOfLines={1}>
           {value}
         </Text>
-      </Pressable>
-      {open ? <View style={styles.sectionBody}>{children}</View> : null}
-    </View>
+      </View>
+      <ChevronRight size={20} color={theme.color.ink300} />
+    </Pressable>
   );
 }
 
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
   pressed: { opacity: 0.85 },
-
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.space.xl,
-    paddingVertical: theme.space.md,
-    gap: theme.space.md,
-  },
-  close: { fontFamily: RN_FONTS.bodyMedium, fontSize: theme.fontSize.title, color: theme.color.text },
-  topTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: 'center',
-  },
-  clear: { fontFamily: RN_FONTS.arabicMedium, fontSize: theme.fontSize['body-sm'], color: theme.color.accent },
+  flex: { flex: 1 },
+  clearBtn: { paddingHorizontal: theme.space.sm },
 
   scroll: { padding: theme.space.xl, gap: theme.space.md, paddingBottom: theme.space['2xl'] },
 
-  section: {
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.md,
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: theme.color.border,
-    overflow: 'hidden',
-  },
-  sectionOpen: { borderColor: theme.color.borderStrong, ...theme.shadow.card },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     padding: theme.space.lg,
-    gap: theme.space.md,
   },
-  sectionLabel: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
+  fieldIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.infoBg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sectionValue: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: I18nManager.isRTL ? 'left' : 'right',
-  },
-  sectionBody: {
-    paddingHorizontal: theme.space.lg,
-    paddingBottom: theme.space.lg,
-    borderTopWidth: 1,
-    borderTopColor: theme.color.border,
-  },
+  fieldBody: { flex: 1, gap: 2 },
 
-  input: {
-    marginTop: theme.space.md,
-    backgroundColor: theme.color.surfaceSunken,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.sm,
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-  },
-  wilayaList: { marginTop: theme.space.sm, maxHeight: 320 },
+  popularWrap: { marginTop: theme.space.md, gap: theme.space.sm },
+  popularLabel: { marginStart: theme.space.xs },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
+
+  sheetTitle: { marginBottom: theme.space.sm },
+  wilayaList: { maxHeight: 440, marginTop: theme.space.sm },
   wilayaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space.sm,
     paddingVertical: theme.space.md,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.color.border,
   },
-  wilayaName: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    textAlign,
-  },
-  wilayaNameSelected: { color: theme.color.primary, fontFamily: RN_FONTS.arabicSemiBold, fontWeight: '600' },
   hasDot: { width: 6, height: 6, borderRadius: theme.radius.pill, backgroundColor: theme.color.accent },
-  check: { fontFamily: RN_FONTS.bodyBold, fontSize: theme.fontSize.title, color: theme.color.primary },
+  noMatch: { paddingVertical: theme.space.xl },
 
-  calendarWrap: { height: 380, marginTop: theme.space.sm },
-  guestRows: { marginTop: theme.space.md, gap: theme.space.md },
-  divider: { height: 1, backgroundColor: theme.color.border },
-
-  footer: {
-    padding: theme.space.xl,
-    paddingTop: theme.space.md,
-    borderTopWidth: 1,
-    borderTopColor: theme.color.border,
-    backgroundColor: theme.color.surface,
-  },
+  calendarWrap: { height: 420, marginVertical: theme.space.sm },
+  guestRows: { marginVertical: theme.space.md, gap: theme.space.md },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border },
 });

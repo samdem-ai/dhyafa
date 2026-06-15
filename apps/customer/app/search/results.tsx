@@ -1,37 +1,48 @@
 /**
- * Results screen (M2).
+ * Search results (Phase 4 rework).
  *
- * Reads the serialized search state from route params, runs searchProperties(),
- * and renders a List ⇄ Map toggle. Map is a STUB (no native map deps): it shows
- * the same listings as styled price "pins" in a placeholder panel, clearly
- * labelled as a map stub. A Filters button (with applied-count badge) opens the
- * filters modal; a Sort control cycles sort order. Designed skeletons + empty +
- * error states.
+ * Server-side filter/sort/pagination via the discovery layer
+ * (`searchPropertiesPage`: PostgREST filters + `.range()` + `onEndReached`)
+ * instead of pulling the whole approved set client-side on every change.
+ *
+ * - Header shows the searched wilaya name even with 0 results (resolved from the
+ *   wilaya lookup, not results[0]).
+ * - Sort is a labeled chooser in a BottomSheet (not a cycle pill).
+ * - Filters open in a BottomSheet OVER results (no second results instance) with
+ *   min≤max validation, a live "Show N stays" count, and amenities grouped by
+ *   category.
+ * - FlashList + pull-to-refresh. List default; Map is an honest stub toggle.
  */
 
-import { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Pressable,
-  ScrollView,
-  SafeAreaView,
-  I18nManager,
-} from 'react-native';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
+import { SlidersHorizontal, ArrowUpDown, List as ListIcon, Map as MapIcon, Check } from 'lucide-react-native';
 import {
-  searchProperties,
+  searchPropertiesPage,
+  listActiveWilayas,
   propertyTitle,
   localizedName,
   type PropertySummary,
   type SortKey,
+  type WilayaLite,
+  SEARCH_PAGE_SIZE,
 } from '@/lib/discovery';
-import { ResultCard, RatingRow } from '@/components/discovery';
-import { SkeletonList, ErrorState, EmptyState } from '@/components/ui';
+import { ResultCard } from '@/components/discovery';
+import { FiltersSheet } from '@/components/FiltersSheet';
+import {
+  Screen,
+  Header,
+  Text,
+  List,
+  PropertyCardSkeleton,
+  EmptyState,
+  ErrorState,
+  BottomSheet,
+  Map,
+} from '@/ui';
 import { L, pick, type LMessage } from '@/lib/copy';
 import {
   fromParams,
@@ -40,12 +51,12 @@ import {
   activeFilterCount,
   type SearchState,
 } from '@/lib/searchParams';
+import { selection as hapticSelection } from '@/ui/haptics';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 type ViewMode = 'list' | 'map';
 
-const SORT_CYCLE: SortKey[] = ['recommended', 'price_asc', 'price_desc', 'rating'];
+const SORT_KEYS: SortKey[] = ['recommended', 'price_asc', 'price_desc', 'rating'];
 const SORT_LABEL: Record<SortKey, LMessage> = {
   recommended: L.sortRecommended,
   price_asc: L.sortPriceAsc,
@@ -58,132 +69,209 @@ export default function ResultsScreen() {
   const locale = (i18n.language ?? 'en') as Locale;
   const params = useLocalSearchParams();
   const state: SearchState = fromParams(params as Record<string, string | undefined>);
+  const filtersKey = JSON.stringify(toFilters(state));
 
   const [mode, setMode] = useState<ViewMode>('list');
-  const [results, setResults] = useState<PropertySummary[] | null>(null);
+  const [rows, setRows] = useState<PropertySummary[] | null>(null);
+  const [total, setTotal] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const filtersKey = JSON.stringify(params);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const load = useCallback(async () => {
+  // Wilaya name for the header — resolved independently of results so it shows
+  // even with zero matches.
+  const [wilayaName, setWilayaName] = useState<string | null>(null);
+
+  // Guard against last-resolve-wins races when filters change rapidly.
+  const reqId = useRef(0);
+
+  const loadFirst = useCallback(async () => {
+    const myReq = ++reqId.current;
     setError(null);
     try {
-      const rows = await searchProperties(toFilters(state));
-      setResults(rows);
+      const res = await searchPropertiesPage(toFilters(state), 0);
+      if (myReq !== reqId.current) return;
+      setRows(res.rows);
+      setTotal(res.total);
+      setHasMore(res.hasMore);
+      setPage(0);
     } catch {
+      if (myReq !== reqId.current) return;
       setError(pick(L.loadError, locale));
-      setResults([]);
+      setRows([]);
+      setHasMore(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtersKey, locale]);
 
-  useFocusEffect(
-    useCallback(() => {
-      setResults(null);
-      void load();
-    }, [load]),
-  );
+  useEffect(() => {
+    setRows(null);
+    void loadFirst();
+  }, [loadFirst]);
+
+  // Resolve the wilaya name (once / when the code changes).
+  useEffect(() => {
+    let mounted = true;
+    if (state.wilayaCode == null) {
+      setWilayaName(null);
+      return;
+    }
+    listActiveWilayas()
+      .then((all: WilayaLite[]) => {
+        if (!mounted) return;
+        const w = all.find((x) => x.code === state.wilayaCode);
+        setWilayaName(w ? localizedName(w, locale) : null);
+      })
+      .catch(() => {
+        if (mounted) setWilayaName(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [state.wilayaCode, locale]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadFirst();
+    setRefreshing(false);
+  }, [loadFirst]);
+
+  const onEndReached = useCallback(async () => {
+    if (!hasMore || loadingMore || rows == null) return;
+    const myReq = reqId.current;
+    setLoadingMore(true);
+    try {
+      const next = page + 1;
+      const res = await searchPropertiesPage(toFilters(state), next);
+      if (myReq !== reqId.current) return;
+      setRows((cur) => [...(cur ?? []), ...res.rows]);
+      setHasMore(res.hasMore);
+      setPage(next);
+    } catch {
+      // Keep what we have; pagination errors are non-fatal.
+    } finally {
+      setLoadingMore(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, loadingMore, rows, page, filtersKey]);
 
   const sort = state.sort ?? 'recommended';
   const appliedCount = activeFilterCount(state);
 
-  function cycleSort() {
-    const idx = SORT_CYCLE.indexOf(sort);
-    const next = SORT_CYCLE[(idx + 1) % SORT_CYCLE.length]!;
+  function applySort(next: SortKey) {
+    hapticSelection();
+    setSortOpen(false);
     router.setParams(toParams({ ...state, sort: next }));
   }
 
-  function openFilters() {
-    router.push({ pathname: '/search/filters', params: toParams(state) });
+  function applyFilters(nextState: SearchState) {
+    setFiltersOpen(false);
+    router.setParams(toParams(nextState));
   }
 
-  const headerTitle =
-    state.wilayaCode != null && results && results[0]?.wilaya
-      ? localizedName(results[0].wilaya, locale)
-      : pick(L.results, locale);
-
+  const headerTitle = wilayaName ?? pick(L.results, locale);
   const countLabel =
-    results != null
-      ? `${formatNumber(results.length, locale)} ${
-          results.length === 1 ? pick(L.resultsCount, locale) : pick(L.resultsCountPlural, locale)
+    total != null
+      ? `${formatNumber(total, locale)} ${
+          total === 1 ? pick(L.resultsCount, locale) : pick(L.resultsCountPlural, locale)
         }`
-      : '';
+      : rows != null
+        ? `${formatNumber(rows.length, locale)} ${
+            rows.length === 1 ? pick(L.resultsCount, locale) : pick(L.resultsCountPlural, locale)
+          }`
+        : '';
+
+  const mapMarkers = useMemo(
+    () =>
+      (rows ?? []).map((p) => ({
+        id: p.id,
+        // Stub map has no real geo; coords are placeholders (see ui/Map).
+        latitude: 0,
+        longitude: 0,
+        price: p.from_price_dzd ?? undefined,
+        label: `${propertyTitle(p, locale)} — ${
+          p.from_price_dzd != null ? formatDZD(p.from_price_dzd, locale) : '—'
+        }`,
+      })),
+    [rows, locale],
+  );
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Header */}
-      <View style={styles.topBar}>
-        <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.back}>{I18nManager.isRTL ? '→' : '←'}</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push('/search')}
-          style={styles.searchPill}
-        >
-          <Text style={styles.searchPillText} numberOfLines={1}>
-            {headerTitle}
-            {countLabel ? ` · ${countLabel}` : ''}
-          </Text>
-        </Pressable>
-      </View>
+    <Screen edges={['top']}>
+      <Header
+        title={`${headerTitle}${countLabel ? ` · ${countLabel}` : ''}`}
+        onBack={() => router.back()}
+      />
 
       {/* Controls */}
       <View style={styles.controls}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={openFilters}
-          style={({ pressed }) => [styles.controlBtn, pressed && styles.pressed]}
-        >
-          <Text style={styles.controlText}>
-            ⚙ {pick(L.filters, locale)}
-            {appliedCount > 0 ? ` (${formatNumber(appliedCount, locale)})` : ''}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={cycleSort}
-          style={({ pressed }) => [styles.controlBtn, pressed && styles.pressed]}
-        >
-          <Text style={styles.controlText}>↕ {pick(SORT_LABEL[sort], locale)}</Text>
-        </Pressable>
+        <ControlPill
+          icon={SlidersHorizontal}
+          label={`${pick(L.filters, locale)}${appliedCount > 0 ? ` (${formatNumber(appliedCount, locale)})` : ''}`}
+          onPress={() => setFiltersOpen(true)}
+        />
+        <ControlPill
+          icon={ArrowUpDown}
+          label={pick(SORT_LABEL[sort], locale)}
+          onPress={() => setSortOpen(true)}
+        />
         <View style={styles.toggle}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: mode === 'list' }}
+          <ToggleItem
+            icon={ListIcon}
+            active={mode === 'list'}
             onPress={() => setMode('list')}
-            style={[styles.toggleItem, mode === 'list' && styles.toggleItemActive]}
-          >
-            <Text style={[styles.toggleText, mode === 'list' && styles.toggleTextActive]}>
-              {pick(L.list, locale)}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: mode === 'map' }}
+            label={pick(L.list, locale)}
+          />
+          <ToggleItem
+            icon={MapIcon}
+            active={mode === 'map'}
             onPress={() => setMode('map')}
-            style={[styles.toggleItem, mode === 'map' && styles.toggleItemActive]}
-          >
-            <Text style={[styles.toggleText, mode === 'map' && styles.toggleTextActive]}>
-              {pick(L.map, locale)}
-            </Text>
-          </Pressable>
+            label={pick(L.map, locale)}
+          />
         </View>
       </View>
 
       {/* Body */}
-      {results === null ? (
-        <SkeletonList count={4} />
-      ) : error && results.length === 0 ? (
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.search, locale)} />
-      ) : results.length === 0 ? (
-        <EmptyState emoji="🔍" title={pick(L.noResultsTitle, locale)} subtitle={pick(L.noResultsBody, locale)} />
-      ) : mode === 'list' ? (
-        <FlatList
-          data={results}
+      {rows === null ? (
+        <View style={styles.skeletonWrap}>
+          {[0, 1, 2].map((i) => (
+            <PropertyCardSkeleton key={i} />
+          ))}
+        </View>
+      ) : error && rows.length === 0 ? (
+        <ErrorState message={error} onRetry={() => void loadFirst()} retryLabel={pick(L.search, locale)} />
+      ) : mode === 'map' ? (
+        <Map
+          markers={mapMarkers}
+          onMarkerPress={(id) => router.push(`/property/${id}`)}
+          title={pick(L.mapStubTitle, locale)}
+          body={pick(L.mapStubBody, locale)}
+        />
+      ) : (
+        <List<PropertySummary>
+          data={rows}
           keyExtractor={(p) => p.id}
           contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
+          refreshing={refreshing}
+          onRefresh={() => void onRefresh()}
+          onEndReached={() => void onEndReached()}
+          loadingMore={loadingMore}
+          ItemSeparatorComponent={() => <View style={styles.sep} />}
+          emptyComponent={
+            <View style={styles.emptyWrap}>
+              <EmptyState
+                title={pick(L.noResultsTitle, locale)}
+                subtitle={pick(L.noResultsBody, locale)}
+                icon={SlidersHorizontal}
+                action={{ label: pick(L.filters, locale), onPress: () => setFiltersOpen(true) }}
+              />
+            </View>
+          }
           renderItem={({ item }) => (
             <ResultCard
               property={item}
@@ -192,114 +280,113 @@ export default function ResultsScreen() {
             />
           )}
         />
-      ) : (
-        <MapStub results={results} locale={locale} />
       )}
-    </SafeAreaView>
+
+      {/* Sort sheet */}
+      <BottomSheet visible={sortOpen} onClose={() => setSortOpen(false)}>
+        <Text variant="title" weight="semibold" style={styles.sheetTitle}>
+          {pick(L.sortBy, locale)}
+        </Text>
+        {SORT_KEYS.map((k) => {
+          const active = k === sort;
+          return (
+            <Pressable
+              key={k}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              onPress={() => applySort(k)}
+              style={({ pressed }) => [styles.sortRow, pressed && styles.pressed]}
+            >
+              <Text variant="body-lg" color={active ? 'primary' : 'text'}>
+                {pick(SORT_LABEL[k], locale)}
+              </Text>
+              {active ? <Check size={20} color={theme.color.primary} /> : null}
+            </Pressable>
+          );
+        })}
+      </BottomSheet>
+
+      {/* Filters sheet */}
+      <FiltersSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        state={state}
+        locale={locale}
+        onApply={applyFilters}
+      />
+    </Screen>
   );
 }
 
-/**
- * MAP STUB — there are no native map dependencies in this app (Mapbox needs an
- * EAS dev client). This renders the result set as styled price pins in a
- * placeholder "map" panel so the List⇄Map toggle is functional and the data
- * binding is real; replace with @rnmapbox/maps in a later milestone.
- */
-function MapStub({ results, locale }: { results: PropertySummary[]; locale: Locale }) {
+function ControlPill({
+  icon: Icon,
+  label,
+  onPress,
+}: {
+  icon: typeof SlidersHorizontal;
+  label: string;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.mapWrap}>
-      <View style={styles.mapCanvas}>
-        <Text style={styles.mapStubTitle}>🗺 {pick(L.mapStubTitle, locale)}</Text>
-        <Text style={styles.mapStubBody}>{pick(L.mapStubBody, locale)}</Text>
-      </View>
-      <ScrollView
-        style={styles.pinsScroll}
-        contentContainerStyle={styles.pinsContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {results.map((p) => (
-          <Pressable
-            key={p.id}
-            accessibilityRole="button"
-            onPress={() => router.push(`/property/${p.id}`)}
-            style={({ pressed }) => [styles.pin, pressed && styles.pressed]}
-          >
-            <View style={styles.pinPrice}>
-              <Text style={styles.pinPriceText}>
-                {p.from_price_dzd != null ? formatDZD(p.from_price_dzd, locale) : '—'}
-              </Text>
-            </View>
-            <View style={styles.pinBody}>
-              <Text style={styles.pinTitle} numberOfLines={1}>
-                {propertyTitle(p, locale)}
-              </Text>
-              <View style={styles.pinMetaRow}>
-                {p.wilaya ? (
-                  <Text style={styles.pinPlace} numberOfLines={1}>
-                    {localizedName(p.wilaya, locale)}
-                  </Text>
-                ) : null}
-                <RatingRow rating={p.rating_avg} count={p.review_count} locale={locale} />
-              </View>
-            </View>
-          </Pressable>
-        ))}
-      </ScrollView>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [styles.controlBtn, pressed && styles.pressed]}
+    >
+      <Icon size={16} color={theme.color.text} />
+      <Text variant="body-sm" weight="medium" numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
+function ToggleItem({
+  icon: Icon,
+  active,
+  onPress,
+  label,
+}: {
+  icon: typeof ListIcon;
+  active: boolean;
+  onPress: () => void;
+  label: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={[styles.toggleItem, active && styles.toggleItemActive]}
+    >
+      <Icon size={18} color={active ? theme.color.text : theme.color.textMuted} />
+    </Pressable>
+  );
+}
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
   pressed: { opacity: 0.9 },
-
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.md,
-    paddingHorizontal: theme.space.lg,
-    paddingTop: theme.space.sm,
-    paddingBottom: theme.space.sm,
-  },
-  back: { fontFamily: RN_FONTS.bodyMedium, fontSize: theme.fontSize['heading-3'], color: theme.color.text },
-  searchPill: {
-    flex: 1,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.pill,
-    borderWidth: 1,
-    borderColor: theme.color.borderStrong,
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.sm,
-    ...theme.shadow.xs,
-  },
-  searchPillText: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
-    textAlign,
-  },
 
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space.sm,
     paddingHorizontal: theme.space.lg,
-    paddingBottom: theme.space.sm,
+    paddingVertical: theme.space.sm,
   },
   controlBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.xs,
     borderRadius: theme.radius.pill,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: theme.color.borderStrong,
     backgroundColor: theme.color.surface,
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.space.sm,
-  },
-  controlText: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
+    minHeight: 36,
   },
   toggle: {
     marginStart: 'auto',
@@ -310,92 +397,26 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   toggleItem: {
-    paddingHorizontal: theme.space.md,
-    paddingVertical: 6,
+    width: 40,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: theme.radius.pill,
   },
   toggleItemActive: { backgroundColor: theme.color.surface, ...theme.shadow.xs },
-  toggleText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-  },
-  toggleTextActive: { color: theme.color.text, fontWeight: '600' },
 
-  listContent: { padding: theme.space.lg, gap: theme.space.lg, paddingBottom: theme.space['2xl'] },
+  skeletonWrap: { padding: theme.space.lg, gap: theme.space.lg },
+  listContent: { padding: theme.space.lg },
+  sep: { height: theme.space.lg },
+  emptyWrap: { paddingTop: theme.space['4xl'] },
 
-  // Map stub
-  mapWrap: { flex: 1 },
-  mapCanvas: {
-    margin: theme.space.lg,
-    padding: theme.space.lg,
-    minHeight: 120,
-    backgroundColor: theme.color.teal100,
-    borderRadius: theme.radius.card,
-    borderWidth: 1,
-    borderColor: theme.color.teal200,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.space.xs,
-  },
-  mapStubTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.primary,
-    textAlign: 'center',
-  },
-  mapStubBody: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.info,
-    textAlign: 'center',
-    lineHeight: theme.lineHeight.caption,
-  },
-  pinsScroll: { flex: 1 },
-  pinsContent: { paddingHorizontal: theme.space.lg, paddingBottom: theme.space['2xl'], gap: theme.space.sm },
-  pin: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.md,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.md,
-    ...theme.shadow.xs,
-  },
-  pinPrice: {
-    backgroundColor: theme.color.primary,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.xs,
-    ...theme.shadow.pin,
-  },
-  pinPriceText: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize['body-sm'],
-    fontWeight: '700',
-    color: theme.color.textOnPrimary,
-  },
-  pinBody: { flex: 1 },
-  pinTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  pinMetaRow: {
+  sheetTitle: { marginBottom: theme.space.sm },
+  sortRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: theme.space.sm,
-    marginTop: 2,
-  },
-  pinPlace: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign,
+    paddingVertical: theme.space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.color.border,
   },
 });

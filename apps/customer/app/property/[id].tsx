@@ -1,78 +1,81 @@
 /**
- * Property detail (M2).
+ * Property detail (Phase 4 rework).
  *
- * Swipeable photo gallery (blur-up + fallback via RemoteImage), title/location,
- * rating summary + category breakdown, amenities grid, house rules, check-in/out,
- * cancellation policy, room-type selection (multi-room), and a STICKY bottom
- * booking widget (dates + guests + price/night + total + CTA) that stays while
- * scrolling. Designed skeleton + not-found + error states.
+ * Built on src/ui: a <PhotoGallery> (paged expo-image — no per-frame setState
+ * jank), a transparent <Header> over a gallery scrim, amenities grid, rules,
+ * cancellation policy, room-type select, and reviews read from the JOINED
+ * `detail.reviews` (getPropertyDetail already joins author + reply — no second
+ * fetch). A sticky bottom booking widget (PriceText + Reserve CTA) with separate
+ * dates vs guests tap targets and an OCCUPANCY GUARD in the guests sheet
+ * (max_occupancy enforced on adults+children together, not independently).
  *
- * Dates/guests can arrive via search params; the widget lets the user adjust
- * them in an in-screen calendar/guest overlay before continuing to booking.
+ * Language fallback (ar→fr→en) is indicated when content is shown in another
+ * language than the active UI locale.
+ *
+ * TODO(Phase 5): wishlist heart on the header + a pre-booking "inquiry" message
+ *   to the host without a booking. The inquiry path needs a backend RPC
+ *   (get_or_create_conversation requires a booking today), so "Message host" is
+ *   intentionally omitted here until that lands.
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  SafeAreaView,
-  TextInput,
-  useWindowDimensions,
-  type NativeSyntheticEvent,
-  type NativeScrollEvent,
-  I18nManager,
-} from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
+import { formatNumber, type Locale } from '@dyafa/i18n';
+import { Calendar as CalendarIcon, Users, Zap, ChevronRight, Languages } from 'lucide-react-native';
 import {
   getPropertyDetail,
   resolvePhotoUrl,
   propertyTitle,
   localizedName,
+  localizedNameWithSource,
   type PropertyDetail,
   type RoomTypeRow,
+  type ReviewWithMeta,
 } from '@/lib/discovery';
-import {
-  priceQuote,
-  nightsBetween,
-  toDateParam,
-  type PriceQuote,
-} from '@/lib/bookings';
-import {
-  listReviewsForProperty,
-  categoryAverage,
-  overallAverage,
-  reportReview,
-  REVIEW_CATEGORIES,
-  type ReviewWithReply,
-  type ReviewCategory,
-} from '@/lib/reviews';
-import { findMyBookingForProperty, getOrCreateConversation } from '@/lib/messaging';
-import { RemoteImage } from '@/components/RemoteImage';
-import { RatingRow, GuestStepperRow, PriceBreakdown } from '@/components/discovery';
-import { StarRating } from '@/components/StarRating';
+import { priceQuote, nightsBetween, toDateParam, type PriceQuote } from '@/lib/bookings';
+import { categoryAverage, overallAverage, REVIEW_CATEGORIES, type ReviewCategory } from '@/lib/reviews';
+import { GuestStepperRow } from '@/components/discovery';
 import { DateRangePicker } from '@/components/Calendar';
-import { Skeleton, ErrorState, PrimaryButton } from '@/components/ui';
-import { L, pick } from '@/lib/copy';
+import { ReviewItem } from '@/components/ReviewItem';
+import {
+  Screen,
+  Header,
+  Text,
+  Heading,
+  Button,
+  Card,
+  Chip,
+  RatingStars,
+  PriceText,
+  BottomSheet,
+  PhotoGallery,
+  DetailSkeleton,
+  ErrorState,
+  EmptyState,
+} from '@/ui';
+import { L, pick, type LMessage } from '@/lib/copy';
 import { fromParams, parseDate } from '@/lib/searchParams';
-import { formatRange, formatTime, formatDateTime } from '@/lib/dateFormat';
+import { formatRange, formatTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
-
-// Cancellation tier → plain-language summary key.
-const CANCEL_COPY = {
+const CANCEL_COPY: Record<PropertyDetail['cancellation_tier'], LMessage> = {
   flexible: L.cancelFlexible,
   moderate: L.cancelModerate,
   strict: L.cancelStrict,
-} as const;
+};
 
-type Overlay = 'dates' | 'guests' | null;
+const REVIEW_CAT_LABEL: Record<ReviewCategory, keyof typeof L> = {
+  cleanliness: 'reviewCleanliness',
+  accuracy: 'reviewAccuracy',
+  communication: 'reviewCommunication',
+  location: 'reviewLocation',
+  value: 'reviewValue',
+  checkin: 'reviewCheckin',
+};
+
+type Sheet = 'dates' | 'guests' | null;
 
 export default function PropertyDetailScreen() {
   const { i18n } = useTranslation('common');
@@ -84,15 +87,12 @@ export default function PropertyDetailScreen() {
   const [detail, setDetail] = useState<PropertyDetail | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
-  // Booking selection state (seeded from search params when present).
   const [checkIn, setCheckIn] = useState<Date | null>(parseDate(searchState.checkIn));
   const [checkOut, setCheckOut] = useState<Date | null>(parseDate(searchState.checkOut));
   const [adults, setAdults] = useState<number>(searchState.adults ?? 1);
   const [children, setChildren] = useState<number>(searchState.children ?? 0);
   const [roomTypeId, setRoomTypeId] = useState<string | null>(null);
-  const [overlay, setOverlay] = useState<Overlay>(null);
-  const [messaging, setMessaging] = useState(false);
-  const [messageNote, setMessageNote] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<Sheet>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -100,7 +100,6 @@ export default function PropertyDetailScreen() {
     try {
       const d = await getPropertyDetail(id);
       setDetail(d);
-      // Default room selection: the default room or the first active one.
       if (d) {
         const def = d.full_room_types.find((r) => r.is_default) ?? d.full_room_types[0];
         setRoomTypeId((cur) => cur ?? def?.id ?? null);
@@ -141,29 +140,30 @@ export default function PropertyDetailScreen() {
 
   // ── Loading / error / not-found ──────────────────────────────────────────
   if (detail === undefined) {
-    return <DetailSkeleton />;
+    return (
+      <View style={styles.root}>
+        <DetailSkeleton />
+      </View>
+    );
   }
   if (error && detail === null) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <DetailTopBar />
+      <Screen edges={['top']}>
+        <Header title="" />
         <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.search, locale)} />
-      </SafeAreaView>
+      </Screen>
     );
   }
   if (detail === null) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <DetailTopBar />
-        <View style={styles.notFound}>
-          <Text style={styles.notFoundEmoji}>🔍</Text>
-          <Text style={styles.notFoundTitle}>{pick(L.notFoundTitle, locale)}</Text>
-          <Text style={styles.notFoundBody}>{pick(L.notFoundBody, locale)}</Text>
-          <View style={styles.notFoundCta}>
-            <PrimaryButton label={pick(L.backToExplore, locale)} variant="secondary" onPress={() => router.back()} />
-          </View>
-        </View>
-      </SafeAreaView>
+      <Screen edges={['top']}>
+        <Header title="" />
+        <EmptyState
+          title={pick(L.notFoundTitle, locale)}
+          subtitle={pick(L.notFoundBody, locale)}
+          action={{ label: pick(L.backToExplore, locale), onPress: () => router.back() }}
+        />
+      </Screen>
     );
   }
 
@@ -174,41 +174,26 @@ export default function PropertyDetailScreen() {
   ]
     .filter(Boolean)
     .join(' · ');
-  const description = localizedName(
+
+  const desc = localizedNameWithSource(
     { name_ar: detail.description_ar, name_fr: detail.description_fr, name_en: detail.description_en },
     locale,
   );
-  const houseRules = localizedName(
+  const rules = localizedNameWithSource(
     { name_ar: detail.house_rules_ar, name_fr: detail.house_rules_fr, name_en: detail.house_rules_en },
     locale,
   );
   const isMultiRoom = detail.listing_kind === 'multi_room' && detail.full_room_types.length > 1;
-
   const nightlyForWidget = selectedRoom?.base_price_dzd ?? detail.from_price_dzd ?? 0;
+  const occupancyExceeded = selectedRoom != null && guests > selectedRoom.max_occupancy;
 
-  async function onMessageHost() {
-    if (!detail) return;
-    setMessaging(true);
-    setMessageNote(null);
-    try {
-      const bookingId = await findMyBookingForProperty(detail.id);
-      if (!bookingId) {
-        // Messaging needs a booking context; nudge the guest to book first.
-        setMessageNote(pick(L.messageHostNeedsBooking, locale));
-        return;
-      }
-      const conversationId = await getOrCreateConversation(bookingId);
-      router.push(`/conversation/${conversationId}`);
-    } catch {
-      setMessageNote(pick(L.conversationFailed, locale));
-    } finally {
-      setMessaging(false);
-    }
-  }
+  const photoUris = detail.photos
+    .map((p) => resolvePhotoUrl(p.storage_path))
+    .filter((u): u is string => u != null);
 
-  function onContinue() {
+  function onReserve() {
     if (!checkIn || !checkOut || nights <= 0 || !selectedRoom) {
-      setOverlay('dates');
+      setSheet('dates');
       return;
     }
     router.push({
@@ -224,43 +209,49 @@ export default function PropertyDetailScreen() {
     });
   }
 
+  const ctaLabel = detail.instant_book ? pick(L.confirmAndBook, locale) : pick(L.reserve, locale);
+
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Gallery */}
-        <Gallery detail={detail} title={title} locale={locale} />
+        <Gallery uris={photoUris} altPrefix={title} />
 
         <View style={styles.body}>
-          {/* Title + rating */}
-          <Text style={styles.title}>{title}</Text>
-          {place ? <Text style={styles.place}>{place}</Text> : null}
+          <Heading level={1}>{title}</Heading>
+          {place ? (
+            <Text variant="body" color="textMuted">
+              {place}
+            </Text>
+          ) : null}
           <View style={styles.ratingWrap}>
-            <RatingRow rating={detail.rating_avg} count={detail.review_count} locale={locale} size="md" />
+            <RatingStars value={detail.rating_avg} size={18} />
+            <Text variant="body-sm" weight="semibold">
+              {detail.review_count === 0
+                ? pick(L.noReviews, locale)
+                : `${formatNumber(detail.rating_avg, locale)} · ${formatNumber(detail.review_count, locale)} ${
+                    detail.review_count === 1 ? pick(L.reviewsCount, locale) : pick(L.reviewsCountPlural, locale)
+                  }`}
+            </Text>
             {detail.instant_book ? (
               <View style={styles.instantPill}>
-                <Text style={styles.instantPillText}>⚡ {pick(L.instantBook, locale)}</Text>
+                <Zap size={12} color={theme.color.accentHover} />
+                <Text variant="caption" weight="semibold" color="accentHover">
+                  {pick(L.instantBook, locale)}
+                </Text>
               </View>
             ) : null}
           </View>
 
           {/* Description */}
-          {description ? (
+          {desc.text ? (
             <Section title={pick(L.about, locale)}>
-              <Text style={styles.paragraph}>{description}</Text>
+              <FallbackNote show={desc.fellBack} locale={locale} />
+              <Text variant="body" style={styles.paragraph}>
+                {desc.text}
+              </Text>
             </Section>
           ) : null}
-
-          {/* Message host */}
-          <View style={styles.messageHostWrap}>
-            <PrimaryButton
-              label={pick(L.messageHost, locale)}
-              variant="secondary"
-              onPress={() => void onMessageHost()}
-              loading={messaging}
-              disabled={messaging}
-            />
-            {messageNote ? <Text style={styles.messageHostNote}>{messageNote}</Text> : null}
-          </View>
 
           {/* Room types (multi-room) */}
           {isMultiRoom ? (
@@ -283,10 +274,12 @@ export default function PropertyDetailScreen() {
           {detail.amenities.length > 0 ? (
             <Section title={pick(L.whatThisPlaceOffers, locale)}>
               <View style={styles.amenityGrid}>
-                {detail.amenities.slice(0, 8).map((a) => (
+                {detail.amenities.slice(0, 10).map((a) => (
                   <View key={a.id} style={styles.amenityItem}>
-                    <Text style={styles.amenityIcon}>{a.icon ?? '•'}</Text>
-                    <Text style={styles.amenityLabel} numberOfLines={2}>
+                    <Text variant="body" style={styles.amenityIcon}>
+                      {a.icon ?? '•'}
+                    </Text>
+                    <Text variant="body-sm" numberOfLines={2} style={styles.flex}>
                       {localizedName(a, locale)}
                     </Text>
                   </View>
@@ -298,164 +291,299 @@ export default function PropertyDetailScreen() {
           {/* Check-in / out */}
           <Section title={pick(L.checkInOut, locale)}>
             <View style={styles.timesRow}>
-              <View style={styles.timeBox}>
-                <Text style={styles.timeLabel}>{pick(L.checkIn, locale)}</Text>
-                <Text style={styles.timeValue}>{formatTime(detail.checkin_time)}</Text>
-              </View>
-              <View style={styles.timeBox}>
-                <Text style={styles.timeLabel}>{pick(L.checkOut, locale)}</Text>
-                <Text style={styles.timeValue}>{formatTime(detail.checkout_time)}</Text>
-              </View>
+              <Card style={styles.timeBox}>
+                <Text variant="caption" color="textMuted">
+                  {pick(L.checkIn, locale)}
+                </Text>
+                <Text variant="title" weight="semibold">
+                  {formatTime(detail.checkin_time)}
+                </Text>
+              </Card>
+              <Card style={styles.timeBox}>
+                <Text variant="caption" color="textMuted">
+                  {pick(L.checkOut, locale)}
+                </Text>
+                <Text variant="title" weight="semibold">
+                  {formatTime(detail.checkout_time)}
+                </Text>
+              </Card>
             </View>
           </Section>
 
           {/* House rules */}
-          {houseRules ? (
+          {rules.text ? (
             <Section title={pick(L.houseRules, locale)}>
-              <Text style={styles.paragraph}>{houseRules}</Text>
+              <FallbackNote show={rules.fellBack} locale={locale} />
+              <Text variant="body" style={styles.paragraph}>
+                {rules.text}
+              </Text>
             </Section>
           ) : null}
 
           {/* Cancellation policy */}
           <Section title={pick(L.cancellationPolicy, locale)}>
-            <Text style={styles.paragraph}>{pick(CANCEL_COPY[detail.cancellation_tier], locale)}</Text>
+            <Text variant="body" style={styles.paragraph}>
+              {pick(CANCEL_COPY[detail.cancellation_tier], locale)}
+            </Text>
           </Section>
 
-          {/* Reviews */}
-          <Section
-            title={`${pick(L.reviews, locale)}${
-              detail.review_count > 0 ? ` · ${formatNumber(detail.review_count, locale)}` : ''
-            }`}
-          >
-            <ReviewsSummary
-              propertyId={detail.id}
-              ratingAvg={detail.rating_avg}
-              reviewCount={detail.review_count}
-              locale={locale}
-            />
-          </Section>
+          {/* Reviews (from joined detail.reviews — no second fetch) */}
+          <Reviews detail={detail} locale={locale} />
         </View>
       </ScrollView>
 
       {/* Sticky booking widget */}
-      <View style={styles.widget}>
-        <View style={styles.widgetInfo}>
-          <Text style={styles.widgetPrice}>
-            {formatDZD(nightlyForWidget, locale)}
-            <Text style={styles.widgetPerNight}> {pick(L.perNight, locale)}</Text>
-          </Text>
-          <Pressable accessibilityRole="button" onPress={() => setOverlay('dates')}>
-            <Text style={styles.widgetDates} numberOfLines={1}>
-              {checkIn && checkOut ? formatRange(checkIn, checkOut, locale) : pick(L.addDates, locale)}
-              {' · '}
-              <Text onPress={() => setOverlay('guests')}>
-                {formatNumber(guests, locale)} {guests === 1 ? pick(L.guestsCount, locale) : pick(L.guestsCountPlural, locale)}
-              </Text>
-            </Text>
-          </Pressable>
-          {quote ? (
-            <Text style={styles.widgetTotal}>
-              {pick(L.total, locale)}: {formatDZD(quote.totalDzd, locale)}
+      <BookingWidget
+        nightly={nightlyForWidget}
+        quote={quote}
+        checkIn={checkIn}
+        checkOut={checkOut}
+        guests={guests}
+        locale={locale}
+        ctaLabel={ctaLabel}
+        onDates={() => setSheet('dates')}
+        onGuests={() => setSheet('guests')}
+        onReserve={onReserve}
+      />
+
+      {/* Dates sheet */}
+      <BottomSheet visible={sheet === 'dates'} onClose={() => setSheet(null)} snapPoints={['85%']}>
+        <Heading level={3} style={styles.sheetTitle}>
+          {pick(L.dates, locale)}
+        </Heading>
+        <View style={styles.calendarWrap}>
+          <DateRangePicker
+            locale={locale}
+            checkIn={checkIn}
+            checkOut={checkOut}
+            minDate={new Date()}
+            onChange={({ checkIn: ci, checkOut: co }) => {
+              setCheckIn(ci);
+              setCheckOut(co);
+            }}
+          />
+        </View>
+        <Button label={pick(L.done, locale)} onPress={() => setSheet(null)} />
+      </BottomSheet>
+
+      {/* Guests sheet — occupancy guard on adults+children combined */}
+      <BottomSheet visible={sheet === 'guests'} onClose={() => setSheet(null)}>
+        <Heading level={3} style={styles.sheetTitle}>
+          {pick(L.guests, locale)}
+        </Heading>
+        <View style={styles.guestRows}>
+          <GuestStepperRow
+            label={pick(L.adults, locale)}
+            value={adults}
+            min={1}
+            max={maxAdultsFor(selectedRoom, children)}
+            onChange={setAdults}
+          />
+          <View style={styles.divider} />
+          <GuestStepperRow
+            label={pick(L.children, locale)}
+            value={children}
+            min={0}
+            max={maxChildrenFor(selectedRoom, adults)}
+            onChange={setChildren}
+          />
+          {selectedRoom ? (
+            <Text variant="caption" color="textMuted">
+              {pick(L.occupancyMax, locale)}: {formatNumber(selectedRoom.max_occupancy, locale)}
             </Text>
           ) : null}
         </View>
-        <View style={styles.widgetCta}>
-          <PrimaryButton
-            label={detail.instant_book ? pick(L.confirmAndBook, locale) : pick(L.reviewBooking, locale)}
-            onPress={onContinue}
-          />
-        </View>
-      </View>
-
-      {/* Overlays */}
-      {overlay === 'dates' ? (
-        <OverlaySheet title={pick(L.dates, locale)} onClose={() => setOverlay(null)} locale={locale}>
-          <View style={styles.overlayCalendar}>
-            <DateRangePicker
-              locale={locale}
-              checkIn={checkIn}
-              checkOut={checkOut}
-              onChange={({ checkIn: ci, checkOut: co }) => {
-                setCheckIn(ci);
-                setCheckOut(co);
-              }}
-            />
-          </View>
-        </OverlaySheet>
-      ) : null}
-      {overlay === 'guests' ? (
-        <OverlaySheet title={pick(L.guests, locale)} onClose={() => setOverlay(null)} locale={locale}>
-          <View style={styles.overlayGuests}>
-            <GuestStepperRow label={pick(L.adults, locale)} value={adults} min={1} max={selectedRoom?.max_adults ?? 16} onChange={setAdults} />
-            <View style={styles.overlayDivider} />
-            <GuestStepperRow label={pick(L.children, locale)} value={children} min={0} max={selectedRoom?.max_children ?? 10} onChange={setChildren} />
-          </View>
-        </OverlaySheet>
-      ) : null}
+        <Button label={pick(L.done, locale)} onPress={() => setSheet(null)} disabled={occupancyExceeded} />
+      </BottomSheet>
     </View>
   );
 }
 
-// ── Gallery ─────────────────────────────────────────────────────────────────
-function Gallery({ detail, title, locale }: { detail: PropertyDetail; title: string; locale: Locale }) {
+/**
+ * Occupancy guard: cap adults so adults+children never exceeds max_occupancy
+ * (the old screen capped each independently and could exceed the total).
+ */
+function maxAdultsFor(room: RoomTypeRow | null, children: number): number {
+  if (!room) return 16;
+  const byTotal = Math.max(1, room.max_occupancy - children);
+  return Math.min(room.max_adults ?? room.max_occupancy, byTotal);
+}
+function maxChildrenFor(room: RoomTypeRow | null, adults: number): number {
+  if (!room) return 10;
+  const byTotal = Math.max(0, room.max_occupancy - adults);
+  return Math.min(room.max_children ?? Math.max(0, room.max_occupancy - 1), byTotal);
+}
+
+// ── Gallery (transparent header + scrim) ─────────────────────────────────────
+function Gallery({ uris, altPrefix }: { uris: string[]; altPrefix: string }) {
   const { width } = useWindowDimensions();
-  const [index, setIndex] = useState(0);
-  const photos = detail.photos.length > 0 ? detail.photos : [];
-
-  function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    const i = Math.round(e.nativeEvent.contentOffset.x / width);
-    if (i !== index) setIndex(i);
-  }
-
+  const height = width * 0.72;
   return (
-    <View style={[styles.gallery, { height: width * 0.72 }]}>
-      {photos.length === 0 ? (
-        <RemoteImage uri={null} alt={title} style={{ width, height: width * 0.72 }} />
-      ) : (
-        <ScrollView
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-        >
-          {photos.map((p) => {
-            const alt =
-              localizedName({ name_ar: p.alt_ar, name_fr: p.alt_fr, name_en: p.alt_en }, locale) || title;
-            return (
-              <RemoteImage
-                key={p.id}
-                uri={resolvePhotoUrl(p.storage_path)}
-                alt={alt}
-                style={{ width, height: width * 0.72 }}
-              />
-            );
-          })}
-        </ScrollView>
-      )}
+    <View style={[styles.gallery, { height }]}>
+      <PhotoGalleryOrPlaceholder uris={uris} height={height} altPrefix={altPrefix} />
+      {/* Scrim behind the transparent header for back-button contrast. */}
+      <View style={styles.scrim} pointerEvents="none" />
+      <View style={styles.headerOverlay} pointerEvents="box-none">
+        <Header transparent title="" onBack={() => router.back()} />
+      </View>
+    </View>
+  );
+}
 
-      {/* Top bar over the gallery */}
-      <SafeAreaView style={styles.galleryTopBar}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={pick(L.backToExplore, locale)}
-          onPress={() => router.back()}
-          style={styles.galleryBackBtn}
-          hitSlop={8}
-        >
-          <Text style={styles.galleryBackGlyph}>{I18nManager.isRTL ? '→' : '←'}</Text>
-        </Pressable>
-      </SafeAreaView>
+function PhotoGalleryOrPlaceholder({
+  uris,
+  height,
+  altPrefix,
+}: {
+  uris: string[];
+  height: number;
+  altPrefix: string;
+}) {
+  const { width } = useWindowDimensions();
+  if (uris.length === 0) {
+    return <View style={[styles.galleryPlaceholder, { width, height }]} />;
+  }
+  return <PhotoGallery uris={uris} height={height} altPrefix={altPrefix} />;
+}
 
-      {/* Dots + counter */}
-      {photos.length > 1 ? (
-        <View style={styles.galleryCounter}>
-          <Text style={styles.galleryCounterText}>
-            {formatNumber(index + 1, locale)} / {formatNumber(photos.length, locale)}
+// ── Booking widget ───────────────────────────────────────────────────────────
+function BookingWidget({
+  nightly,
+  quote,
+  checkIn,
+  checkOut,
+  guests,
+  locale,
+  ctaLabel,
+  onDates,
+  onGuests,
+  onReserve,
+}: {
+  nightly: number;
+  quote: PriceQuote | null;
+  checkIn: Date | null;
+  checkOut: Date | null;
+  guests: number;
+  locale: Locale;
+  ctaLabel: string;
+  onDates: () => void;
+  onGuests: () => void;
+  onReserve: () => void;
+}) {
+  return (
+    <View style={styles.widget}>
+      <View style={styles.widgetInfo}>
+        <View style={styles.widgetPriceRow}>
+          <PriceText amount={nightly} variant="large" locale={locale} />
+          <Text variant="body-sm" color="textMuted">
+            {' '}
+            {pick(L.perNight, locale)}
           </Text>
         </View>
-      ) : null}
+        {/* Separate dates vs guests tap targets (no nested overlapping Pressables). */}
+        <View style={styles.widgetTapRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={pick(L.dates, locale)}
+            onPress={onDates}
+            hitSlop={6}
+            style={styles.widgetTap}
+          >
+            <CalendarIcon size={13} color={theme.color.accent} />
+            <Text variant="caption" color="accent" weight="medium" numberOfLines={1}>
+              {checkIn && checkOut ? formatRange(checkIn, checkOut, locale) : pick(L.addDates, locale)}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={pick(L.guests, locale)}
+            onPress={onGuests}
+            hitSlop={6}
+            style={styles.widgetTap}
+          >
+            <Users size={13} color={theme.color.accent} />
+            <Text variant="caption" color="accent" weight="medium">
+              {formatNumber(guests, locale)}
+            </Text>
+          </Pressable>
+        </View>
+        {quote ? (
+          <Text variant="caption" color="textMuted">
+            {pick(L.total, locale)}: <PriceText amount={quote.totalDzd} variant="inline" locale={locale} />
+          </Text>
+        ) : null}
+      </View>
+      <View style={styles.widgetCta}>
+        <Button label={ctaLabel} variant="tertiary" onPress={onReserve} haptic="tap" />
+      </View>
     </View>
+  );
+}
+
+// ── Reviews (from the joined detail.reviews) ────────────────────────────────
+function Reviews({ detail, locale }: { detail: PropertyDetail; locale: Locale }) {
+  const reviews: ReviewWithMeta[] = detail.reviews;
+
+  if (detail.review_count === 0 && reviews.length === 0) {
+    return (
+      <Section title={pick(L.reviews, locale)}>
+        <Text variant="body" color="textMuted">
+          {pick(L.noReviews, locale)}
+        </Text>
+      </Section>
+    );
+  }
+
+  const headlineScore = detail.rating_avg > 0 ? detail.rating_avg : overallAverage(reviews);
+  const headlineCount = detail.review_count > 0 ? detail.review_count : reviews.length;
+
+  return (
+    <Section
+      title={`${pick(L.reviews, locale)} · ${formatNumber(headlineCount, locale)}`}
+    >
+      <View style={styles.reviewHeadline}>
+        <RatingStars value={headlineScore} size={18} />
+        <Text variant="title" weight="semibold">
+          {formatNumber(headlineScore, locale)}
+        </Text>
+      </View>
+
+      {/* Category averages */}
+      <View style={styles.catGrid}>
+        {REVIEW_CATEGORIES.map((cat) => {
+          const a = categoryAverage(reviews, cat);
+          if (a == null) return null;
+          return (
+            <View key={cat} style={styles.catRow}>
+              <Text variant="body-sm" color="textMuted">
+                {pick(L[REVIEW_CAT_LABEL[cat]], locale)}
+              </Text>
+              <Text variant="body-sm" weight="semibold">
+                {formatNumber(a, locale)}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* First few reviews */}
+      {reviews.slice(0, 4).map((r) => (
+        <ReviewItem key={r.id} review={r} locale={locale} />
+      ))}
+
+      {reviews.length > 4 || headlineCount > 4 ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push(`/property/reviews/${detail.id}`)}
+          style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
+        >
+          <Text variant="body" weight="semibold" color="primary">
+            {pick(L.showAllReviews, locale)}
+          </Text>
+          <ChevronRight size={18} color={theme.color.primary} />
+        </Pressable>
+      ) : null}
+    </Section>
   );
 }
 
@@ -481,13 +609,14 @@ function RoomOption({
       onPress={onSelect}
       style={[styles.roomCard, selected && styles.roomCardSelected]}
     >
-      <View style={styles.roomBody}>
-        <Text style={[styles.roomName, selected && styles.roomNameSelected]}>{name}</Text>
-        <Text style={styles.roomMeta}>
-          {formatNumber(room.max_occupancy, locale)} {pick(L.guestsCountPlural, locale)}
-          {' · '}
-          {formatDZD(room.base_price_dzd, locale)} {pick(L.perNight, locale)}
+      <View style={styles.flex}>
+        <Text variant="title" weight="semibold" color={selected ? 'primary' : 'text'}>
+          {name}
         </Text>
+        <Text variant="body-sm" color="textMuted">
+          {formatNumber(room.max_occupancy, locale)} {pick(L.guestsCountPlural, locale)} ·{' '}
+        </Text>
+        <PriceText amount={room.base_price_dzd} variant="inline" locale={locale} />
       </View>
       <View style={[styles.radio, selected && styles.radioSelected]}>
         {selected ? <View style={styles.radioDot} /> : null}
@@ -496,353 +625,69 @@ function RoomOption({
   );
 }
 
-// ── Reviews summary ─────────────────────────────────────────────────────────
-const REVIEW_CAT_LABEL: Record<ReviewCategory, keyof typeof L> = {
-  cleanliness: 'reviewCleanliness',
-  accuracy: 'reviewAccuracy',
-  communication: 'reviewCommunication',
-  location: 'reviewLocation',
-  value: 'reviewValue',
-  checkin: 'reviewCheckin',
-};
-
-function ReviewsSummary({
-  propertyId,
-  ratingAvg,
-  reviewCount,
-  locale,
-}: {
-  propertyId: string;
-  ratingAvg: number;
-  reviewCount: number;
-  locale: Locale;
-}) {
-  const [reviews, setReviews] = useState<ReviewWithReply[] | null>(null);
-  const [reportingId, setReportingId] = useState<string | null>(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      let mounted = true;
-      listReviewsForProperty(propertyId)
-        .then((rows) => {
-          if (mounted) setReviews(rows);
-        })
-        .catch(() => {
-          if (mounted) setReviews([]);
-        });
-      return () => {
-        mounted = false;
-      };
-    }, [propertyId]),
-  );
-
-  if (reviewCount === 0) {
-    return <Text style={styles.paragraph}>{pick(L.noReviews, locale)}</Text>;
-  }
-  if (reviews === null) {
-    return <Skeleton style={styles.reviewSkeleton} />;
-  }
-
-  // Prefer the server's headline rating/count; fall back to fetched rows.
-  const headlineScore = ratingAvg > 0 ? ratingAvg : overallAverage(reviews);
-  const headlineCount = reviewCount > 0 ? reviewCount : reviews.length;
-
-  return (
-    <View style={styles.reviewsWrap}>
-      <View style={styles.reviewHeadline}>
-        <Text style={styles.reviewBigStar}>★</Text>
-        <Text style={styles.reviewBigScore}>{formatNumber(headlineScore, locale)}</Text>
-        <Text style={styles.reviewBigCount}>
-          {' · '}
-          {formatNumber(headlineCount, locale)}{' '}
-          {headlineCount === 1 ? pick(L.reviewsCount, locale) : pick(L.reviewsCountPlural, locale)}
-        </Text>
-      </View>
-
-      {/* Category averages */}
-      <View style={styles.catGrid}>
-        {REVIEW_CATEGORIES.map((cat) => {
-          const a = categoryAverage(reviews, cat);
-          if (a == null) return null;
-          return (
-            <View key={cat} style={styles.catRow}>
-              <Text style={styles.catLabel}>{pick(L[REVIEW_CAT_LABEL[cat]], locale)}</Text>
-              <Text style={styles.catValue}>{formatNumber(a, locale)}</Text>
-            </View>
-          );
-        })}
-      </View>
-
-      {/* Individual reviews (with any host reply + a report affordance) */}
-      {reviews.slice(0, 6).map((r) => (
-        <View key={r.id} style={styles.reviewItem}>
-          <View style={styles.reviewItemTop}>
-            <View style={styles.reviewItemHeader}>
-              <Text style={styles.reviewItemStar}>★</Text>
-              <Text style={styles.reviewItemScore}>{formatNumber(r.overall, locale)}</Text>
-              {r.author?.display_name ? (
-                <Text style={styles.reviewAuthor} numberOfLines={1}>
-                  {' · '}
-                  {r.author.display_name}
-                </Text>
-              ) : null}
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={pick(L.reportReview, locale)}
-              onPress={() => setReportingId(r.id)}
-              hitSlop={6}
-            >
-              <Text style={styles.reportLink}>{pick(L.reportReview, locale)}</Text>
-            </Pressable>
-          </View>
-          {(r.comment_text ?? '').trim().length > 0 ? (
-            <Text style={styles.reviewItemText}>{r.comment_text}</Text>
-          ) : null}
-          <Text style={styles.reviewDate}>{formatDateTime(r.created_at, locale)}</Text>
-
-          {r.reply ? (
-            <View style={styles.replyBox}>
-              <Text style={styles.replyLabel}>{pick(L.hostReply, locale)}</Text>
-              <Text style={styles.replyText}>{r.reply.body}</Text>
-            </View>
-          ) : null}
-        </View>
-      ))}
-
-      {reportingId ? (
-        <ReportReviewSheet
-          reviewId={reportingId}
-          locale={locale}
-          onClose={() => setReportingId(null)}
-        />
-      ) : null}
-    </View>
-  );
-}
-
-// ── Report review sheet ───────────────────────────────────────────────────────
-function ReportReviewSheet({
-  reviewId,
-  locale,
-  onClose,
-}: {
-  reviewId: string;
-  locale: Locale;
-  onClose: () => void;
-}) {
-  const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function onSubmit() {
-    const text = reason.trim();
-    if (!text) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await reportReview(reviewId, text);
-      setDone(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : pick(L.reportFailed, locale));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <View style={styles.overlayBackdrop}>
-      <Pressable style={styles.overlayDismiss} onPress={onClose} accessibilityLabel={pick(L.done, locale)} />
-      <View style={styles.overlaySheet}>
-        <View style={styles.overlayHeader}>
-          <Text style={styles.overlayTitle}>{pick(L.reportReviewTitle, locale)}</Text>
-          <Pressable accessibilityRole="button" onPress={onClose} hitSlop={8}>
-            <Text style={styles.overlayClose}>✕</Text>
-          </Pressable>
-        </View>
-        {done ? (
-          <>
-            <Text style={styles.reportThanks}>{pick(L.reportThanks, locale)}</Text>
-            <View style={styles.overlayFooter}>
-              <PrimaryButton label={pick(L.done, locale)} onPress={onClose} />
-            </View>
-          </>
-        ) : (
-          <>
-            <Text style={styles.reportHint}>{pick(L.reportReviewHint, locale)}</Text>
-            <TextInput
-              style={[styles.reportInput, { textAlign }]}
-              value={reason}
-              onChangeText={setReason}
-              placeholder={pick(L.reportReviewHint, locale)}
-              placeholderTextColor={theme.color.textMuted}
-              multiline
-              accessibilityLabel={pick(L.reportReviewTitle, locale)}
-            />
-            {error ? <Text style={styles.reportError}>{error}</Text> : null}
-            <View style={styles.overlayFooter}>
-              <PrimaryButton
-                label={pick(L.reportSubmit, locale)}
-                onPress={() => void onSubmit()}
-                loading={busy}
-                disabled={busy || reason.trim().length === 0}
-              />
-            </View>
-          </>
-        )}
-      </View>
-    </View>
-  );
-}
-
 // ── Bits ────────────────────────────────────────────────────────────────────
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Heading level={2}>{title}</Heading>
       {children}
     </View>
   );
 }
 
-function DetailTopBar() {
+function FallbackNote({ show, locale }: { show: boolean; locale: Locale }) {
+  if (!show) return null;
   return (
-    <SafeAreaView>
-      <View style={styles.plainTopBar}>
-        <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.plainBack}>{I18nManager.isRTL ? '→' : '←'}</Text>
-        </Pressable>
-      </View>
-    </SafeAreaView>
-  );
-}
-
-function OverlaySheet({
-  title,
-  onClose,
-  locale,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  locale: Locale;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={styles.overlayBackdrop}>
-      <Pressable style={styles.overlayDismiss} onPress={onClose} accessibilityLabel={pick(L.done, locale)} />
-      <View style={styles.overlaySheet}>
-        <View style={styles.overlayHeader}>
-          <Text style={styles.overlayTitle}>{title}</Text>
-          <Pressable accessibilityRole="button" onPress={onClose} hitSlop={8}>
-            <Text style={styles.overlayClose}>✕</Text>
-          </Pressable>
-        </View>
-        {children}
-        <View style={styles.overlayFooter}>
-          <PrimaryButton label={pick(L.done, locale)} onPress={onClose} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function DetailSkeleton() {
-  const { width } = useWindowDimensions();
-  return (
-    <View style={styles.root}>
-      <Skeleton style={{ width, height: width * 0.72, borderRadius: 0 }} />
-      <View style={styles.body}>
-        <Skeleton style={styles.skTitle} />
-        <Skeleton style={styles.skLine} />
-        <Skeleton style={styles.skLineShort} />
-        <View style={{ height: theme.space.xl }} />
-        <Skeleton style={styles.skBlock} />
-        <View style={{ height: theme.space.lg }} />
-        <Skeleton style={styles.skBlock} />
-      </View>
+    <View style={styles.fallbackNote}>
+      <Languages size={14} color={theme.color.textMuted} />
+      <Text variant="caption" color="textMuted" style={styles.flex}>
+        {pick(L.langFallbackNote, locale)}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.color.bg },
-  safe: { flex: 1, backgroundColor: theme.color.bg },
-  scrollContent: { paddingBottom: 140 },
+  flex: { flex: 1 },
+  pressed: { opacity: 0.9 },
+  scrollContent: { paddingBottom: 150 },
 
   // Gallery
   gallery: { width: '100%', backgroundColor: theme.color.surfaceSunken },
-  galleryTopBar: { position: 'absolute', top: 0, left: 0, right: 0 },
-  galleryBackBtn: {
-    margin: theme.space.md,
-    width: 40,
-    height: 40,
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.color.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: I18nManager.isRTL ? 'flex-end' : 'flex-start',
-    ...theme.shadow.card,
-  },
-  galleryBackGlyph: { fontFamily: RN_FONTS.bodyBold, fontSize: 20, color: theme.color.text },
-  galleryCounter: {
+  galleryPlaceholder: { backgroundColor: theme.color.surfaceSunken },
+  scrim: {
     position: 'absolute',
-    bottom: theme.space.md,
-    alignSelf: 'center',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 110,
     backgroundColor: theme.color.overlay,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.xs,
+    opacity: 0.5,
   },
-  galleryCounterText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.white,
-  },
+  headerOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
 
   body: { padding: theme.space.xl, gap: theme.space.sm },
-  title: {
-    fontFamily: RN_FONTS.displaySemiBold,
-    fontSize: theme.fontSize['heading-1'],
-    color: theme.color.text,
-    textAlign,
+  ratingWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.sm,
+    marginTop: theme.space.xs,
+    flexWrap: 'wrap',
   },
-  place: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  ratingWrap: { flexDirection: 'row', alignItems: 'center', gap: theme.space.md, marginTop: theme.space.xs },
   instantPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: theme.color.terracotta100,
     borderRadius: theme.radius.pill,
     paddingHorizontal: theme.space.sm,
     paddingVertical: 3,
   },
-  instantPillText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    fontWeight: '600',
-    color: theme.color.accentHover,
-  },
 
   section: { marginTop: theme.space.xl, gap: theme.space.md },
-  sectionTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-2'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  paragraph: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    lineHeight: theme.lineHeight.body,
-    textAlign,
-  },
+  paragraph: { lineHeight: theme.lineHeight.body },
+  fallbackNote: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
 
   // Rooms
   roomList: { gap: theme.space.sm },
@@ -857,22 +702,6 @@ const styles = StyleSheet.create({
     padding: theme.space.lg,
   },
   roomCardSelected: { borderColor: theme.color.primary, backgroundColor: theme.color.infoBg },
-  roomBody: { flex: 1 },
-  roomName: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  roomNameSelected: { color: theme.color.primary },
-  roomMeta: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    marginTop: 2,
-    textAlign,
-  },
   radio: {
     width: 22,
     height: 22,
@@ -894,54 +723,14 @@ const styles = StyleSheet.create({
     gap: theme.space.sm,
     paddingVertical: theme.space.sm,
   },
-  amenityIcon: { fontSize: 18, width: 24, textAlign: 'center' },
-  amenityLabel: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
-    textAlign,
-  },
+  amenityIcon: { width: 24, textAlign: 'center' },
 
   // Times
   timesRow: { flexDirection: 'row', gap: theme.space.md },
-  timeBox: {
-    flex: 1,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.color.border,
-    padding: theme.space.lg,
-    gap: theme.space.xs,
-  },
-  timeLabel: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  timeValue: {
-    fontFamily: RN_FONTS.bodySemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
+  timeBox: { flex: 1, gap: theme.space.xs },
 
   // Reviews
-  reviewsWrap: { gap: theme.space.md },
-  reviewHeadline: { flexDirection: 'row', alignItems: 'center' },
-  reviewBigStar: { fontSize: 20, color: theme.color.ratingStar, marginEnd: theme.space.xs },
-  reviewBigScore: {
-    fontFamily: RN_FONTS.displaySemiBold,
-    fontSize: theme.fontSize['heading-2'],
-    color: theme.color.text,
-  },
-  reviewBigCount: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.textMuted,
-  },
+  reviewHeadline: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
   catGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   catRow: {
     width: '50%',
@@ -951,117 +740,16 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space.xs,
     paddingEnd: theme.space.lg,
   },
-  catLabel: { fontFamily: RN_FONTS.arabicRegular, fontSize: theme.fontSize['body-sm'], color: theme.color.textMuted },
-  catValue: { fontFamily: RN_FONTS.bodySemiBold, fontSize: theme.fontSize['body-sm'], fontWeight: '600', color: theme.color.text },
-  reviewItem: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    borderWidth: 1,
-    borderColor: theme.color.border,
-    padding: theme.space.lg,
-    gap: theme.space.xs,
-  },
-  reviewItemHeader: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  reviewItemStar: { fontSize: 13, color: theme.color.ratingStar },
-  reviewItemScore: { fontFamily: RN_FONTS.bodySemiBold, fontSize: theme.fontSize['body-sm'], fontWeight: '600', color: theme.color.text },
-  reviewItemText: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
-    lineHeight: theme.lineHeight['body-sm'],
-    textAlign,
-  },
-  reviewSkeleton: { height: 120, width: '100%', borderRadius: theme.radius.card },
-  reviewItemTop: {
+  showAll: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.space.sm,
-  },
-  reviewAuthor: {
-    flexShrink: 1,
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-  },
-  reportLink: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textDecorationLine: 'underline',
-  },
-  reviewDate: {
-    fontFamily: RN_FONTS.bodyRegular,
-    fontSize: theme.fontSize.overline,
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  replyBox: {
+    justifyContent: 'center',
+    gap: theme.space.xs,
+    paddingVertical: theme.space.md,
     marginTop: theme.space.sm,
-    padding: theme.space.md,
-    backgroundColor: theme.color.surfaceSunken,
-    borderRadius: theme.radius.md,
-    gap: 2,
-  },
-  replyLabel: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.caption,
-    fontWeight: '600',
-    color: theme.color.primary,
-    textAlign,
-  },
-  replyText: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
-    lineHeight: theme.lineHeight['body-sm'],
-    textAlign,
-  },
-
-  // Message host
-  messageHostWrap: { marginTop: theme.space.md, gap: theme.space.xs },
-  messageHostNote: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
-  },
-
-  // Report sheet
-  reportHint: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.textMuted,
-    lineHeight: theme.lineHeight.body,
-    textAlign,
-    marginBottom: theme.space.md,
-  },
-  reportInput: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.md,
     borderWidth: 1.5,
     borderColor: theme.color.border,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.md,
-    minHeight: 100,
-    textAlignVertical: 'top',
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-  },
-  reportError: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
-    textAlign,
-    marginTop: theme.space.sm,
-  },
-  reportThanks: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    lineHeight: theme.lineHeight.body,
-    textAlign,
+    borderRadius: theme.radius.md,
   },
 
   // Sticky widget
@@ -1073,96 +761,19 @@ const styles = StyleSheet.create({
     paddingTop: theme.space.md,
     paddingBottom: theme.space.xl,
     backgroundColor: theme.color.surface,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.color.border,
-    ...theme.shadow.sheet,
+    ...theme.shadow.raised,
   },
-  widgetInfo: { flex: 1 },
-  widgetPrice: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize.price,
-    fontWeight: '700',
-    color: theme.color.text,
-    textAlign,
-    writingDirection: 'ltr',
-  },
-  widgetPerNight: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    fontWeight: '400',
-    color: theme.color.textMuted,
-  },
-  widgetDates: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.accent,
-    textDecorationLine: 'underline',
-    textAlign,
-  },
-  widgetTotal: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  widgetCta: { minWidth: 150 },
+  widgetInfo: { flex: 1, gap: 2 },
+  widgetPriceRow: { flexDirection: 'row', alignItems: 'baseline' },
+  widgetTapRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.md },
+  widgetTap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  widgetCta: { minWidth: 140 },
 
-  // Not found / plain top bar
-  plainTopBar: { padding: theme.space.lg },
-  plainBack: { fontFamily: RN_FONTS.bodyBold, fontSize: theme.fontSize['heading-3'], color: theme.color.text },
-  notFound: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.space['2xl'], gap: theme.space.sm },
-  notFoundEmoji: { fontSize: 40 },
-  notFoundTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-2'],
-    color: theme.color.text,
-    textAlign: 'center',
-  },
-  notFoundBody: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.textMuted,
-    textAlign: 'center',
-    lineHeight: theme.lineHeight.body,
-  },
-  notFoundCta: { marginTop: theme.space.md, minWidth: 180 },
-
-  // Overlay
-  overlayBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: theme.color.overlay,
-    justifyContent: 'flex-end',
-  },
-  overlayDismiss: { flex: 1 },
-  overlaySheet: {
-    backgroundColor: theme.color.surface,
-    borderTopLeftRadius: theme.radius.sheet,
-    borderTopRightRadius: theme.radius.sheet,
-    padding: theme.space.xl,
-    maxHeight: '85%',
-    ...theme.shadow.sheet,
-  },
-  overlayHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: theme.space.md,
-  },
-  overlayTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-  },
-  overlayClose: { fontFamily: RN_FONTS.bodyMedium, fontSize: theme.fontSize.title, color: theme.color.text },
-  overlayCalendar: { height: 360 },
-  overlayGuests: { gap: theme.space.md },
-  overlayDivider: { height: 1, backgroundColor: theme.color.border },
-  overlayFooter: { marginTop: theme.space.lg },
-
-  // Skeleton bits
-  skTitle: { height: 28, width: '70%', borderRadius: theme.radius.sm, marginBottom: theme.space.sm },
-  skLine: { height: 16, width: '90%', borderRadius: theme.radius.sm, marginBottom: theme.space.xs },
-  skLineShort: { height: 16, width: '50%', borderRadius: theme.radius.sm },
-  skBlock: { height: 90, width: '100%', borderRadius: theme.radius.card },
+  // Sheets
+  sheetTitle: { marginBottom: theme.space.sm },
+  calendarWrap: { height: 420, marginVertical: theme.space.sm },
+  guestRows: { marginVertical: theme.space.md, gap: theme.space.md },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border },
 });

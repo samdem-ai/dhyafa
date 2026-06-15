@@ -109,6 +109,62 @@ export function priceQuote(input: PriceQuoteInput): PriceQuote {
 }
 
 // ---------------------------------------------------------------------------
+// Guest contact (structured profile columns, not special_requests)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate an Algerian phone in E.164 (+213…). Accepts a leading 0 local form
+ * and the +213 international form; returns the normalized +213 number or null.
+ *
+ * Algerian mobiles are 9 digits after the country code (5/6/7 prefixes); we keep
+ * the check permissive (8–9 national digits) so landlines also pass.
+ */
+export function normalizePhoneE164(input: string): string | null {
+  const trimmed = input.trim();
+  if (trimmed === '') return null;
+  // Strip spaces, dashes, parentheses.
+  const cleaned = trimmed.replace(/[\s\-().]/g, '');
+  let national: string;
+  if (cleaned.startsWith('+213')) national = cleaned.slice(4);
+  else if (cleaned.startsWith('00213')) national = cleaned.slice(5);
+  else if (cleaned.startsWith('0')) national = cleaned.slice(1);
+  else national = cleaned;
+  if (!/^\d{8,9}$/.test(national)) return null;
+  return `+213${national}`;
+}
+
+/**
+ * Write the guest's contact to their profile row (structured columns), rather
+ * than cramming it into special_requests. RLS lets a user update their own
+ * profile. `phoneE164` should already be normalized via normalizePhoneE164.
+ */
+export async function saveGuestContact(input: {
+  userId: string;
+  fullName?: string | null;
+  phoneE164?: string | null;
+}): Promise<void> {
+  const patch: { full_name?: string; phone_e164?: string } = {};
+  if (input.fullName && input.fullName.trim()) patch.full_name = input.fullName.trim();
+  if (input.phoneE164 && input.phoneE164.trim()) patch.phone_e164 = input.phoneE164.trim();
+  if (Object.keys(patch).length === 0) return;
+  const { error } = await supabaseClient.from('profiles').update(patch).eq('id', input.userId);
+  if (error) throw error;
+}
+
+/** Read the caller's profile contact to pre-fill the checkout form. */
+export async function getMyContact(
+  userId: string,
+): Promise<{ fullName: string | null; phoneE164: string | null }> {
+  const { data, error } = await supabaseClient
+    .from('profiles')
+    .select('full_name, phone_e164')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return { fullName: data?.full_name ?? null, phoneE164: data?.phone_e164 ?? null };
+}
+
+// ---------------------------------------------------------------------------
 // create_booking RPC
 // ---------------------------------------------------------------------------
 
@@ -326,6 +382,20 @@ export async function listMyBookings(bucket?: TripBucket): Promise<BookingWithPr
   return raws.map(toBookingWithProperty);
 }
 
+/**
+ * Read just a booking's status (cheap). Returns null if not found/visible yet.
+ * Used after create_booking so a slow read-after-write doesn't mask success.
+ */
+export async function getBookingStatus(id: string): Promise<BookingStatus | null> {
+  const { data, error } = await supabaseClient
+    .from('bookings')
+    .select('status')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.status as BookingStatus | undefined) ?? null;
+}
+
 /** One booking with its property summary. Null if not found / not the caller's. */
 export async function getBookingDetail(id: string): Promise<BookingWithProperty | null> {
   const { data, error } = await supabaseClient
@@ -341,6 +411,73 @@ export async function getBookingDetail(id: string): Promise<BookingWithProperty 
       room_type: Pick<RoomTypeRow, 'id' | 'name_ar' | 'name_fr' | 'name_en'> | null;
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Payment error localization (no raw rpc/Postgres strings leak to the user)
+// ---------------------------------------------------------------------------
+
+export type PaymentErrorCode =
+  | 'NOT_AWAITING_PAYMENT'
+  | 'BOOKING_NOT_FOUND'
+  | 'NOT_YOUR_BOOKING'
+  | 'AUTH_REQUIRED'
+  | 'CHECKOUT_UNAVAILABLE'
+  | 'NOT_APPLIED'
+  | 'UNKNOWN';
+
+const PAYMENT_ERROR_COPY: Record<PaymentErrorCode, { ar: string; fr: string; en: string }> = {
+  NOT_AWAITING_PAYMENT: {
+    ar: 'هذا الحجز لم يعد بانتظار الدفع.',
+    fr: 'Cette réservation n’est plus en attente de paiement.',
+    en: 'This booking is no longer awaiting payment.',
+  },
+  BOOKING_NOT_FOUND: {
+    ar: 'تعذّر العثور على الحجز.',
+    fr: 'Réservation introuvable.',
+    en: 'Booking not found.',
+  },
+  NOT_YOUR_BOOKING: {
+    ar: 'هذا الحجز ليس لك.',
+    fr: 'Cette réservation ne vous appartient pas.',
+    en: 'This booking is not yours.',
+  },
+  AUTH_REQUIRED: {
+    ar: 'يجب تسجيل الدخول للمتابعة.',
+    fr: 'Vous devez vous connecter pour continuer.',
+    en: 'You must sign in to continue.',
+  },
+  CHECKOUT_UNAVAILABLE: {
+    ar: 'تعذّر بدء الدفع عبر شارجيلي (الخدمة غير متاحة). جرّب لاحقًا.',
+    fr: 'Impossible de démarrer le paiement Chargily (service indisponible). Réessayez plus tard.',
+    en: 'Could not start Chargily payment (service unavailable). Please try again later.',
+  },
+  NOT_APPLIED: {
+    ar: 'لم يُطبَّق الدفع. حاول مرة أخرى.',
+    fr: 'Le paiement n’a pas été appliqué. Réessayez.',
+    en: 'The payment was not applied. Please try again.',
+  },
+  UNKNOWN: {
+    ar: 'تعذّرت معالجة الدفع. حاول مرة أخرى.',
+    fr: 'Le paiement n’a pas pu être traité. Réessayez.',
+    en: 'Could not process the payment. Please try again.',
+  },
+};
+
+/** Map a raw payment error message to a known code. */
+export function classifyPaymentError(message: string): PaymentErrorCode {
+  const m = message.toUpperCase();
+  if (m.includes('NOT_AWAITING_PAYMENT')) return 'NOT_AWAITING_PAYMENT';
+  if (m.includes('BOOKING_NOT_FOUND')) return 'BOOKING_NOT_FOUND';
+  if (m.includes('NOT_YOUR_BOOKING')) return 'NOT_YOUR_BOOKING';
+  if (m.includes('AUTH_REQUIRED') || m.includes('28000')) return 'AUTH_REQUIRED';
+  return 'UNKNOWN';
+}
+
+/** Friendly localized message for a payment error code. */
+export function paymentErrorMessage(code: PaymentErrorCode, locale: Locale): string {
+  const copy = PAYMENT_ERROR_COPY[code];
+  return locale === 'fr' ? copy.fr : locale === 'en' ? copy.en : copy.ar;
 }
 
 /** Cover URL for a booking's property. */

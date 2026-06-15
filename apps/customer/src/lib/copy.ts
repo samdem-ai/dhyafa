@@ -626,6 +626,103 @@ export const L = {
   amCatEntertainment: { ar: 'الترفيه', fr: 'Divertissement', en: 'Entertainment' },
   amCatOther: { ar: 'أخرى', fr: 'Autres', en: 'Other' },
 
+  // ── Phase 4: search / detail / checkout / pay extras ──────────────────────
+  // Search entry
+  recentSearches: { ar: 'عمليات بحث حديثة', fr: 'Recherches récentes', en: 'Recent searches' },
+  popularDestinations: { ar: 'وجهات شائعة', fr: 'Destinations populaires', en: 'Popular destinations' },
+  anyGuests: { ar: 'أي عدد من الضيوف', fr: "N'importe quel nombre", en: 'Any guests' },
+  searchNoMatches: { ar: 'لا توجد ولاية مطابقة', fr: 'Aucune wilaya correspondante', en: 'No matching wilaya' },
+  searchWilayaPlaceholder: { ar: 'ابحث عن ولاية…', fr: 'Rechercher une wilaya…', en: 'Search a wilaya…' },
+  // Sort sheet
+  sortBy: { ar: 'ترتيب حسب', fr: 'Trier par', en: 'Sort by' },
+  // Filters
+  showNStays: { ar: 'عرض الإقامات', fr: 'Voir les logements', en: 'Show stays' },
+  priceRangeInvalid: {
+    ar: 'الحد الأدنى يجب ألا يتجاوز الحد الأعلى.',
+    fr: 'Le minimum ne doit pas dépasser le maximum.',
+    en: 'Min price must be ≤ max price.',
+  },
+  noMatchingStays: { ar: 'لا توجد إقامات مطابقة', fr: 'Aucun logement', en: 'No matching stays' },
+  // Detail
+  langFallbackNote: {
+    ar: 'يُعرض هذا المحتوى بلغة أخرى (غير متوفّر بالعربية).',
+    fr: 'Contenu affiché dans une autre langue (non disponible en français).',
+    en: 'Shown in another language (not available in your language).',
+  },
+  reserve: { ar: 'احجز', fr: 'Réserver', en: 'Reserve' },
+  occupancyMax: { ar: 'الحد الأقصى لعدد الضيوف', fr: 'Capacité maximale', en: 'Max capacity' },
+  // Checkout
+  quantity: { ar: 'عدد الوحدات', fr: 'Nombre d’unités', en: 'Number of units' },
+  units: { ar: 'وحدات', fr: 'unités', en: 'units' },
+  unit: { ar: 'وحدة', fr: 'unité', en: 'unit' },
+  contactName: { ar: 'الاسم الكامل', fr: 'Nom complet', en: 'Full name' },
+  contactPhone: { ar: 'رقم الهاتف', fr: 'Téléphone', en: 'Phone (+213…)' },
+  phoneInvalid: {
+    ar: 'أدخل رقم هاتف جزائري صالح (+213).',
+    fr: 'Entrez un numéro algérien valide (+213).',
+    en: 'Enter a valid Algerian phone number (+213).',
+  },
+  minNightsError: {
+    ar: 'الحد الأدنى للإقامة',
+    fr: 'Séjour minimum',
+    en: 'Minimum stay',
+  },
+  bookingCreatedReadFailed: {
+    ar: 'تم إنشاء حجزك. جارٍ فتح التفاصيل…',
+    fr: 'Votre réservation est créée. Ouverture des détails…',
+    en: 'Your booking was created. Opening details…',
+  },
+  // Pay
+  payChoosePaymentMethod: { ar: 'اختر طريقة الدفع', fr: 'Choisir le mode de paiement', en: 'Choose payment method' },
+  payMethodEdahabia: { ar: 'الذهبية', fr: 'Edahabia', en: 'Edahabia' },
+  payMethodCib: { ar: 'CIB', fr: 'CIB', en: 'CIB' },
+  payMethodBaridiQr: { ar: 'بريدي موب (QR)', fr: 'BaridiMob (QR)', en: 'BaridiMob (QR)' },
+  payOpenCheckout: { ar: 'أكمل الدفع في المتصفح…', fr: 'Terminez le paiement dans le navigateur…', en: 'Complete payment in the browser…' },
+  payWaitingConfirm: { ar: 'بانتظار تأكيد الدفع…', fr: 'En attente de la confirmation…', en: 'Waiting for payment confirmation…' },
+  payConfirmedTitle: { ar: 'تم تأكيد الدفع', fr: 'Paiement confirmé', en: 'Payment confirmed' },
+  payExpiredTitle: { ar: 'انتهت مهلة الدفع', fr: 'Délai de paiement expiré', en: 'Payment window expired' },
+  payExpiredBody: {
+    ar: 'انتهت مهلة الدفع لهذا الحجز. ابدأ حجزًا جديدًا.',
+    fr: 'Le délai de paiement de cette réservation a expiré. Réservez à nouveau.',
+    en: 'The payment window for this booking has expired. Please book again.',
+  },
+  payTimeLeft: { ar: 'الوقت المتبقي', fr: 'Temps restant', en: 'Time left' },
+  paySimulateDev: { ar: 'محاكاة دفع ناجح (تطوير)', fr: 'Simuler un paiement (dev)', en: 'Simulate payment (dev)' },
+  paySimulateDevNote: {
+    ar: 'وضع التطوير: يؤكّد الحجز دون شارجيلي.',
+    fr: 'Mode dev : confirme la réservation sans Chargily.',
+    en: 'Dev mode: confirms the booking without Chargily.',
+  },
+  payAlreadyConfirmed: {
+    ar: 'تم تأكيد هذا الحجز بالفعل.',
+    fr: 'Cette réservation est déjà confirmée.',
+    en: 'This booking is already confirmed.',
+  },
+  // Auth
+  forgotPassword: { ar: 'نسيت كلمة المرور؟', fr: 'Mot de passe oublié ?', en: 'Forgot password?' },
+  resetPasswordSent: {
+    ar: 'إذا كان البريد مسجّلًا، أرسلنا رابط إعادة التعيين.',
+    fr: 'Si l’adresse existe, un lien de réinitialisation a été envoyé.',
+    en: 'If that email exists, we sent a reset link.',
+  },
+  resendEmail: { ar: 'إعادة إرسال البريد', fr: 'Renvoyer l’e-mail', en: 'Resend email' },
+  resendEmailSent: { ar: 'تمت إعادة الإرسال.', fr: 'E-mail renvoyé.', en: 'Email resent.' },
+  authErrorRateLimit: {
+    ar: 'محاولات كثيرة. انتظر قليلًا ثم حاول مجددًا.',
+    fr: 'Trop de tentatives. Patientez un instant et réessayez.',
+    en: 'Too many attempts. Please wait a moment and try again.',
+  },
+  authErrorUnconfirmed: {
+    ar: 'لم يتم تأكيد بريدك بعد. تحقق من صندوق الوارد.',
+    fr: 'Votre e-mail n’est pas encore confirmé. Vérifiez votre boîte.',
+    en: 'Your email isn’t confirmed yet. Check your inbox.',
+  },
+  authErrorInvalid: {
+    ar: 'بريد إلكتروني أو كلمة مرور غير صحيحة.',
+    fr: 'E-mail ou mot de passe incorrect.',
+    en: 'Incorrect email or password.',
+  },
+
   // ── Cancellation tier labels + refund windows (policy/review) ─────────────
   tierFlexibleLabel: { ar: 'مرنة', fr: 'Flexible', en: 'Flexible' },
   tierModerateLabel: { ar: 'متوسطة', fr: 'Modérée', en: 'Moderate' },

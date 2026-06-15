@@ -96,6 +96,26 @@ export function localizedName(row: LocalizedNames, locale: Locale): string {
   return '';
 }
 
+/**
+ * Like localizedName, but also reports which locale the returned text came from.
+ * Lets the UI indicate a fallback (e.g. "Shown in French — no Arabic available").
+ * Returns `fellBack: true` when the requested locale had no value.
+ */
+export function localizedNameWithSource(
+  row: LocalizedNames,
+  locale: Locale,
+): { text: string; source: Locale | null; fellBack: boolean } {
+  const order: Locale[] =
+    locale === 'fr' ? ['fr', 'ar', 'en'] : locale === 'en' ? ['en', 'fr', 'ar'] : ['ar', 'fr', 'en'];
+  for (const loc of order) {
+    const v = loc === 'ar' ? row.name_ar : loc === 'fr' ? row.name_fr : row.name_en;
+    if (v && v.trim().length > 0) {
+      return { text: v, source: loc, fellBack: loc !== locale };
+    }
+  }
+  return { text: '', source: null, fellBack: false };
+}
+
 // ---------------------------------------------------------------------------
 // Host bootstrap
 // ---------------------------------------------------------------------------

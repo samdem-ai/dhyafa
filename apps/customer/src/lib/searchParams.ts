@@ -117,6 +117,23 @@ export function activeFilterCount(state: SearchState): number {
   return n;
 }
 
+/**
+ * Validate a `next` route param into a safe in-app pathname.
+ *
+ * Accepts the legacy group token 'host' and any in-app absolute path
+ * (starting with '/', no scheme/host so external/deep links can't be injected).
+ * Returns null when the value isn't a safe in-app route.
+ */
+export function safeNextPath(next: string | undefined | null): string | null {
+  if (!next) return null;
+  if (next === 'host') return '/host';
+  // Only allow in-app absolute paths; reject anything with a scheme or '//'.
+  if (next.startsWith('/') && !next.startsWith('//') && !next.includes('://')) {
+    return next;
+  }
+  return null;
+}
+
 /** Parse a yyyy-mm-dd string to a local Date (midnight). Null on invalid. */
 export function parseDate(s: string | null | undefined): Date | null {
   if (!s) return null;
