@@ -13,11 +13,15 @@
       "resizeMode": "contain",
       "backgroundColor": "#F7F3EC"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.dyafa.customer",
-      "associatedDomains": ["applinks:dyafa.dz"]
+      "associatedDomains": [
+        "applinks:dyafa.dz"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -36,7 +40,10 @@
               "pathPrefix": "/"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },

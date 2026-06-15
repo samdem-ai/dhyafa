@@ -641,3 +641,34 @@ export function propertyTitle(
 ): string {
   return localizedName({ name_ar: p.title_ar, name_fr: p.title_fr, name_en: p.title_en }, locale);
 }
+
+// ---------------------------------------------------------------------------
+// Approximate map coordinates
+// ---------------------------------------------------------------------------
+
+/** Public-safe coordinate (~110m rounded) for the map. */
+export interface ApproxCoord {
+  latitude: number;
+  longitude: number;
+}
+
+/**
+ * Fetch privacy-safe approximate coordinates for the given property ids from the
+ * `properties_public` view (exact lat/lng are intentionally withheld from
+ * clients — §9). Returns a map keyed by id; ids without coords are omitted.
+ */
+export async function fetchApproxCoords(ids: string[]): Promise<Record<string, ApproxCoord>> {
+  if (ids.length === 0) return {};
+  const { data, error } = await supabaseClient
+    .from('properties_public')
+    .select('id, approx_lat, approx_lng')
+    .in('id', ids);
+  if (error) throw error;
+  const out: Record<string, ApproxCoord> = {};
+  for (const r of data ?? []) {
+    if (r.id != null && r.approx_lat != null && r.approx_lng != null) {
+      out[r.id] = { latitude: r.approx_lat, longitude: r.approx_lng };
+    }
+  }
+  return out;
+}

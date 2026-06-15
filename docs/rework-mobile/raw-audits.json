@@ -1,0 +1,674 @@
+{
+  "traveler": {
+    "area": "traveler",
+    "screens": [
+      {
+        "route": "app/_layout.tsx (root Stack)",
+        "purpose": "Loads fonts + locale, sets RTL via I18nManager before first render, wraps tree in I18nextProvider, declares the root Stack.",
+        "status": "working",
+        "bugs": [
+          "No <SafeAreaProvider> from react-native-safe-area-context is mounted at the root, yet TabBar.tsx calls useSafeAreaInsets(). Without a provider the hook returns zero insets (or warns), so the bottom tab bar's safe-area padding silently collapses on devices with a home indicator. This is an app-wide correctness issue.",
+          "Stack screenOptions sets animation 'slide_from_left' under RTL, but most screens render headerShown:false and use their own custom top bars, so the global header style/tint is largely dead config."
+        ],
+        "ux_problems": [
+          "Splash fallback is a bare centered ActivityIndicator (the brief says avoid bare spinners) — fine briefly, but there is no branded splash content.",
+          "No global error boundary: a throw in any screen white-screens the whole app."
+        ]
+      },
+      {
+        "route": "app/index.tsx",
+        "purpose": "Redirects to /(tabs).",
+        "status": "working",
+        "bugs": [],
+        "ux_problems": []
+      },
+      {
+        "route": "app/onboarding.tsx",
+        "purpose": "Language picker (AR/FR/EN); persists choice, forces RTL, reloads via expo-updates.",
+        "status": "partial",
+        "bugs": [
+          "setLocale() relies on expo-updates reloadAsync; in Expo Go / dev client it throws and only console.warns. The screen then resets `applying` to null but the language does NOT actually apply until a manual restart — the user sees the selection 'stick' with no effective change. The reloadHint text is only shown while `applying!==null`, which is cleared immediately, so the user gets no persistent instruction.",
+          "Brand wordmark is hardcoded Arabic 'ضيافة' with arabicBold font regardless of selected locale — acceptable as a logo, but the heading uses RN_FONTS.arabicBold even in EN/FR."
+        ],
+        "ux_problems": [
+          "Presented as a modal from root but also used as the in-app 'Language' route from Profile via router.push('/onboarding') — there is no close/back affordance on the screen itself, so when opened from Profile (not as the first-launch modal) the user can get stuck if the modal gesture is unavailable.",
+          "Uses SafeAreaView from react-native (deprecated, only pads top on iOS) instead of safe-area-context edges.",
+          "Selecting the already-current locale is a no-op with no feedback."
+        ]
+      },
+      {
+        "route": "app/(tabs)/_layout.tsx",
+        "purpose": "Guest bottom-tab shell: <Slot/> + custom <TabBar/>; calls usePushRegistration().",
+        "status": "partial",
+        "bugs": [
+          "TabBar uses useSafeAreaInsets() but no SafeAreaProvider is mounted (see root layout) → bottom inset is 0, bar can sit under the home indicator."
+        ],
+        "ux_problems": [
+          "Tab switching uses router.replace(), which destroys per-tab navigation/scroll state on every switch (no stack-per-tab). Scroll position and in-progress state are lost moving between Explore/Trips/Inbox/etc."
+        ]
+      },
+      {
+        "route": "app/(tabs)/index.tsx (Explore)",
+        "purpose": "Search-entry bar + curated rails (Popular in wilaya, Top rated, Beachfront, Sahara).",
+        "status": "buggy",
+        "bugs": [
+          "Both the rail 'see all' (router.push('/search/results')) and there is no wiring of a rail's wilaya/type into results — results gets ZERO params and re-searches everything, so 'Popular in Oran → see all' shows all listings unfiltered. The label even reads pick(L.results) ('Results'), not 'See all'.",
+          "Rails are built with 4 separate searchProperties() calls PLUS listWilayasWithListings + listActiveWilayas; each searchProperties() re-runs readApprovedSummaries() (full table scan of approved properties with all child joins). That's ~6 full reads of the same data per Explore load — heavy and redundant.",
+          "Beachfront/Sahara rails are derived purely from a hardcoded wilaya-code list (COASTAL_WILAYAS/SAHARA_WILAYAS), not from any property attribute, so they are just 'top rated in these wilayas' mislabeled as Beachfront/Sahara."
+        ],
+        "ux_problems": [
+          "No pull-to-refresh: rails load once (rails===null guard) and never refresh on focus; a new listing or rating change won't appear without app restart.",
+          "Uses SafeAreaView (react-native) — only top padding on iOS, nothing on Android; content can collide with the status bar on Android.",
+          "Search-entry bar always shows 'Anywhere · Any dates · Guests' placeholder; it never reflects a prior search the user ran.",
+          "Tagline uses RN_FONTS.arabicRegular for an Arabic-only string even when the UI locale is EN/FR."
+        ]
+      },
+      {
+        "route": "app/(tabs)/trips.tsx",
+        "purpose": "Segmented Upcoming/Completed/Cancelled over the guest's own bookings; pay + review CTAs.",
+        "status": "buggy",
+        "bugs": [
+          "The 'Leave review' CTA is shown on EVERY completed booking with no hasReviewedBooking() check, so already-reviewed stays still show 'Leave a review'; tapping leads to review/[bookingId] which then shows the 'already reviewed / ineligible' state — a dead-end loop. The copy.alreadyReviewed string exists but is unused here.",
+          "load() ignores AbortController/race: rapidly switching buckets fires overlapping listMyBookings() calls; the last to resolve wins regardless of which bucket is active, so a slow earlier request can overwrite the current bucket's data.",
+          "listMyBookings() selects BOOKING_SELECT with `*` plus full property_photos for every booking — pulls all photo rows per booking just to compute a cover; fine for demo size, wasteful at scale."
+        ],
+        "ux_problems": [
+          "Switching buckets sets data=null → full SkeletonList flash on every tab tap (no cached per-bucket data).",
+          "Signed-out state uses generic EmptyState with no sign-in button (unlike Profile which has one).",
+          "SafeAreaView (react-native) used; bottom list content can run under the tab bar (listContent has no extra bottom padding for the bar height).",
+          "No haptic/feedback on bucket switch or card press."
+        ]
+      },
+      {
+        "route": "app/(tabs)/inbox.tsx",
+        "purpose": "Unified conversations list (guest+host), realtime message refresh, unread hint.",
+        "status": "buggy",
+        "bugs": [
+          "Realtime channel subscribes to ALL public.messages INSERTs (no filter), then calls load() on every insert app-wide. Any message between any two users triggers a full listConversations() re-fetch for this user. Noisy and leaks work; should scope to the user's conversations.",
+          "CONVERSATION_SELECT pulls EVERY message of EVERY conversation (messages ( id, body, sender_id, created_at, read_at ) with no limit) just to derive the last message + unread client-side. For long threads this is a large over-fetch and the 'last message' is computed by sorting all messages in JS.",
+          "Unread is computed from messages.read_at, but NO screen ever sets read_at (conversation/[id] never marks messages read) — so the unread dot is effectively permanent once any inbound message exists.",
+          "load() guards on `if (myUid)` inside useFocusEffect but never clears data when the user signs out, so a previous user's conversations can linger in state."
+        ],
+        "ux_problems": [
+          "No skeleton-to-content for the realtime path; every inbound message causes a silent full reload (no optimistic update).",
+          "Time uses formatDateTime (date + time) for every row — for older messages it shows full date, no relative 'time ago'.",
+          "SafeAreaView (react-native); list bottom can hide under the tab bar."
+        ]
+      },
+      {
+        "route": "app/(tabs)/wishlists.tsx",
+        "purpose": "Wishlists/favorites tab.",
+        "status": "stub",
+        "bugs": [
+          "Hardcoded 'Coming soon' empty state despite the DB having full support: wishlists, wishlist_items tables, the favorites view, and wishlists_owner_all / wishlist_items_owner_all RLS all exist. No saving, no heart toggle, no collections — an entire core feature is unimplemented.",
+          "Because there is no wishlist write path anywhere in the app, property cards/detail have no 'save/heart' affordance at all."
+        ],
+        "ux_problems": [
+          "Tab is a permanent dead end; Profile even links to it labeled 'Coming soon'.",
+          "SafeAreaView (react-native)."
+        ]
+      },
+      {
+        "route": "app/(tabs)/profile.tsx",
+        "purpose": "Identity card, shortcuts (Trips/Wishlists/Language), Switch-to-Hosting (become_host), sign-out.",
+        "status": "partial",
+        "bugs": [
+          "displayName reads user.user_metadata.display_name (sign-up metadata) and never reads the profiles row; if the user changed their profiles.display_name elsewhere (web), Profile shows the stale signup value or email.",
+          "onSwitchToHosting calls becomeHost() every time the button is tapped, even for users who are already hosts — it relies on become_host being idempotent but makes a network write on every tap with only a generic loadError on failure.",
+          "Avatar is a static emoji; profiles.avatar_path is never loaded/rendered."
+        ],
+        "ux_problems": [
+          "No edit-profile, no notification settings, no help/about, no currency/region — a thin profile.",
+          "Trips/Wishlists shortcuts use router.replace('/(tabs)/trips') which swaps the tab destructively rather than switching tabs cleanly.",
+          "Sign-out has no confirmation and no spinner; it just fires signOut().",
+          "SafeAreaView (react-native)."
+        ]
+      },
+      {
+        "route": "app/(auth)/sign-in.tsx",
+        "purpose": "Email+password sign-in; honors ?next=host, else router.back.",
+        "status": "working",
+        "bugs": [
+          "After sign-in with no next and no back stack it router.replace('/') which redirects to tabs — fine, but when reached from booking/confirm via router.replace('/(auth)/sign-in') (confirm replaces itself), a successful sign-in calls router.back() returning to... whatever is below, NOT back to the booking the user was completing — the in-progress booking context (dates/room/guests) is lost.",
+          "All auth errors collapse to one generic message; rate-limit / unconfirmed-email / wrong-password are indistinguishable to the user."
+        ],
+        "ux_problems": [
+          "No 'forgot password' link/flow at all.",
+          "SafeAreaView (react-native); header padding only."
+        ]
+      },
+      {
+        "route": "app/(auth)/sign-up.tsx",
+        "purpose": "Email+password sign-up; shows 'check email' when confirmation required.",
+        "status": "working",
+        "bugs": [
+          "On auto-confirm dev path it router.back()/replace('/') but does not honor a ?next param (sign-in does) — signing up mid-host-flow won't route to /host.",
+          "Generic failure copy hides duplicate-email vs weak-password distinctions."
+        ],
+        "ux_problems": [
+          "'Check your email' state has no resend-email action.",
+          "SafeAreaView (react-native)."
+        ]
+      },
+      {
+        "route": "app/search/index.tsx",
+        "purpose": "Search entry: destination (wilaya), dates (calendar), guests; pushes /search/results with serialized params.",
+        "status": "buggy",
+        "bugs": [
+          "The destination wilaya list is rendered inside a View with maxHeight:320 sitting INSIDE the outer ScrollView, but it is NOT itself scrollable (plain View) and is sliced to .slice(0,30). With 58 Algerian wilayas, wilayas 31–58 are unreachable from the picker; the height cap also clips rows with no inner scroll.",
+          "Dates panel embeds DateRangePicker inside a fixed height:380 View inside the page ScrollView — vertical drag inside the calendar competes with the page scroll (nested scroll conflict).",
+          "onSearch always sends guests=adults+children even when the user never opened the guests panel, and never sends min/max occupancy intent; a default of 1 adult is fine but there's no 'any guests' option."
+        ],
+        "ux_problems": [
+          "No recent searches / popular destinations.",
+          "Wilaya search input has no clear button and no 'no matches' message when the query filters everything out.",
+          "Calendar has no min-stay or unavailable-date awareness at search time (it's a blank range picker).",
+          "SafeAreaView (react-native)."
+        ]
+      },
+      {
+        "route": "app/search/results.tsx",
+        "purpose": "Reads search params, runs searchProperties, List⇄Map(stub) toggle, Filters + Sort.",
+        "status": "buggy",
+        "bugs": [
+          "All filtering and sorting is done CLIENT-SIDE after readApprovedSummaries() pulls the entire approved set with every child join — no pagination, no server-side wilaya/price filter. Scales badly and re-fetches the whole table on every param change (filtersKey).",
+          "headerTitle derives the wilaya name from results[0].wilaya only when results exist; if the wilaya has 0 results the header shows generic 'Results' instead of the searched wilaya name, hiding what was searched.",
+          "Map mode is a stub (acknowledged) — but the List/Map toggle persists 'map' in component state only, lost on any param change/refocus (useFocusEffect resets results but not mode; acceptable, but map gives no real geographic value)."
+        ],
+        "ux_problems": [
+          "No pull-to-refresh on the results FlatList.",
+          "Sort is a cycle-through-a-pill (tap to advance) rather than a labeled chooser — the user can't see all options or jump to one; easy to overshoot.",
+          "Filters applied-count badge counts facets but the header pill doesn't reflect dates/guests.",
+          "SafeAreaView (react-native); results bottom padding doesn't account for the tab bar when entered as a pushed route over tabs (it's pushed on root stack, so no tab bar — OK)."
+        ]
+      },
+      {
+        "route": "app/search/filters.tsx",
+        "purpose": "Edit price/type/instant/rating/amenities; apply back to results.",
+        "status": "partial",
+        "bugs": [
+          "onApply uses router.navigate({pathname:'/search/results', params}) which, combined with results.tsx already being in the stack, can create a second results instance or no-op depending on expo-router dedupe; back-stack from filters→results is ambiguous (sometimes returns to the OLD results params).",
+          "Price inputs accept any number with no min<=max validation; entering min=9999999 max=0 yields a silently empty result set with no hint."
+        ],
+        "ux_problems": [
+          "No live result-count preview on the 'Show results' button (common pattern: 'Show 12 stays').",
+          "Amenities render as one flat chip wrap with no category grouping despite amenities.category existing in the schema.",
+          "SafeAreaView (react-native)."
+        ]
+      },
+      {
+        "route": "app/property/[id].tsx",
+        "purpose": "Gallery, title/rating, amenities, rules, check-in/out, cancellation, rooms, reviews, message-host, sticky booking widget + overlays.",
+        "status": "buggy",
+        "bugs": [
+          "Message-host uses findMyBookingForProperty() which queries bookings by property_id with NO status/guest filter beyond RLS, then getOrCreateConversation(bookingId). For a guest with a booking this works; but findMyBookingForProperty returns the newest booking regardless of state, and getOrCreateConversation will create a 'booking' conversation even for a cancelled/expired booking — there is no inquiry-kind conversation path, so a guest who hasn't booked simply cannot message the host (only the 'book first' nudge).",
+          "ReviewsSummary fetches listReviewsForProperty(propertyId) on focus, but getPropertyDetail ALREADY fetched reviews in its join (raw.reviews). Reviews are loaded twice (detail join + separate query).",
+          "Gallery onScroll uses scrollEventThrottle=16 with a non-native onScroll setState per frame → index recompute every frame while swiping (jank on lower-end devices).",
+          "Occupancy: the guests overlay caps adults at selectedRoom.max_adults ?? 16 and children at max_children ?? 10 independently; a user can pick adults=max_adults AND children=max_children exceeding max_occupancy, and the property screen never warns (only booking/confirm catches occupancyExceeded). The widget will compute a quote and let them Continue."
+        ],
+        "ux_problems": [
+          "The whole screen is a ScrollView with a sticky bottom widget but the gallery back button sits in a SafeAreaView absolutely positioned over the image — on Android (no top inset from RN SafeAreaView) the back button can overlap the status bar.",
+          "No 'save to wishlist' / heart anywhere (feature missing).",
+          "House rules and description show only the localized string with ar→fr→en fallback; if only Arabic exists, an EN user sees Arabic with no indicator.",
+          "Map/location: there is no map or even approx area shown on the detail screen (geo_fuzzed exists) — only wilaya·commune text.",
+          "Reviews section caps at 6 with a 'show all reviews' copy string defined (showAllReviews) but NO control rendered to actually see all reviews.",
+          "Sticky widget 'dates' line nests a Pressable's onPress (guests) inside another Pressable's Text — tap targets for dates vs guests overlap and are tiny."
+        ]
+      },
+      {
+        "route": "app/booking/confirm.tsx",
+        "purpose": "Confirm dates/guests, client price preview, guest details, create_booking; route to pay or detail.",
+        "status": "buggy",
+        "bugs": [
+          "Not-signed-in handling: onSubmit does router.replace('/(auth)/sign-in') which REPLACES the confirm screen. After sign-in, sign-in.tsx router.back() returns to property (or wherever), and all the entered dates/room/guests/guest-details on confirm are gone — the user must rebuild the booking. create_booking is also never auto-retried.",
+          "Guest details (fullName, phone) are concatenated into special_requests as a text blob ('Full name: X\\nPhone: Y\\n...') rather than written to profiles.full_name / profiles.phone_e164 — the structured columns exist but are ignored; host sees contact info buried in special_requests.",
+          "occupancyExceeded only checks guests > room.max_occupancy (single unit, units=1 hardcoded). Multi-unit booking is impossible from the app (units:1 always), even though create_booking accepts p_units and the schema supports it.",
+          "After createBooking it re-reads via getBookingDetail then branches on awaiting_payment vs else; a 'requested' (request-to-book) booking routes to /booking/[id] correctly, but a network failure on the re-read throws into the catch and shows bookingErrorMessage (UNKNOWN 'could not create booking') even though the booking WAS created — misleading."
+        ],
+        "ux_problems": [
+          "Price shown is explicitly a client estimate; service fee is always 0 in preview AND server (v_service_fee=0), so the 'estimate vs server' caveat is mostly noise — but there's no min-nights validation surfaced before submit (server raises MIN_NIGHTS, mapped, but the screen lets you submit a too-short stay first).",
+          "Phone field has no E.164 validation/formatting for +213.",
+          "KeyboardAvoidingView offset is hardcoded 80; the footer CTA can still be covered by the keyboard on some devices.",
+          "SafeAreaView (react-native)."
+        ]
+      },
+      {
+        "route": "app/booking/[id]/index.tsx",
+        "purpose": "Trip/booking detail: status banner, property summary, dates/guests, authoritative price breakdown, code, message-host, pay/review CTAs.",
+        "status": "buggy",
+        "bugs": [
+          "NO cancel-booking action anywhere, despite cancel_booking(p_booking_id,p_reason) and quote_refund(p_booking_id) RPCs existing. A guest cannot cancel a requested/awaiting_payment/confirmed booking from the app at all — a major missing flow.",
+          "Price breakdown's first line label is `${nights} × ${booking.nights}` i.e. literally 'nights × N' (e.g. 'nights × 3') — it shows the word 'nights' then the count, not 'N nights × rate'; the per-night rate is omitted entirely (unlike confirm.tsx which shows rate × nights).",
+          "Message-host calls getOrCreateConversation(id) directly with the booking id — correct — but on a declined/expired booking the RPC still creates a 'booking' conversation; there's no guard for terminal states.",
+          "No realtime/refetch on status change: a host accepting a 'requested' booking won't update this screen unless the user manually re-focuses (useFocusEffect reloads on focus, so it's OK on navigation, but not live)."
+        ],
+        "ux_problems": [
+          "Completed bookings show 'Leave review' even if already reviewed (no hasReviewedBooking check here either) → same dead-end as Trips.",
+          "Booking code is presented but not copyable (no copy-to-clipboard).",
+          "No cancellation-policy reminder or refund preview on this screen.",
+          "SafeAreaView (react-native)."
+        ]
+      },
+      {
+        "route": "app/booking/[id]/pay.tsx",
+        "purpose": "Payment: real Chargily Edge Function checkout + __DEV__ dev_simulate_payment; refresh on return.",
+        "status": "partial",
+        "bugs": [
+          "Real path opens the Chargily checkout_url via Linking.openURL (external browser) and relies on the user manually tapping 'Refresh status' on return — there is no deep-link return handler, no polling, and no realtime subscription on the booking/transaction. If the webhook confirms slightly later, the user sees a stale 'awaiting payment' until they manually refresh.",
+          "payDev routes to /booking/[id] immediately after dev_simulate_payment resolves, but does not verify the returned status string ('applied'); if apply_payment_event returned anything else the user still gets bounced to detail as if paid.",
+          "load() auto-redirects to /booking/[id] when status==='confirmed' on focus — but if the user lands here for a booking that is NOT awaiting_payment (e.g. still 'requested'), the screen shows Pay buttons that the server will reject (dev_simulate_payment raises NOT_AWAITING_PAYMENT), surfacing a raw Postgres error message to the user."
+        ],
+        "ux_problems": [
+          "Errors from the Edge Function / RPC are shown raw (rpcErr.message, e.message) — untranslated Postgres/JS error text leaks to the user.",
+          "No countdown to payment_deadline; just a static formatted timestamp. An expired deadline is not detected client-side.",
+          "Method note is hardcoded 'Edahabia / CIB · Chargily Pay' with no actual method selection (edahabia vs cib vs baridi_qr) even though payment_method enum has all three.",
+          "SafeAreaView (react-native)."
+        ]
+      },
+      {
+        "route": "app/conversation/[id].tsx",
+        "purpose": "Message thread: header, bubbles, composer, send_message, realtime append.",
+        "status": "buggy",
+        "bugs": [
+          "Messages are NEVER marked read. There is no mark-read RPC and the screen never updates messages.read_at, so opening a thread does not clear the inbox unread dot or the (message-derived) unread state. The messages_update RLS policy WOULD allow the recipient to set read_at, but nothing does it.",
+          "onSend does an OPTIMISTIC-less flow: after sendMessage it calls listMessages(id) again (full refetch) AND the realtime INSERT also appends — double work; also there is a window where the realtime event for the user's own message arrives before the refetch, handled by dedupe, but the refetch can momentarily reorder/replace state.",
+          "Realtime channel filter is conversation_id=eq.{id} (good), but listMessages already filters deleted_at IS NULL while the realtime append does not check deleted_at — a soft-deleted message inserted (unlikely) would appear.",
+          "getConversationHeader/listMessages run only when myUid is set; if session is still loading the screen shows the skeleton, but if the user is signed out entirely there's no sign-in prompt (just perpetual skeleton then empty)."
+        ],
+        "ux_problems": [
+          "Every bubble shows full date+time (formatDateTime) — no day separators, no grouping, very cluttered for back-and-forth chats.",
+          "scrollToEnd fires on every messages change via requestAnimationFrame; on keyboard open + new message this can fight the keyboard.",
+          "Send glyph is the same '➤' for LTR and RTL (the ternary returns '➤' both ways) then mirrored via scaleX — works, but the conditional is pointless.",
+          "No typing indicator, no delivery/read receipts (read state unimplemented).",
+          "SafeAreaView (react-native); composer bottom inset not handled for the home indicator."
+        ]
+      },
+      {
+        "route": "app/notifications.tsx",
+        "purpose": "List notifications, mark-read on tap + mark-all, route by type, realtime prepend.",
+        "status": "partial",
+        "bugs": [
+          "notificationRoute routes review_* to /property/{property_id} but the host-side 'review_received' notification is for the HOST; in the customer app a guest tapping a routed review notification lands on the public property page, not their booking/review — minor mis-route for hosts using the same app in host mode.",
+          "Realtime only handles INSERT (prepend). read_at UPDATEs from other devices/screens are not reflected here (the NotificationBell subscribes to '*', but this list does not), so cross-device read state can drift until manual refresh.",
+          "onTap routes via router.push(route as Href) with a string cast; routes like '/conversation/{id}' are valid, but there is no validation that the target still exists (e.g. a deleted booking) → can push to a screen that then shows not-found."
+        ],
+        "ux_problems": [
+          "Glyphs are emoji per type; fine, but there's no grouping by day/'new vs earlier'.",
+          "No swipe-to-dismiss or per-item delete.",
+          "SafeAreaView (react-native)."
+        ]
+      },
+      {
+        "route": "app/review/[bookingId].tsx",
+        "purpose": "Six 1–5 category stars + optional comment → submit_review; eligibility guards.",
+        "status": "working",
+        "bugs": [
+          "Eligibility load runs getBookingDetail then hasReviewedBooking — two sequential round-trips on every focus; acceptable but the screen is reachable from Trips/Detail which already showed a 'Leave review' button that didn't pre-check, so users frequently hit the 'ineligible' state here (UX dead-end described under Trips).",
+          "submitReview passes p_overall:null so the server averages — correct; but on the rare server INVALID_SCORES the raw error message is shown (e instanceof Error ? e.message) rather than the localized reviewFailed."
+        ],
+        "ux_problems": [
+          "Comment field has no character counter/limit.",
+          "On 'done' the only CTA is 'View trip' → router.back(); the new review isn't reflected anywhere the user can immediately see.",
+          "KeyboardAvoidingView has no keyboardVerticalOffset; the submit footer can be covered on Android.",
+          "SafeAreaView (react-native)."
+        ]
+      }
+    ],
+    "cross_cutting": [
+      "SAFE AREA: Every traveler screen uses SafeAreaView imported from 'react-native' (top-only, iOS-only) instead of react-native-safe-area-context edges. No <SafeAreaProvider> is mounted at the root, yet TabBar.tsx calls useSafeAreaInsets() → the tab bar's bottom safe-area padding is effectively 0. Bottom content (lists, composers, sticky CTAs) can sit under the home indicator / nav bar across the app.",
+      "DATA FETCHING: Discovery is entirely client-side. searchProperties() → readApprovedSummaries() pulls ALL approved properties WITH property_photos + room_types + wilaya + property_type joins on every call, and Explore calls it ~4× per load plus 2 wilaya lookups. No pagination, no server filtering by wilaya/price, no caching layer (no react-query/SWR) — each screen re-fetches from scratch on focus. Will not scale past the demo dataset.",
+      "NAVIGATION/STATE LOSS: Tabs use router.replace() (no stack-per-tab) so scroll/nav state is destroyed on tab switch. Auth interception in booking/confirm uses router.replace('/(auth)/sign-in'), losing all in-progress booking input on return. Search 'see all' and rail taps push /search/results with no params.",
+      "REALTIME: Inbox subscribes to ALL public.messages INSERTs unfiltered (every message between any users triggers a full reload for this user). Multiple channels are created across NotificationBell + notifications + inbox + conversation; teardown is correct (removeChannel in cleanup) but the unfiltered inbox channel is wasteful and a privacy-adjacent over-subscription.",
+      "READ-STATE NEVER WRITTEN: messages.read_at is never set anywhere (conversation screen doesn't mark read), so inbox unread indicators are permanent once any inbound message exists, even though messages_update RLS permits the recipient to set read_at.",
+      "I18N/RTL: Many Latin/EN/FR strings are styled with RN_FONTS.arabic* families (e.g. titles, search tagline, body paragraphs) regardless of locale — Arabic font applied to French/English text. The 'localizedName' ar→fr→en fallback silently shows Arabic content to EN/FR users with no language indicator. RTL itself is handled (I18nManager.forceRTL + logical props + writingDirection:'ltr' on prices) but applying a language requires expo-updates reloadAsync, which fails in Expo Go with only a console.warn.",
+      "ERROR HANDLING: Catch blocks broadly collapse to one generic localized message (loadError) OR leak raw Postgres/JS error strings to the user (pay screen rpcErr.message/e.message, report sheet, review submit, dev_simulate_payment NOT_AWAITING_PAYMENT). create_booking error classifier maps by string-matching the error message, which is fragile.",
+      "FEEDBACK/HAPTICS: No haptics anywhere (no expo-haptics) on key actions (book, pay, send, switch tabs, select). Pressed states are opacity-only.",
+      "MISSING PULL-TO-REFRESH: Explore, Search results, Property detail, Booking detail, Conversation have no pull-to-refresh; only Trips, Inbox, Notifications do.",
+      "PERF: Several full-table reads with all child joins (discovery summaries, bookings BOOKING_SELECT with all photos, inbox pulling all messages per conversation). Gallery onScroll setState per frame. No FlatList virtualization tuning (initialNumToRender/windowSize) on long lists."
+    ],
+    "missing_features": [
+      "Wishlists / favorites entirely unimplemented (tab is a 'Coming soon' stub) despite full DB support (wishlists, wishlist_items, favorites view, RLS). No save/heart affordance on any property card or detail screen.",
+      "Cancel booking: no UI for cancel_booking + quote_refund anywhere; guests cannot cancel or even see a refund quote.",
+      "Multi-unit booking: app hardcodes units:1; create_booking/p_units and schema support multiple units but there's no quantity selector.",
+      "Real map: results map is a labeled stub; no interactive map and no location/approx-area map on property detail (geo_fuzzed/approx_lat/approx_lng unused).",
+      "Inquiry conversations: messaging a host requires an existing booking (kind='booking'); the conversation_kind 'inquiry' is never used, so pre-booking questions are impossible.",
+      "Forgot/reset password: no flow in (auth).",
+      "Profile editing: no edit of profiles.full_name/phone_e164/avatar_path/preferred_locale/default_wilaya_code from the app; avatar never rendered.",
+      "Message read receipts / mark-as-read: read_at never written; no delivery/read UI.",
+      "Phone verification (phone_e164/phone_verified_at columns exist) — no flow.",
+      "Show-all-reviews screen: property detail caps at 6 reviews with a 'show all' copy string but no control/route to view the rest.",
+      "Saved/recent searches and 'any guests' option on the search entry.",
+      "Disputes: open_dispute/disputes UI absent (schema + RLS exist) — no way for a guest to open a dispute from a trip.",
+      "Booking-code copy-to-clipboard and add-to-calendar for confirmed trips.",
+      "Push notifications: usePushRegistration() is called but device-token storage is a noted follow-up; no settings to manage notifications."
+    ],
+    "top_priorities": [
+      "Mount react-native-safe-area-context <SafeAreaProvider> at the root and replace every react-native SafeAreaView with safe-area-context (edges incl. bottom) so the tab bar, lists, composers, and sticky CTAs respect the home indicator — currently TabBar's useSafeAreaInsets() returns 0 with no provider.",
+      "Implement message read-state: mark messages read on opening conversation/[id] (set read_at via the permitted messages_update RLS), and scope the inbox realtime channel to the user's conversations instead of all public.messages. This fixes permanent unread dots and the noisy global subscription.",
+      "Build the Wishlists feature end-to-end (heart toggle on cards/detail, default wishlist via wishlist_items, list + collections) — it's a core traveler feature with full DB support sitting unused.",
+      "Add a Cancel-booking flow on booking/[id] using quote_refund (show refund preview) + cancel_booking, with a confirmation and localized errors.",
+      "Fix booking-flow context loss: keep the user's dates/room/guests when sign-in is required (pass them as params / return to confirm with ?next), and persist guest contact to profiles.full_name/phone_e164 instead of cramming them into special_requests.",
+      "Wire Explore rails 'see all' and rail context (wilaya/type) into /search/results params, and fix Beachfront/Sahara rails to use real attributes; stop calling searchProperties() ~4× per Explore load (single fetch + client-side bucketing).",
+      "Move discovery filtering/sorting/pagination server-side (or at least de-duplicate the full-table+joins fetches and add a caching layer), and stop double-fetching reviews on property detail.",
+      "Stop showing 'Leave review' on already-reviewed completed bookings (check hasReviewedBooking in Trips and booking/[id]) to remove the ineligible dead-end loop.",
+      "Harden the payment screen: handle Chargily return (deep link or poll/realtime on the transaction/booking), guard non-awaiting_payment states, and replace raw error strings with localized copy; surface a payment_deadline countdown.",
+      "Audit i18n font usage so EN/FR text doesn't use Arabic font families, indicate when content falls back to another language, and make language change robust outside expo-updates (clear restart instruction when reloadAsync is unavailable)."
+    ]
+  },
+  "host": {
+    "area": "host-mode",
+    "screens": [
+      {
+        "route": "app/host/_layout.tsx (host stack gate)",
+        "purpose": "Auth-gates the entire host/ group; redirects to sign-in (next=host) if no session; sets stack screen options.",
+        "status": "buggy",
+        "bugs": [
+          "Hardcoded Arabic header title: Stack.Screen name='index' options={{ title: 'استضافتي' }} (line 41) — shown even when locale is English (the locked default) or French. Should be localized via L/pick like every other screen.",
+          "All other host screens set headerShown:false and render their own SafeAreaView top bar, but the index screen relies on this native header — so the dashboard always shows an Arabic title regardless of language.",
+          "Redirect params { next: 'host' } — verify the sign-in screen actually honors next='host' and routes back to /host after login (the value is a bare 'host', not a path)."
+        ],
+        "ux_problems": [
+          "Loading state is a bare ActivityIndicator (the rest of the app uses designed skeletons) — inconsistent with the 'no bare spinners' standard stated in the screens.",
+          "Back navigation animation flips on RTL (good), but the native header on index is the only inconsistent chrome in the whole host area."
+        ]
+      },
+      {
+        "route": "app/host/index.tsx (host dashboard)",
+        "purpose": "Headline stats (active listings, pending requests), tile grid (Reservations/Calendar/Earnings/Performance/Reviews/Create), and inline list of the host's own listings with status badges; tap a listing to edit in the wizard.",
+        "status": "partial",
+        "bugs": [
+          "getHostPerformance() runs even for a brand-new host whose JWT lacks the host_id claim; reads are RLS-scoped so they return empty rather than error, but pendingRequests/listingCount will silently read 0 until the token is refreshed with the host_id claim (see cross_cutting #1).",
+          "Editing a listing routes to /host/new?propertyId=… but the wizard only hydrates property columns + rooms + amenities; photos are re-fetched per step. If the wizard draft can't write (host_id claim missing) edits silently fail on Next (see cross_cutting #1).",
+          "rejection_note is read as item.rejection_note — column exists (schema line 186), OK."
+        ],
+        "ux_problems": [
+          "Absolutely-positioned bottom 'Create listing' CTA overlaps the last FlatList row; listContent paddingBottom:96 mitigates but the CTA also duplicates the 'Create' tile and the empty-state — three create entry points.",
+          "StatCard label uses RN_FONTS.arabicMedium for all locales (fine visually but the naming/loading of Arabic font for Latin text is a code smell repeated app-wide).",
+          "Tile glyphs are emoji, not the brand icon set — inconsistent with the design-system goal."
+        ]
+      },
+      {
+        "route": "app/host/new/_layout.tsx + src/lib/wizard.tsx (wizard shell + state)",
+        "purpose": "Wraps the 9 step routes in WizardProvider; holds the in-progress draft; ensureDraft() lazily becomes host then inserts a draft properties row.",
+        "status": "broken",
+        "bugs": [
+          "CRITICAL: ensureDraft() calls becomeHost() then immediately createDraftProperty() in the SAME session. host_id is a custom JWT claim minted by custom_access_token_hook at token issue/refresh time. After become_host the in-memory access token still has host_id=null, so properties_host_insert (with check host_profile_id = my_host_id()) fails with an RLS violation for every first-time host. No supabaseClient.auth.refreshSession() is called after becomeHost(). (functions.sql my_host_id line 51; rls properties_host_insert line 140-145).",
+          "listings.ts header comment (lines 9-11) is factually wrong: it claims RLS allows inserts via host_profiles.owner_id = auth.uid(); the real policies require host_profile_id = public.my_host_id(). The whole data layer was written against an assumption that does not match the deployed RLS.",
+          "createDraftProperty inserts only host_profile_id/property_type_id/listing_kind/wilaya_code/status — relies entirely on my_host_id() matching draft.hostProfileId; if the claim is stale/absent the insert is rejected.",
+          "WizardProvider state is in-memory only; backgrounding the app or a reload loses the entire draft (propertyId included) — though photos/rooms already persisted server-side become orphaned drafts."
+        ],
+        "ux_problems": [
+          "gestureEnabled:false disables swipe-back on all steps (intentional) but there is no confirm-on-exit; the ✕ in WizardChrome calls router.back() and silently abandons the in-progress draft with no 'save draft / discard' prompt.",
+          "No persistence of draft across app restarts; a host who gets interrupted loses progress."
+        ]
+      },
+      {
+        "route": "app/host/new/index.tsx (step 1 — type + kind)",
+        "purpose": "Pick property type + listing kind (single_unit/multi_room); also the hydration entry when ?propertyId is present.",
+        "status": "partial",
+        "bugs": [
+          "Hydration effect depends only on [params.propertyId] with exhaustive-deps disabled; if draft already has a different propertyId it can mismatch, but the guard handles the common case.",
+          "Hydration is best-effort and swallows errors (catch {} ) — if getPropertyWithChildren fails (e.g. RLS), the host silently sees an empty wizard and may create a duplicate draft.",
+          "Switching kind to single_unit collapses rooms to rooms[0]; if rooms[0] was a named multi-room it keeps its name on a single-unit (name is ignored later, minor)."
+        ],
+        "ux_problems": [
+          "nextDisabled only checks propertyTypeId; listingKind always has a default so it's fine, but there's no validation feedback explaining why Next is disabled.",
+          "Property-type list has no empty/error distinction beyond the generic ErrorState."
+        ]
+      },
+      {
+        "route": "app/host/new/location.tsx (step 2 — location)",
+        "purpose": "Wilaya (required) + commune (optional) + address + manual lat/lng; persists draft on Next (this is the first DB write via saveProperty→ensureDraft).",
+        "status": "broken",
+        "bugs": [
+          "This is where the host_id-claim RLS failure first surfaces: onNext→saveProperty→ensureDraft inserts the draft property. For a first-time host the insert is rejected (see wizard cross-cutting). The catch shows a generic 'Could not save location' with no indication it's an auth/claim issue.",
+          "Wilaya chips render ALL 58 wilayas as wrapping pills with no search/filter — heavy and hard to use, but functional.",
+          "lat/lng are free-text with no range validation (parseCoord only checks finite); a host can save lat=999. Map is a stub so no correction path."
+        ],
+        "ux_problems": [
+          "58 wilaya chips with no search is a poor mobile picker; commune list similarly unbounded.",
+          "Map stub with manual coordinate entry is effectively unusable for non-technical hosts (acknowledged stub).",
+          "No 'use my location' affordance."
+        ]
+      },
+      {
+        "route": "app/host/new/photos.tsx (step 3 — photos)",
+        "purpose": "Pick from library (expo-image-picker base64), upload to listing-photos bucket, grid with cover badge + remove; >=1 photo required to continue.",
+        "status": "broken",
+        "bugs": [
+          "CRITICAL: uploadPhoto builds the storage path as `${userId}/${propertyId}/...` using the AUTH USER id, but the storage RLS 'listing photos host upload' policy requires (storage.foldername(name))[1] = public.my_host_id()::text — i.e. the HOST_PROFILE id, not the user id (rls.sql line 549-555). The first path segment will never equal my_host_id(), so EVERY photo upload is rejected by storage RLS. Since >=1 photo is a hard submit requirement, listings cannot be created from mobile at all. Fix: upload under `${hostProfileId}/${propertyId}/...`.",
+          "Compounding: even with the correct folder, the upload policy also requires the host_id claim to be present (my_host_id() non-null) AND a host_* role — both depend on a token refresh after become_host (see wizard cross-cutting).",
+          "uploadPhoto inserts property_photos with upsert:false; on the auth/role failure the user just sees generic 'Upload failed.' with no diagnostic.",
+          "deletePhoto removes the storage object first then the row; storage delete policy also keys on my_host_id() so deletes fail for the same reason if the path/claim is wrong.",
+          "load() has exhaustive-deps disabled and omits ensureDraft/draft.propertyId — calling ensureDraft() inside load can create a draft property merely by visiting the photos step even if the host never adds a photo, leaving orphan drafts."
+        ],
+        "ux_problems": [
+          "No reordering of photos (sort_order is fixed by add order); cover is always the first — host cannot choose a different cover.",
+          "No multi-select picker (one image per tap), tedious for a real listing.",
+          "Cover badge logic `idx === 0 || p.is_cover` can show two covers if a non-first photo also has is_cover true.",
+          "No image-size/aspect guidance or compression beyond picker defaults; base64 upload of full-res photos is memory-heavy on device."
+        ]
+      },
+      {
+        "route": "app/host/new/details.tsx (step 4 — title + description)",
+        "purpose": "Per-locale title/description (ar/fr/en tabs); >=1 title required; persists on Next.",
+        "status": "partial",
+        "bugs": [
+          "saveProperty→ensureDraft will fail for first-time hosts (same host_id claim issue) — generic 'Could not save.'",
+          "LocaleTabs default tab is the UI locale; a host editing in English may not realize ar/fr title fields exist (only the active tab's emptiness is reflected by hasTitle, which checks all three — OK)."
+        ],
+        "ux_problems": [
+          "No per-field character counter or min-length guidance for title/description.",
+          "Multiline description field has no large/expandable affordance.",
+          "Switching locale tabs doesn't indicate which locales already have content (no per-tab filled indicator)."
+        ]
+      },
+      {
+        "route": "app/host/new/amenities.tsx (step 5 — amenities)",
+        "purpose": "Multi-select amenities grouped by category; synced to property_amenities on Next.",
+        "status": "buggy",
+        "bugs": [
+          "setAmenities(id, …) writes property_amenities which is manager-write RLS via can_act_on_property → my_host_id(); fails for first-time hosts until token refresh (same root cause).",
+          "Category group title renders the RAW DB category slug (a.category, e.g. 'essentials'/'kitchen') untranslated and only textTransform:capitalize'd — not localized into ar/fr/en. The L copy table is not consulted for category names."
+        ],
+        "ux_problems": [
+          "No search/filter for a long amenity list.",
+          "Category headings in English-only slugs break the multilingual promise, jarring in Arabic/French UI.",
+          "No 'select all in category' or counts."
+        ]
+      },
+      {
+        "route": "app/host/new/rules.tsx (step 6 — rules + times)",
+        "purpose": "Per-locale house rules + check-in/check-out times (free-text HH:MM validated by regex); persists on Next.",
+        "status": "partial",
+        "bugs": [
+          "saveProperty appends ':00' to times → 'HH:MM:00' for a Postgres time column (OK). But if a host clears a time field, draft.checkinTime becomes '' → TIME_RE fails → Next disabled with the bad-time error; recovery is fine.",
+          "Same ensureDraft/host_id write failure path on Next."
+        ],
+        "ux_problems": [
+          "Times are free-text HH:MM with a keyboard, not a time picker — error-prone (e.g. '2pm', '14.00'); a native time wheel would be far better on mobile.",
+          "House rules field shares the LocaleTabs but unlike details there's no FieldLabel-per-tab indicator of which locales are filled."
+        ]
+      },
+      {
+        "route": "app/host/new/pricing.tsx (step 7 — pricing/room types)",
+        "purpose": "single_unit: one default room (price/occupancy/cleaning/weekend); multi_room: add/remove rooms each with name/price/occupancy/inventory. Held in draft; persisted on review step.",
+        "status": "buggy",
+        "bugs": [
+          "Multi-room name is bound ONLY to nameAr: value={room.nameAr || room.nameFr || room.nameEn}, onChangeText writes updateRoom(idx, { nameAr: t }). So a French/English-only host types a room name that is stored as the Arabic name; there is no per-locale room-name entry. Downstream localizedName picks ar first, so it 'works' but the data is mis-tagged (a French name lands in name_ar).",
+          "toInt strips non-digits, so '8 000' or '8,000' → 8000 (good) but '8.5' → 85 (silently wrong for cleaning/price).",
+          "weekend price and cleaning fee have no validation that weekend >= base or that cleaning is sane; negative not possible (digits only)."
+        ],
+        "ux_problems": [
+          "No thousands separators while typing price (DZD amounts are large; raw 8000 is hard to read).",
+          "Remove room has no confirmation.",
+          "Single-unit hides inventory (forced 1) — correct, but the occupancy/price layout reuses the multi-room card with no clear 'this is your whole place' framing."
+        ]
+      },
+      {
+        "route": "app/host/new/policy.tsx (step 8 — policy)",
+        "purpose": "Cancellation tier (flexible/moderate/strict) + instant book toggle + minimum nights; patched to draft on Next.",
+        "status": "working",
+        "bugs": [
+          "minNights is kept in LOCAL state and only patched into the draft on onNext; if the host edits minNights then taps the WizardChrome ✕ or back, the value is lost (minor, since back re-reads draft.minNights).",
+          "No upper bound / max_nights handling (schema has max_nights but the wizard never sets it)."
+        ],
+        "ux_problems": [
+          "Cancellation tiers show generic descriptions, not the actual refund windows from cancellation_policies (host can't see what 'moderate' really means in hours).",
+          "minNights uses number-pad free text rather than a stepper."
+        ]
+      },
+      {
+        "route": "app/host/new/review.tsx (step 9 — review + submit)",
+        "purpose": "Summary with OK/Missing pills; on submit: ensureDraft, persist policy cols, reconcile room types (insert/update), sync amenities, call submit_property_for_review; success screen.",
+        "status": "buggy",
+        "bugs": [
+          "persistRooms + setAmenities + updateProperty all run as direct table writes gated by my_host_id() RLS; a first-time host (stale token) gets a generic 'Submit failed' even though the real cause is the missing host_id claim.",
+          "Submit is multi-step and NON-transactional: if persistRooms succeeds but submitForReview fails, rooms/amenities are written but status stays draft; re-submitting re-runs persistRooms which (for single_unit) updates the existing default room (idempotent) but for multi_room with room.id unset will INSERT DUPLICATE rooms each retry (rooms in the draft never get their new id back, because persistRooms doesn't write ids back into the wizard draft). Repeated submit attempts duplicate room_types.",
+          "hasRoom local check (basePrice>0 && maxOccupancy>0) can pass while server requires a persisted room_type; if persistRooms silently no-ops (e.g. draft.rooms[0] undefined) submit_property_for_review raises 'at least one room type required'.",
+          "Policy summary prints draft.cancellationTier RAW ('moderate') instead of the localized label."
+        ],
+        "ux_problems": [
+          "Success screen replaces to /host but the in-memory wizard draft is never reset() — re-entering /host/new immediately shows the just-submitted listing's data.",
+          "Checklist explaining requirements only appears when !canSubmit; once one item is missing the host must scroll to find which pill says 'Missing'.",
+          "No edit-jump from a 'Missing' section back to its step."
+        ]
+      },
+      {
+        "route": "app/host/reservations.tsx (requests + upcoming)",
+        "purpose": "Two tabs: incoming requests (accept/decline) and upcoming/active stays (confirmed/checked_in) with Message guest.",
+        "status": "buggy",
+        "bugs": [
+          "STATUS GAP: acceptBookingRequest → accept_booking_request RPC moves the booking 'requested' → 'awaiting_payment' (functions.sql line 436-438), NOT 'confirmed'. After accepting, the card is optimistically removed from Requests, but the booking is NOT in UPCOMING_STAY_STATUSES (['confirmed','checked_in']) — so an accepted-but-not-yet-paid booking disappears from BOTH tabs. The host has no view of awaiting_payment bookings at all.",
+          "NO check-in / check-out action: there is no RPC for host-driven confirmed→checked_in or checked_in→completed (only the admin cron complete_stays). The Upcoming tab shows confirmed/checked_in stays but offers only 'Message guest' — the host can never mark a guest checked in/out. Missing core feature flagged in the brief.",
+          "listBookingRequests orders by created_at desc but the doc/comment says 'soonest check-in first'; ordering does not match the stated intent (cosmetic).",
+          "declineBookingRequest is called with no reason; decline_booking_request accepts p_reason but the UI never collects one (lost audit info).",
+          "Optimistic removeBooking on accept/decline isn't reconciled with a refetch; if the RPC partially fails after the catch path the list state can drift."
+        ],
+        "ux_problems": [
+          "No way to message a guest BEFORE accepting (Message only on Upcoming tab) — hosts often want to ask questions before accepting a request.",
+          "Decline has no confirmation and no reason prompt.",
+          "No badge/count on the Requests tab segment.",
+          "Accepted bookings vanishing (status gap above) is a confusing UX dead-end with no 'awaiting payment' surface.",
+          "Back chevron is a raw '←'/'→' Text glyph, not the icon set."
+        ]
+      },
+      {
+        "route": "app/host/calendar.tsx (calendar & pricing)",
+        "purpose": "Pick listing → room type → month grid decorated with closed/override markers → select range → block/price/min-stay → set_availability_range.",
+        "status": "broken",
+        "bugs": [
+          "OFF-BY-ONE (same class as the already-fixed hotel-web bug, NOT fixed here): set_availability_range loops `while v_d < p_to` (p_to EXCLUSIVE) and raises INVALID_RANGE when p_to <= p_from (m5_m6_hotel_admin.sql line 60, 73). The mobile screen computes rangeEnd = checkOut − 1 day (the inclusive last night) and passes to: toDateParam(rangeEnd). So: (a) the LAST selected night is never written (server stops before rangeEnd); (b) a SINGLE-DAY selection (checkOut null → rangeEnd === checkIn → from === to) triggers INVALID_RANGE and the apply fails. The hotel web app fixes this by sending end+1day exclusive (apps/hotel/.../calendar/actions.ts line 83-95); mobile must do the same (send checkOut as-is, exclusive — or rangeEnd+1).",
+          "set_availability_range write authorization goes through can_act_on_property→my_host_id(); fails if host_id claim absent (host can read availability via reception USING but writes need the claim).",
+          "listAvailability reads with .gte('date', from).lte('date', to) over a 180-day window; availability rows for a DRAFT/pending property are readable to the host via availability_reception_write USING, but availability_public_read requires status='approved' — for a draft the host relies on the reception policy; OK for owner but confirm can_act_on_property resolves (depends on host_id claim again).",
+          "priceOverride/minStay: passing null leaves them unchanged on existing rows (server coalesce) but for NEW rows inserts NULL — fine. However toggling 'block' off then applying sends isClosed:false which the server coalesces; un-blocking works, but you cannot CLEAR a price override back to base (no way to send an explicit null-to-clear)."
+        ],
+        "ux_problems": [
+          "The off-by-one means a host blocking 'June 10–12' actually blocks only the 10th and 11th — silent data error the host won't notice until a guest books the 12th.",
+          "Single-day block silently fails with a generic 'Could not apply' — very confusing.",
+          "Listing/room pills truncate; no indication of which listings are draft vs approved (a host can 'set availability' on a draft that has no live rooms).",
+          "No legend entry for 'available/open'; only closed + override are explained.",
+          "Calendar re-fetches the full 180-day window after every apply (no incremental update)."
+        ]
+      },
+      {
+        "route": "app/host/earnings.tsx (payouts + per-booking)",
+        "purpose": "Payouts tab (gross/commission/net by status, upcoming vs paid summary) and per-booking earnings (total/commission/host payout) for money-committed bookings.",
+        "status": "working",
+        "bugs": [
+          "listPayouts filters by host_profile_id from getMyHostProfileId() (reads host_profiles by owner_id — works without the host_id claim). Payouts read RLS uses host_profile_id = my_host_id() (rls payouts policy) — so even though the query passes the right id, the RLS USING clause needs my_host_id(); if the host_id claim is absent the payouts read returns EMPTY (not an error). Earnings will look empty for a freshly-promoted host until token refresh.",
+          "listEarningBookings selects host_payout_dzd/commission_amount_dzd directly from bookings (columns exist, schema lines 331-332) and is RLS-scoped — OK.",
+          "upcomingTotal/paidTotal sum net_dzd client-side; consistent with server values (no client money math beyond summation) — OK."
+        ],
+        "ux_problems": [
+          "No date filtering / period selector for payouts or bookings.",
+          "Per-booking tab has no link into the booking/conversation detail.",
+          "Empty state can't distinguish 'no earnings yet' from 'RLS returned empty due to missing claim'."
+        ]
+      },
+      {
+        "route": "app/host/performance.tsx (metrics)",
+        "purpose": "Cards: listings, total/confirmed/completed bookings, 30-day occupancy estimate, realized revenue; Views shown as em-dash (no view tracking).",
+        "status": "partial",
+        "bugs": [
+          "getHostPerformance reads properties + bookings RLS-scoped; for a host whose token lacks host_id, properties read via can_act_on_property (my_host_id) returns nothing and bookings (host-scoped) return nothing → all zeros, shown as the empty state. Same root cause.",
+          "Occupancy denominator = totalUnits × 30 using inventory_count, numerator = booked nights overlapping next 30 days for EARNING_STATUSES; this counts PAST nights of an in-progress stay only via overlap with [today, today+30] (overlapNights clamps) — reasonable, but completed-but-future is impossible so fine.",
+          "Revenue sums host_payout_dzd for confirmed/checked_in/completed — note these payouts may not yet be realized (confirmed != paid out); labeled 'realized revenue' which is misleading vs the payouts screen's paid total."
+        ],
+        "ux_problems": [
+          "'Views' card always em-dash with a note — fine, but reserves space for a metric that will confuse hosts.",
+          "Occupancy is a single 30-day number with no trend; no time-range control.",
+          "Revenue card labeled differently from earnings ('realized' vs 'paid') invites mismatch confusion."
+        ]
+      },
+      {
+        "route": "app/host/reviews.tsx (host reviews + reply)",
+        "purpose": "Lists reviews on the host's properties with score, category breakdown, comment, author; reply composer calls host_reply_review; reply renders inline.",
+        "status": "working",
+        "bugs": [
+          "listHostReviews / hostReplyReview live in src/lib/reviews.ts (M3) — host_reply_review RPC. Reply write is RLS/RPC-gated on host ownership (my_host_id via the review→property chain); a host without the host_id claim can't reply (same root cause) — but reading reviews of approved properties works.",
+          "onReplied fabricates a synthetic reply id `${reviewId}-reply` and uses new Date() locally; a subsequent refresh will replace it with the real row (acceptable optimistic update).",
+          "Imports localizedName from '@/lib/discovery' here vs '@/lib/listings' elsewhere — two localizedName implementations in the codebase (duplication risk if they diverge)."
+        ],
+        "ux_problems": [
+          "No filter (e.g. unreplied only) or sort control.",
+          "No overall rating header / aggregate across listings.",
+          "Reply composer has no character guidance; submit disabled on empty (good)."
+        ]
+      },
+      {
+        "route": "app/(tabs)/profile.tsx → Switch to Hosting entry",
+        "purpose": "Auth-gated 'Switch to Hosting' CTA: become_host() then router.push('/host').",
+        "status": "buggy",
+        "bugs": [
+          "After becomeHost() succeeds it pushes to /host WITHOUT refreshing the session. The new host_individual role + host_id claim are only minted on the next token refresh (custom_access_token_hook runs at issue/refresh). So immediately after switching, the host's JWT still lacks host_id and host role → the very first listing-creation/photo-upload/calendar-write all fail with RLS errors until the token auto-refreshes (default ~1h) or the app is restarted. Fix: call supabaseClient.auth.refreshSession() after becomeHost() before navigating.",
+          "Errors from becomeHost are shown as the generic loadError ('Failed to load') with no hint about what went wrong."
+        ],
+        "ux_problems": [
+          "No explanation of what hosting entails before committing; one tap silently creates a host_profile.",
+          "No way to 'switch back to travelling' indicator — the toggle is one-directional from the UI's perspective.",
+          "Spinner-only loading on the CTA (no skeleton), and the CTA is plain primary, not the brand host accent."
+        ]
+      }
+    ],
+    "cross_cutting": [
+      "ROOT-CAUSE #1 (blocks nearly all host writes): Every host-side write policy — properties insert/delete, room_types, property_amenities, availability, payouts read, storage uploads, accept/decline/cancel, set_availability_range, host_reply_review — resolves authorization through public.my_host_id(), which reads the 'host_id' custom JWT claim injected ONLY by public.custom_access_token_hook (functions.sql line 44-52, 101-131). This hook must be REGISTERED in the Supabase project's Auth (GoTrue) 'Custom Access Token' hook setting to fire. If it is not enabled, my_host_id() is always NULL and the entire host data layer fails with RLS violations. The mobile customer client (src/lib/supabase.ts) is a plain anon-key client; nothing verifies the claim exists. AUDIT/CONFIRM the hook is enabled in the project, and that the JWT actually carries host_id.",
+      "ROOT-CAUSE #2 (stale token after become_host): Even with the hook enabled, become_host() grants the role + creates host_profile but the in-memory access token is NOT refreshed. host_id/app_roles claims are minted at token issue/refresh time, so the SAME session that just became a host still has host_id=null. The wizard (ensureDraft) and the profile 'Switch to Hosting' both navigate straight into host writes without calling supabaseClient.auth.refreshSession(). First-time hosting therefore fails until the next auto-refresh/app restart. FIX: refreshSession() after every become_host() (in wizard.ensureDraft and profile.onSwitchToHosting).",
+      "ROOT-CAUSE #3 (photo upload path mismatch): src/lib/listings.ts uploadPhoto uses path `${userId}/${propertyId}/...` (auth uid) but storage policy 'listing photos host upload' requires foldername[1] = my_host_id() (host_profile id) (rls.sql 549-563). Independently of the claim issue, the path is simply wrong — must be `${hostProfileId}/${propertyId}/...`. listings.ts comment block (lines 9-11) documents the wrong RLS model and should be corrected.",
+      "CALENDAR off-by-one (set_availability_range p_to is EXCLUSIVE): mobile sends an inclusive last-night date so the last day is dropped and single-day selections error with INVALID_RANGE. The hotel web app already fixed this by sending end+1 day (apps/hotel/.../calendar/actions.ts 83-95); mobile host/calendar.tsx + lib/host.ts setAvailabilityRange were NOT updated. The lib/host.ts JSDoc even mislabels p_to as 'inclusive'.",
+      "BOOKING lifecycle gap in mobile: accept_booking_request → 'awaiting_payment' (not 'confirmed'), but reservations.tsx only surfaces 'requested' and ['confirmed','checked_in']. There is no 'awaiting_payment' view and no host-driven check-in/check-out RPC at all — so a whole segment of the lifecycle (accepted-awaiting-payment, mark checked-in, mark checked-out/no-show) is invisible/unactionable in host mode.",
+      "i18n inconsistency: host/_layout sets a hardcoded Arabic native header title; amenities step shows raw English DB category slugs; review/policy print raw enum values (cancellationTier) instead of localized labels. English is the locked default + Arabic/French selectable, so these are user-visible regressions.",
+      "Generic error handling everywhere: every host screen catches and shows L.loadError / 'Could not save' / 'Submit failed' with no differentiation between network, auth/claim, RLS, and validation failures — which makes the (very real) RLS/claim failures above undebuggable for the user and support.",
+      "Two localizedName implementations (src/lib/listings.ts and src/lib/discovery.ts) are imported interchangeably across host screens — duplication that risks divergent locale fallback behavior.",
+      "Wizard draft is in-memory only (no AsyncStorage persistence) and is never reset() after a successful submit; combined with non-transactional submit, retries can duplicate room_types and re-entry shows stale data.",
+      "Back chevrons across host screens are raw '←'/'→' Text glyphs and tile icons are emoji — not the intended RN design system / brand icon set; touch targets rely on hitSlop rather than proper 44pt targets."
+    ],
+    "missing_features": [
+      "Host check-in / check-out / no-show actions: no RPC or UI to move confirmed→checked_in→completed (or →no_show); only an admin cron (complete_stays) exists. Hosts cannot manage stays day-of.",
+      "'Awaiting payment' reservations view: accepted bookings sit in awaiting_payment with a payment_deadline and are completely hidden from the host.",
+      "Host-side booking cancellation UI: cancelBooking exists in lib/host.ts (returns refund DZD) but NO host screen calls it — there is no cancel-confirmed-booking flow with reason in the app.",
+      "Decline reason capture: decline_booking_request supports p_reason but the UI never collects it.",
+      "Per-locale room-type names: pricing step only writes name_ar; no ar/fr/en tabs for room names (mis-tags non-Arabic names).",
+      "Photo management: no reordering, no choose-cover, no multi-select, no captions.",
+      "Listing lifecycle management: no unpublish/pause, no delete-draft, no edit-after-approval flow surfaced (the wizard re-edit path exists but writes are blocked by the claim issue).",
+      "Draft persistence + 'save and exit': abandoning the wizard loses all in-memory progress and can orphan a draft property + uploaded photos.",
+      "Calendar: no clear-override-to-base, no copy-pricing-across-days, no per-day tap detail, no bookings overlay on the host calendar.",
+      "Payout method/RIB management (ccp/bank destination_rib) — hosts can see payouts but cannot set where money goes.",
+      "Real map for location (acknowledged Mapbox stub) — coordinate entry is effectively unusable.",
+      "Performance: no trends/time ranges; no real views metric.",
+      "No notifications/badges for new requests or low-availability within host mode."
+    ],
+    "top_priorities": [
+      "Fix the host_id-claim lifecycle: (a) confirm custom_access_token_hook is enabled in the Supabase Auth settings; (b) call supabaseClient.auth.refreshSession() immediately after become_host() in BOTH src/lib/wizard.tsx ensureDraft() and app/(tabs)/profile.tsx onSwitchToHosting() so the new host_id/role claims are present before any host write. Without this, listing creation, photo upload, calendar writes, accept/decline, and reply all fail for new hosts.",
+      "Fix photo upload path in src/lib/listings.ts uploadPhoto: store under `${hostProfileId}/${propertyId}/${filename}` (host_profile id, not auth uid) to satisfy the storage 'host upload/update/delete' policies; thread hostProfileId through UploadPhotoInput and the photos step. Correct the misleading RLS comment block at the top of listings.ts.",
+      "Fix the calendar off-by-one: in app/host/calendar.tsx / src/lib/host.ts setAvailabilityRange, send p_to as EXCLUSIVE (pass the picker's checkOut as-is, or rangeEnd+1 day) so the last selected night is written and single-day selections don't raise INVALID_RANGE — mirroring the hotel web fix. Update the JSDoc that wrongly says p_to is inclusive.",
+      "Close the booking-lifecycle gap: add an 'Awaiting payment' state to host reservations (so accepted bookings remain visible) and add host check-in/check-out (and no-show) actions — which also requires a host-callable RPC for confirmed→checked_in→completed/no_show (currently none exists).",
+      "Surface host-side cancellation: wire the existing cancelBooking() into the Upcoming/confirmed cards with a reason prompt and refund preview; capture decline reason for declines.",
+      "Make wizard submit transactional/idempotent: write room_type ids back into the draft after insert (or do an upsert) so retrying submit_property_for_review never duplicates room_types; reset() the wizard draft on success.",
+      "Differentiate error states across all host screens: distinguish auth/claim/RLS vs network vs validation so the failures above are diagnosable instead of a blanket 'Could not save'.",
+      "Localize host UI: remove the hardcoded Arabic header title in host/_layout.tsx; translate amenity category headings (don't render raw DB slugs); render localized cancellation-tier labels in review/policy.",
+      "Add per-locale room-type name entry in the pricing step (don't dump all names into name_ar); add character/format guidance and DZD thousands formatting.",
+      "Persist the wizard draft to AsyncStorage (and add save/discard-on-exit) so interruptions don't lose progress or orphan drafts/photos; add photo reorder + choose-cover + multi-select."
+    ]
+  }
+}

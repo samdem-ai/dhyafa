@@ -25,9 +25,11 @@ import {
   listActiveWilayas,
   propertyTitle,
   localizedName,
+  fetchApproxCoords,
   type PropertySummary,
   type SortKey,
   type WilayaLite,
+  type ApproxCoord,
   SEARCH_PAGE_SIZE,
 } from '@/lib/discovery';
 import { ResultCard } from '@/components/discovery';
@@ -86,6 +88,10 @@ export default function ResultsScreen() {
   // Wilaya name for the header — resolved independently of results so it shows
   // even with zero matches.
   const [wilayaName, setWilayaName] = useState<string | null>(null);
+
+  // Approximate (privacy-safe) coordinates for the map view, keyed by id.
+  // Lazily fetched the first time the user opens the map for the current rows.
+  const [coords, setCoords] = useState<Record<string, ApproxCoord>>({});
 
   // Guard against last-resolve-wins races when filters change rapidly.
   const reqId = useRef(0);
@@ -186,19 +192,38 @@ export default function ResultsScreen() {
           }`
         : '';
 
+  // Fetch privacy-safe coords for the current rows the first time the map opens
+  // (and as rows grow). The stub fallback ignores them; the real Mapbox map uses
+  // them. Missing ids are simply not plotted.
+  useEffect(() => {
+    if (mode !== 'map' || rows == null || rows.length === 0) return;
+    const missing = rows.map((p) => p.id).filter((id) => !(id in coords));
+    if (missing.length === 0) return;
+    let mounted = true;
+    void fetchApproxCoords(missing)
+      .then((fresh) => {
+        if (mounted) setCoords((cur) => ({ ...cur, ...fresh }));
+      })
+      .catch(() => {
+        /* coords are best-effort; the map still renders without missing pins */
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [mode, rows, coords]);
+
   const mapMarkers = useMemo(
     () =>
       (rows ?? []).map((p) => ({
         id: p.id,
-        // Stub map has no real geo; coords are placeholders (see ui/Map).
-        latitude: 0,
-        longitude: 0,
+        latitude: coords[p.id]?.latitude ?? 0,
+        longitude: coords[p.id]?.longitude ?? 0,
         price: p.from_price_dzd ?? undefined,
         label: `${propertyTitle(p, locale)} — ${
           p.from_price_dzd != null ? formatDZD(p.from_price_dzd, locale) : '—'
         }`,
       })),
-    [rows, locale],
+    [rows, locale, coords],
   );
 
   return (
