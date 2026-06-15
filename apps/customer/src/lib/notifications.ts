@@ -93,6 +93,8 @@ export function notificationBody(n: NotificationRow, locale: Locale): string {
  *   booking_*            → /booking/<booking_id>
  *   message_*            → /conversation/<conversation_id>
  *   review_*             → /property/<property_id> (falls back to /booking)
+ *   property_*           → /property/<property_id> (listing approved/rejected/…)
+ *   host_verified        → /host (the host dashboard)
  */
 export function notificationRoute(n: NotificationRow): string | null {
   const data = (n.data ?? {}) as Record<string, unknown>;
@@ -114,6 +116,12 @@ export function notificationRoute(n: NotificationRow): string | null {
   }
   if (n.type.startsWith('booking')) {
     if (bookingId) return `/booking/${bookingId}`;
+  }
+  if (n.type.startsWith('property')) {
+    if (propertyId) return `/property/${propertyId}`;
+  }
+  if (n.type === 'host_verified' || n.type.startsWith('host')) {
+    return '/host';
   }
 
   // Generic fallbacks by whatever id is present.

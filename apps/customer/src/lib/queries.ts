@@ -15,7 +15,13 @@
  *    drops the cached rows for the previous user.
  */
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import { useSession } from './auth';
 import {
   searchProperties,
@@ -28,6 +34,11 @@ import {
 } from './bookings';
 import { listConversations, type ConversationListItem } from './messaging';
 import { listNotifications, unreadNotificationCount, type NotificationRow } from './notifications';
+import {
+  listSavedProperties,
+  listWishlistPropertyIds,
+  toggleWishlist,
+} from './wishlist';
 
 // ---------------------------------------------------------------------------
 // Query keys — centralized so invalidation stays consistent.
@@ -39,6 +50,8 @@ export const queryKeys = {
   conversations: (uid: string) => ['conversations', uid] as const,
   notifications: (uid: string) => ['notifications', uid] as const,
   unreadNotifications: (uid: string) => ['unreadNotifications', uid] as const,
+  wishlistIds: (uid: string) => ['wishlistIds', uid] as const,
+  savedProperties: (uid: string) => ['savedProperties', uid] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -57,6 +70,71 @@ export function useApprovedProperties(): UseQueryResult<PropertySummary[]> {
     // Approved inventory changes slowly; keep it fresh a little longer than the
     // global default so rapid tab switches never refetch.
     staleTime: 5 * 60_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Wishlists (auth-scoped)
+// ---------------------------------------------------------------------------
+
+/**
+ * The set of property_ids the signed-in user has saved. Returns an empty Set
+ * while signed out (the query is disabled, so cards just render an outline
+ * heart). Powers the heart's filled/outline state everywhere.
+ */
+export function useWishlistIds(): UseQueryResult<Set<string>> {
+  const { user } = useSession();
+  const uid = user?.id ?? null;
+  return useQuery({
+    queryKey: queryKeys.wishlistIds(uid ?? 'anon'),
+    queryFn: async () => new Set(await listWishlistPropertyIds()),
+    enabled: uid != null,
+    // Wishlist membership changes only by the user's own taps (optimistically
+    // applied), so it can stay fresh a while without refetching.
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Toggle a property in/out of the user's default wishlist with an OPTIMISTIC
+ * update of the ids set (instant heart feedback), rollback on error, and a
+ * settle-time invalidate of both the ids set and the saved-properties list.
+ */
+export function useToggleWishlist(): UseMutationResult<boolean, Error, string, { previous?: Set<string> }> {
+  const { user } = useSession();
+  const uid = user?.id ?? null;
+  const qc = useQueryClient();
+  const idsKey = queryKeys.wishlistIds(uid ?? 'anon');
+
+  return useMutation<boolean, Error, string, { previous?: Set<string> }>({
+    mutationFn: (propertyId: string) => toggleWishlist(propertyId),
+    onMutate: async (propertyId) => {
+      await qc.cancelQueries({ queryKey: idsKey });
+      const previous = qc.getQueryData<Set<string>>(idsKey);
+      const next = new Set(previous ?? []);
+      if (next.has(propertyId)) next.delete(propertyId);
+      else next.add(propertyId);
+      qc.setQueryData<Set<string>>(idsKey, next);
+      return { previous };
+    },
+    onError: (_err, _propertyId, ctx) => {
+      if (ctx?.previous) qc.setQueryData(idsKey, ctx.previous);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: idsKey });
+      if (uid) void qc.invalidateQueries({ queryKey: queryKeys.savedProperties(uid) });
+    },
+  });
+}
+
+/** Full PropertySummary[] for the signed-in user's saved properties (cards). */
+export function useSavedProperties(): UseQueryResult<PropertySummary[]> {
+  const { user } = useSession();
+  const uid = user?.id ?? null;
+  return useQuery({
+    queryKey: queryKeys.savedProperties(uid ?? 'anon'),
+    queryFn: () => listSavedProperties(),
+    enabled: uid != null,
   });
 }
 

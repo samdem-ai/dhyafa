@@ -271,6 +271,24 @@ export const L = {
   wishlists: { ar: 'المفضلة', fr: 'Favoris', en: 'Wishlists' },
   wishlistsSoon: { ar: 'قريبًا', fr: 'Bientôt', en: 'Coming soon' },
 
+  // ── Wishlists (Phase 5a) ──────────────────────────────────────────────────
+  save: { ar: 'حفظ', fr: 'Enregistrer', en: 'Save' },
+  saved: { ar: 'محفوظ', fr: 'Enregistré', en: 'Saved' },
+  saveToWishlist: { ar: 'أضف إلى المفضلة', fr: 'Ajouter aux favoris', en: 'Save to wishlist' },
+  removeFromWishlist: { ar: 'إزالة من المفضلة', fr: 'Retirer des favoris', en: 'Remove from wishlist' },
+  wishlistsEmptyTitle: { ar: 'احفظ الأماكن التي تحبها', fr: 'Enregistrez les lieux que vous aimez', en: 'Save places you love' },
+  wishlistsEmptyBody: {
+    ar: 'اضغط على القلب في أي إقامة لحفظها هنا.',
+    fr: 'Touchez le cœur sur un logement pour l’enregistrer ici.',
+    en: 'Tap the heart on any stay to save it here.',
+  },
+  exploreStays: { ar: 'استكشف الإقامات', fr: 'Explorer les logements', en: 'Explore stays' },
+  signInToSeeWishlists: {
+    ar: 'سجّل الدخول لعرض الأماكن المحفوظة.',
+    fr: 'Connectez-vous pour voir vos favoris.',
+    en: 'Sign in to see your saved places.',
+  },
+
   // ── Reviews (write) ───────────────────────────────────────────────────────
   leaveReview: { ar: 'اكتب تقييمًا', fr: 'Laisser un avis', en: 'Leave a review' },
   rateYourStay: { ar: 'قيّم إقامتك', fr: 'Évaluez votre séjour', en: 'Rate your stay' },
@@ -370,6 +388,7 @@ export const L = {
     en: 'Updates about your bookings, messages and reviews will appear here.',
   },
   markAllRead: { ar: 'تحديد الكل كمقروء', fr: 'Tout marquer comme lu', en: 'Mark all read' },
+  unreadBadge: { ar: 'جديد', fr: 'Nouveau', en: 'New' },
   signInToSeeNotifications: {
     ar: 'سجّل الدخول لعرض الإشعارات.',
     fr: 'Connectez-vous pour voir vos notifications.',

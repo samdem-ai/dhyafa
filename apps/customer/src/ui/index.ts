@@ -55,6 +55,8 @@ export type { SegmentedControlProps, SegmentOption } from './SegmentedControl';
 // Status + identity
 export { Badge, StatusPill, statusTone } from './StatusPill';
 export type { BadgeProps, Tone } from './StatusPill';
+export { WishlistHeart } from './WishlistHeart';
+export type { WishlistHeartProps, WishlistHeartVariant } from './WishlistHeart';
 export { Avatar } from './Avatar';
 export type { AvatarProps, AvatarSize } from './Avatar';
 export { RatingStars } from './RatingStars';

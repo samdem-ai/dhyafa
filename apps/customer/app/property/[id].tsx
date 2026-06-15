@@ -12,10 +12,9 @@
  * Language fallback (ar→fr→en) is indicated when content is shown in another
  * language than the active UI locale.
  *
- * TODO(Phase 5): wishlist heart on the header + a pre-booking "inquiry" message
- *   to the host without a booking. The inquiry path needs a backend RPC
- *   (get_or_create_conversation requires a booking today), so "Message host" is
- *   intentionally omitted here until that lands.
+ * The header carries a wishlist heart (Phase 5a). TODO(Phase 5b): a pre-booking
+ *   "inquiry" message to the host without a booking (start_inquiry RPC), so
+ *   "Message host" is intentionally omitted here until that lands.
  */
 
 import { useCallback, useMemo, useState } from 'react';
@@ -54,6 +53,7 @@ import {
   DetailSkeleton,
   ErrorState,
   EmptyState,
+  WishlistHeart,
 } from '@/ui';
 import { L, pick, type LMessage } from '@/lib/copy';
 import { fromParams, parseDate } from '@/lib/searchParams';
@@ -215,7 +215,7 @@ export default function PropertyDetailScreen() {
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Gallery */}
-        <Gallery uris={photoUris} altPrefix={title} />
+        <Gallery uris={photoUris} altPrefix={title} propertyId={detail.id} locale={locale} />
 
         <View style={styles.body}>
           <Heading level={1}>{title}</Heading>
@@ -415,7 +415,17 @@ function maxChildrenFor(room: RoomTypeRow | null, adults: number): number {
 }
 
 // ── Gallery (transparent header + scrim) ─────────────────────────────────────
-function Gallery({ uris, altPrefix }: { uris: string[]; altPrefix: string }) {
+function Gallery({
+  uris,
+  altPrefix,
+  propertyId,
+  locale,
+}: {
+  uris: string[];
+  altPrefix: string;
+  propertyId: string;
+  locale: Locale;
+}) {
   const { width } = useWindowDimensions();
   const height = width * 0.72;
   return (
@@ -424,7 +434,20 @@ function Gallery({ uris, altPrefix }: { uris: string[]; altPrefix: string }) {
       {/* Scrim behind the transparent header for back-button contrast. */}
       <View style={styles.scrim} pointerEvents="none" />
       <View style={styles.headerOverlay} pointerEvents="box-none">
-        <Header transparent title="" onBack={() => router.back()} />
+        <Header
+          transparent
+          title=""
+          onBack={() => router.back()}
+          rightSlot={
+            <WishlistHeart
+              propertyId={propertyId}
+              locale={locale}
+              variant="plain"
+              onDark
+              style={styles.headerHeart}
+            />
+          }
+        />
       </View>
     </View>
   );
@@ -666,6 +689,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   headerOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
+  // Scrim chip behind the header heart for contrast over light photos.
+  headerHeart: { backgroundColor: theme.color.overlay },
 
   body: { padding: theme.space.xl, gap: theme.space.sm },
   ratingWrap: {

@@ -27,6 +27,7 @@ import {
   localizedName,
 } from '@/lib/discovery';
 import type { BookingStatus } from '@/lib/bookings';
+import { WishlistHeart } from '@/ui';
 import { RemoteImage } from './RemoteImage';
 
 const textAlign = I18nManager.isRTL ? 'right' : 'left';
@@ -179,7 +180,12 @@ export function ResultCard({
       onPress={onPress}
       style={({ pressed }) => [styles.resultCard, pressed && styles.pressed]}
     >
-      <RemoteImage uri={cover} alt={altText} radius={theme.radius.card} style={styles.resultImage} />
+      <View style={styles.imageWrap}>
+        <RemoteImage uri={cover} alt={altText} radius={theme.radius.card} style={styles.resultImage} />
+        <View style={styles.heartOverlay} pointerEvents="box-none">
+          <WishlistHeart propertyId={property.id} locale={locale} variant="overlay" />
+        </View>
+      </View>
       <View style={styles.resultBody}>
         <View style={styles.resultHeaderRow}>
           <Text style={styles.resultTitle} numberOfLines={1}>
@@ -235,7 +241,12 @@ export function RailCard({
       onPress={onPress}
       style={({ pressed }) => [styles.railCard, pressed && styles.pressed]}
     >
-      <RemoteImage uri={cover} alt={title} radius={theme.radius.card} style={styles.railImage} />
+      <View style={styles.imageWrap}>
+        <RemoteImage uri={cover} alt={title} radius={theme.radius.card} style={styles.railImage} />
+        <View style={styles.heartOverlay} pointerEvents="box-none">
+          <WishlistHeart propertyId={property.id} locale={locale} variant="overlay" />
+        </View>
+      </View>
       <View style={styles.railBody}>
         <Text style={styles.railTitle} numberOfLines={1}>
           {title}
@@ -396,6 +407,16 @@ const styles = StyleSheet.create({
     fontFamily: RN_FONTS.bodyMedium,
     fontSize: theme.fontSize.caption,
     fontWeight: '600',
+  },
+
+  // Shared photo overlay (wishlist heart, top-end of the card image)
+  imageWrap: { position: 'relative' },
+  heartOverlay: {
+    position: 'absolute',
+    top: theme.space.sm,
+    // Top-end corner in both writing directions.
+    right: I18nManager.isRTL ? undefined : theme.space.sm,
+    left: I18nManager.isRTL ? theme.space.sm : undefined,
   },
 
   // Result card
