@@ -26,6 +26,8 @@ import {
   type BookingWithProperty,
 } from '@/lib/bookings';
 import { localizedName } from '@/lib/discovery';
+import { useSession } from '@/lib/auth';
+import { buildNextPath } from '@/lib/searchParams';
 import { getOrCreateConversation } from '@/lib/messaging';
 import { RemoteImage } from '@/components/RemoteImage';
 import { BookingStatusBadge, PriceBreakdown, type PriceLine } from '@/components/discovery';
@@ -42,6 +44,7 @@ export default function BookingDetailScreen() {
   const { i18n } = useTranslation('common');
   const locale = (i18n.language ?? 'en') as Locale;
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user, loading: authLoading } = useSession();
   const wilayaNames = useWilayaNames(locale);
 
   const [booking, setBooking] = useState<BookingWithProperty | null | undefined>(undefined);
@@ -81,7 +84,22 @@ export default function BookingDetailScreen() {
     }, [load]),
   );
 
-  if (booking === undefined) {
+  // Signed-out guard (the booking stack no longer hard-gates at the layout, so
+  // we resume HERE after auth instead of dropping context at a bare sign-in).
+  // Navigate from an effect, never during render.
+  const signedOut = !authLoading && !user;
+  useFocusEffect(
+    useCallback(() => {
+      if (signedOut && id) {
+        router.replace({
+          pathname: '/(auth)/sign-in',
+          params: { next: buildNextPath(`/booking/${id}`, {}) },
+        });
+      }
+    }, [signedOut, id]),
+  );
+
+  if (booking === undefined || signedOut) {
     return (
       <SafeAreaView style={styles.safe}>
         <TopBar title={pick(L.tripDetail, locale)} />

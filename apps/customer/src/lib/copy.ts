@@ -679,6 +679,7 @@ export const L = {
   payMethodBaridiQr: { ar: 'بريدي موب (QR)', fr: 'BaridiMob (QR)', en: 'BaridiMob (QR)' },
   payOpenCheckout: { ar: 'أكمل الدفع في المتصفح…', fr: 'Terminez le paiement dans le navigateur…', en: 'Complete payment in the browser…' },
   payWaitingConfirm: { ar: 'بانتظار تأكيد الدفع…', fr: 'En attente de la confirmation…', en: 'Waiting for payment confirmation…' },
+  payRefreshStatus: { ar: 'تحديث حالة الدفع', fr: 'Actualiser le statut', en: 'Refresh payment status' },
   payConfirmedTitle: { ar: 'تم تأكيد الدفع', fr: 'Paiement confirmé', en: 'Payment confirmed' },
   payExpiredTitle: { ar: 'انتهت مهلة الدفع', fr: 'Délai de paiement expiré', en: 'Payment window expired' },
   payExpiredBody: {
@@ -722,6 +723,15 @@ export const L = {
     fr: 'E-mail ou mot de passe incorrect.',
     en: 'Incorrect email or password.',
   },
+  authEmailLabel: { ar: 'البريد الإلكتروني', fr: 'E-mail', en: 'Email' },
+  resetPasswordTitle: { ar: 'إعادة تعيين كلمة المرور', fr: 'Réinitialiser le mot de passe', en: 'Reset your password' },
+  resetPasswordBody: {
+    ar: 'أدخل بريدك وسنرسل لك رابطًا لإعادة التعيين.',
+    fr: 'Entrez votre e-mail et nous vous enverrons un lien de réinitialisation.',
+    en: 'Enter your email and we’ll send you a reset link.',
+  },
+  sendResetLink: { ar: 'إرسال الرابط', fr: 'Envoyer le lien', en: 'Send reset link' },
+  authSignInCta: { ar: 'تسجيل الدخول', fr: 'Se connecter', en: 'Sign in' },
 
   // ── Cancellation tier labels + refund windows (policy/review) ─────────────
   tierFlexibleLabel: { ar: 'مرنة', fr: 'Flexible', en: 'Flexible' },

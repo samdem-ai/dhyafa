@@ -1,53 +1,101 @@
 /**
- * Payment screen (M2).
+ * Payment screen (Phase 4 rework).
  *
- * Two paths, both converging on apply_payment_event server-side:
- *  1. REAL — "Pay with Edahabia/CIB" invokes the `payments-create-checkout` Edge
- *     Function, which creates a Chargily hosted checkout and returns a URL we open.
- *     Chargily's webhook (`payments-webhook-chargily`) later confirms the booking.
- *     Requires Chargily keys + a reachable edge runtime; otherwise it surfaces a
- *     friendly error.
- *  2. DEV (only in __DEV__) — "Simulate payment" calls the `dev_simulate_payment`
- *     RPC so the book→paid→confirmed loop is demoable locally without keys.
+ * Built on src/ui. Two paths converge on apply_payment_event server-side:
+ *  1. REAL — the "Pay" CTA invokes the `payments-create-checkout` Edge Function
+ *     (Chargily hosted checkout) and opens the returned URL. Chargily's webhook
+ *     confirms the booking; we poll the booking on focus + AppState resume.
+ *  2. DEV (__DEV__ only) — "Simulate payment" calls `dev_simulate_payment` and
+ *     verifies it returns 'applied' before routing on.
  *
- * After either, we refresh the booking; once `confirmed`, route to the trip.
+ * Hardening:
+ *  - Guards non-awaiting_payment states (confirmed → view trip; terminal → a
+ *    path forward) so we never render a Pay button the server would reject.
+ *  - Live payment_deadline countdown + expired detection (offer re-book).
+ *  - ALL errors localized (rpc/Chargily → friendly copy; no raw error.message).
+ *  - Optional payment-method chips (edahabia / cib / baridi_qr).
+ *  - success haptic on confirmed → route to the booking detail.
  */
 
-import { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  Pressable,
-  I18nManager,
-  Linking,
-  ActivityIndicator,
-} from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { View, StyleSheet, Linking, AppState, Pressable } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { formatDZD, type Locale } from '@dyafa/i18n';
+import { type Locale } from '@dyafa/i18n';
+import { CreditCard } from 'lucide-react-native';
 import { supabaseClient } from '@/lib/supabase';
-import { getBookingDetail, type BookingWithProperty } from '@/lib/bookings';
-import { Skeleton, ErrorState, PrimaryButton } from '@/components/ui';
+import { useSession } from '@/lib/auth';
+import {
+  getBookingDetail,
+  classifyPaymentError,
+  paymentErrorMessage,
+  type BookingWithProperty,
+} from '@/lib/bookings';
+import {
+  Screen,
+  Header,
+  Text,
+  Heading,
+  Button,
+  Card,
+  Chip,
+  PriceText,
+  StatusPill,
+  statusTone,
+  DetailSkeleton,
+  ErrorState,
+  EmptyState,
+  useToast,
+  haptics,
+} from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { formatDateTime } from '@/lib/dateFormat';
+import { buildNextPath } from '@/lib/searchParams';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const IS_DEV = typeof __DEV__ !== 'undefined' && __DEV__;
+
+type PayMethod = 'edahabia' | 'cib' | 'baridi_qr';
+const METHODS: { value: PayMethod; key: keyof typeof L }[] = [
+  { value: 'edahabia', key: 'payMethodEdahabia' },
+  { value: 'cib', key: 'payMethodCib' },
+  { value: 'baridi_qr', key: 'payMethodBaridiQr' },
+];
+
+/** Compute a localized H:MM:SS-ish countdown to a deadline; null if expired. */
+function remaining(deadlineIso: string | null | undefined): { expired: boolean; label: string } {
+  if (!deadlineIso) return { expired: false, label: '' };
+  const ms = new Date(deadlineIso).getTime() - Date.now();
+  if (Number.isNaN(ms)) return { expired: false, label: '' };
+  if (ms <= 0) return { expired: true, label: '' };
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return { expired: false, label: h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}` };
+}
 
 export default function PaymentScreen() {
   const { i18n } = useTranslation('common');
   const locale = (i18n.language ?? 'en') as Locale;
-  const tt = (ar: string, fr: string, en: string) =>
-    locale === 'ar' ? ar : locale === 'fr' ? fr : en;
+  const { user, loading: authLoading } = useSession();
+  const toast = useToast();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [booking, setBooking] = useState<BookingWithProperty | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | 'real' | 'dev' | 'refresh'>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [method, setMethod] = useState<PayMethod>('edahabia');
+  const [now, setNow] = useState(Date.now());
+
+  // Tick once a second so the countdown stays live (only matters while awaiting).
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  void now; // referenced to re-render the countdown each tick
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -55,18 +103,28 @@ export default function PaymentScreen() {
     try {
       const b = await getBookingDetail(id);
       setBooking(b);
-      if (b && b.status === 'confirmed') router.replace(`/booking/${b.id}`);
+      if (b && b.status === 'confirmed') {
+        haptics.success();
+        router.replace(`/booking/${b.id}`);
+      }
     } catch {
       setError(pick(L.loadError, locale));
       setBooking(null);
     }
   }, [id, locale]);
 
+  // Poll on focus + when the app returns from the Chargily browser tab.
   useFocusEffect(
     useCallback(() => {
       void load();
     }, [load]),
   );
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void load();
+    });
+    return () => sub.remove();
+  }, [load]);
 
   const payReal = useCallback(async () => {
     if (!id) return;
@@ -76,51 +134,46 @@ export default function PaymentScreen() {
       const { data, error: fnErr } = await supabaseClient.functions.invoke<{
         checkout_url?: string;
         error?: string;
-      }>('payments-create-checkout', { body: { booking_id: id } });
+      }>('payments-create-checkout', { body: { booking_id: id, method } });
       if (fnErr || !data?.checkout_url) {
-        setNotice(
-          tt(
-            'تعذّر بدء الدفع عبر شارجيلي (الخدمة غير متاحة محليًا). استخدم المحاكاة في وضع التطوير.',
-            'Impossible de démarrer le paiement Chargily (service indisponible en local). Utilisez la simulation en dev.',
-            'Could not start Chargily payment (service unavailable locally). Use the dev simulation.',
-          ),
-        );
+        setNotice(paymentErrorMessage('CHECKOUT_UNAVAILABLE', locale));
         return;
       }
       await Linking.openURL(data.checkout_url);
-      setNotice(
-        tt(
-          'أكمل الدفع في المتصفح ثم عُد واضغط «تحديث الحالة».',
-          'Terminez le paiement dans le navigateur, puis revenez et « Actualiser le statut ».',
-          'Complete payment in the browser, then return and tap "Refresh status".',
-        ),
-      );
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e));
+      setNotice(pick(L.payOpenCheckout, locale));
+    } catch {
+      setNotice(paymentErrorMessage('CHECKOUT_UNAVAILABLE', locale));
     } finally {
       setBusy(null);
     }
-  }, [id, locale]);
+  }, [id, method, locale]);
 
   const payDev = useCallback(async () => {
     if (!id) return;
     setBusy('dev');
     setNotice(null);
     try {
-      const { error: rpcErr } = await supabaseClient.rpc('dev_simulate_payment', {
+      const { data, error: rpcErr } = await supabaseClient.rpc('dev_simulate_payment', {
         p_booking_id: id,
       });
       if (rpcErr) {
-        setNotice(rpcErr.message);
+        setNotice(paymentErrorMessage(classifyPaymentError(rpcErr.message), locale));
         return;
       }
+      // Verify the server actually applied the payment before routing.
+      if (data !== 'applied') {
+        setNotice(paymentErrorMessage('NOT_APPLIED', locale));
+        return;
+      }
+      haptics.success();
       router.replace(`/booking/${id}`);
     } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : '';
+      setNotice(paymentErrorMessage(classifyPaymentError(msg), locale));
     } finally {
       setBusy(null);
     }
-  }, [id]);
+  }, [id, locale]);
 
   const refresh = useCallback(async () => {
     setBusy('refresh');
@@ -128,201 +181,214 @@ export default function PaymentScreen() {
     setBusy(null);
   }, [load]);
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.topBar}>
-        <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.topBack}>{I18nManager.isRTL ? '→' : '←'}</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>{pick(L.paymentTitle, locale)}</Text>
-        <View style={styles.topSpacer} />
-      </View>
+  // ── Signed-out guard: resume here after auth. ────────────────────────────
+  // Navigate from an effect (never during render) carrying the full path so the
+  // user RESUMES this payment after signing in.
+  const signedOut = !authLoading && !user;
+  useEffect(() => {
+    if (signedOut && id) {
+      router.replace({
+        pathname: '/(auth)/sign-in',
+        params: { next: buildNextPath(`/booking/${id}/pay`, {}) },
+      });
+    }
+  }, [signedOut, id]);
+  if (signedOut) {
+    return (
+      <Screen edges={['top']}>
+        <Header title={pick(L.paymentTitle, locale)} />
+        <DetailSkeleton />
+      </Screen>
+    );
+  }
 
-      {booking === undefined ? (
-        <View style={styles.body}>
-          <Skeleton style={styles.skBlock} />
-          <Skeleton style={styles.skBtn} />
-        </View>
-      ) : error && booking === null ? (
+  // ── Loading / error / not-found ──────────────────────────────────────────
+  if (booking === undefined) {
+    return (
+      <Screen edges={['top']}>
+        <Header title={pick(L.paymentTitle, locale)} />
+        <DetailSkeleton />
+      </Screen>
+    );
+  }
+  if (error && booking === null) {
+    return (
+      <Screen edges={['top']}>
+        <Header title={pick(L.paymentTitle, locale)} />
         <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.goBack, locale)} />
-      ) : booking === null ? (
-        <ErrorState
-          message={pick(L.notFoundBody, locale)}
-          retryLabel={pick(L.goBack, locale)}
-          onRetry={() => router.back()}
-        />
-      ) : (
-        <View style={styles.body}>
-          {/* Amount due */}
-          <View style={styles.amountCard}>
-            <Text style={styles.amountLabel}>{pick(L.amountDue, locale)}</Text>
-            <Text style={styles.amountValue}>{formatDZD(booking.total_dzd, locale)}</Text>
-            {booking.payment_deadline ? (
-              <Text style={styles.deadline}>
-                {pick(L.payByDeadline, locale)} {formatDateTime(booking.payment_deadline, locale)}
+      </Screen>
+    );
+  }
+  if (booking === null) {
+    return (
+      <Screen edges={['top']}>
+        <Header title={pick(L.paymentTitle, locale)} />
+        <EmptyState title={pick(L.notFoundTitle, locale)} subtitle={pick(L.notFoundBody, locale)} />
+      </Screen>
+    );
+  }
+
+  const countdown = remaining(booking.payment_deadline);
+  const isAwaiting = booking.status === 'awaiting_payment';
+  const isExpired = booking.status === 'expired' || (isAwaiting && countdown.expired);
+  const isConfirmed = booking.status === 'confirmed' || booking.status === 'checked_in';
+
+  // ── Non-awaiting guard states (don't render Pay the server would reject) ──
+  if (!isAwaiting || isExpired || isConfirmed) {
+    return (
+      <Screen edges={['top']}>
+        <Header title={pick(L.paymentTitle, locale)} />
+        <View style={styles.guard}>
+          {isExpired ? (
+            <EmptyState
+              title={pick(L.payExpiredTitle, locale)}
+              subtitle={pick(L.payExpiredBody, locale)}
+              action={{ label: pick(L.backToExplore, locale), onPress: () => router.replace('/(tabs)') }}
+            />
+          ) : isConfirmed ? (
+            <EmptyState
+              title={pick(L.payConfirmedTitle, locale)}
+              subtitle={pick(L.payAlreadyConfirmed, locale)}
+              action={{ label: pick(L.viewTrip, locale), onPress: () => router.replace(`/booking/${booking.id}`) }}
+            />
+          ) : (
+            <View style={styles.statusGuard}>
+              <StatusPill
+                tone={statusTone(booking.status)}
+                label={pick(L[`st_${booking.status}` as keyof typeof L], locale)}
+              />
+              <Text variant="body" color="textMuted" center>
+                {pick(L.payAlreadyConfirmed, locale)}
+              </Text>
+              <Button
+                label={pick(L.viewTrip, locale)}
+                variant="secondary"
+                onPress={() => router.replace(`/booking/${booking.id}`)}
+                fullWidth={false}
+              />
+            </View>
+          )}
+        </View>
+      </Screen>
+    );
+  }
+
+  // ── Awaiting payment: the real Pay flow. ─────────────────────────────────
+  return (
+    <Screen edges={['top']} scroll contentContainerStyle={styles.body}>
+      <Header title={pick(L.paymentTitle, locale)} />
+
+      {/* Amount due + live countdown */}
+      <Card>
+        <Text variant="body" color="textMuted" center>
+          {pick(L.amountDue, locale)}
+        </Text>
+        <View style={styles.amount}>
+          <PriceText amount={booking.total_dzd} variant="total" locale={locale} />
+        </View>
+        {booking.payment_deadline ? (
+          <View style={styles.deadlineWrap}>
+            {countdown.label ? (
+              <Text variant="body-sm" weight="semibold" color="warning" center>
+                {pick(L.payTimeLeft, locale)}: {countdown.label}
               </Text>
             ) : null}
-            <Text style={styles.codeLine}>
-              {pick(L.bookingCode, locale)}: {booking.code}
+            <Text variant="caption" color="textMuted" center>
+              {pick(L.payByDeadline, locale)} {formatDateTime(booking.payment_deadline, locale)}
             </Text>
           </View>
+        ) : null}
+        <Text variant="caption" color="textMuted" center style={styles.code}>
+          {pick(L.bookingCode, locale)}: {booking.code}
+        </Text>
+      </Card>
 
-          {notice ? (
-            <View style={styles.noteCard}>
-              <Text style={styles.noteText}>{notice}</Text>
-            </View>
-          ) : null}
+      {notice ? (
+        <Card variant="flat">
+          <Text variant="body-sm" color="text">
+            {notice}
+          </Text>
+        </Card>
+      ) : null}
 
-          {/* Real Chargily payment */}
-          <View style={styles.payWrap}>
-            <PrimaryButton
-              label={pick(L.payWith, locale)}
-              onPress={() => void payReal()}
-              disabled={busy !== null}
+      {/* Payment method chips */}
+      <View style={styles.methods}>
+        <Text variant="body-sm" weight="semibold">
+          {pick(L.payChoosePaymentMethod, locale)}
+        </Text>
+        <View style={styles.methodRow}>
+          {METHODS.map((m) => (
+            <Chip
+              key={m.value}
+              label={pick(L[m.key], locale)}
+              selected={method === m.value}
+              onPress={() => setMethod(m.value)}
             />
-            <Text style={styles.methodNote}>💳 Edahabia / CIB · Chargily Pay</Text>
-          </View>
-
-          {/* Dev simulation (local only) */}
-          {IS_DEV ? (
-            <View style={styles.devWrap}>
-              <PrimaryButton
-                label={tt('محاكاة دفع ناجح (تطوير)', 'Simuler un paiement (dev)', 'Simulate payment (dev)')}
-                variant="secondary"
-                onPress={() => void payDev()}
-                disabled={busy !== null}
-              />
-              <Text style={styles.devNote}>
-                {tt(
-                  'وضع التطوير: يؤكّد الحجز دون شارجيلي.',
-                  'Mode dev : confirme la réservation sans Chargily.',
-                  'Dev mode: confirms the booking without Chargily.',
-                )}
-              </Text>
-            </View>
-          ) : null}
-
-          {busy ? <ActivityIndicator color={theme.color.primary} style={styles.spinner} /> : null}
-
-          {/* Refresh + view trip */}
-          <View style={styles.secondary}>
-            <Pressable onPress={() => void refresh()} disabled={busy !== null} hitSlop={8}>
-              <Text style={styles.refreshLink}>
-                {tt('تحديث الحالة', 'Actualiser le statut', 'Refresh status')}
-              </Text>
-            </Pressable>
-            <PrimaryButton
-              label={pick(L.viewTrip, locale)}
-              variant="secondary"
-              onPress={() => router.replace(`/booking/${booking.id}`)}
-            />
-          </View>
+          ))}
         </View>
-      )}
-    </SafeAreaView>
+      </View>
+
+      {/* Real Chargily payment */}
+      <View style={styles.payWrap}>
+        <Button
+          label={pick(L.payWith, locale)}
+          variant="tertiary"
+          icon={CreditCard}
+          onPress={() => void payReal()}
+          loading={busy === 'real'}
+          disabled={busy !== null}
+        />
+        <Text variant="caption" color="textMuted" center>
+          Chargily Pay · Edahabia / CIB
+        </Text>
+      </View>
+
+      {/* Dev simulation (local only) */}
+      {IS_DEV ? (
+        <View style={styles.devWrap}>
+          <Button
+            label={pick(L.paySimulateDev, locale)}
+            variant="secondary"
+            onPress={() => void payDev()}
+            loading={busy === 'dev'}
+            disabled={busy !== null}
+          />
+          <Text variant="caption" color="textMuted" center>
+            {pick(L.paySimulateDevNote, locale)}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Manual refresh fallback (poll-on-focus is primary). */}
+      <View style={styles.secondary}>
+        <Pressable onPress={() => void refresh()} disabled={busy !== null} hitSlop={8}>
+          <Text variant="body" weight="semibold" color="primary" center>
+            {busy === 'refresh' ? pick(L.payWaitingConfirm, locale) : pick(L.payRefreshStatus, locale)}
+          </Text>
+        </Pressable>
+      </View>
+    </Screen>
   );
 }
 
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
-
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.md,
-    gap: theme.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.color.border,
-  },
-  topBack: { fontFamily: RN_FONTS.bodyBold, fontSize: theme.fontSize['heading-3'], color: theme.color.text },
-  topTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: 'center',
-  },
-  topSpacer: { width: 24 },
-
   body: { padding: theme.space.xl, gap: theme.space.lg },
+  guard: { flex: 1 },
+  statusGuard: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.space.md, padding: theme.space['2xl'] },
 
-  noteCard: {
-    backgroundColor: theme.color.infoBg,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
-  },
-  noteText: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize.body,
-    color: theme.color.info,
-    lineHeight: theme.lineHeight.body,
-    textAlign,
-  },
+  amount: { alignItems: 'center', marginVertical: theme.space.xs },
+  deadlineWrap: { gap: 2, marginTop: theme.space.xs },
+  code: { marginTop: theme.space.sm },
 
-  amountCard: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.xl,
-    alignItems: 'center',
-    gap: theme.space.xs,
-    ...theme.shadow.card,
-  },
-  amountLabel: { fontFamily: RN_FONTS.arabicRegular, fontSize: theme.fontSize.body, color: theme.color.textMuted },
-  amountValue: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize['display-lg'],
-    fontWeight: '700',
-    color: theme.color.text,
-    writingDirection: 'ltr',
-  },
-  deadline: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.warning,
-    marginTop: theme.space.xs,
-    textAlign: 'center',
-  },
-  codeLine: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    marginTop: theme.space.xs,
-  },
+  methods: { gap: theme.space.sm },
+  methodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
 
   payWrap: { gap: theme.space.sm },
-  methodNote: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign: 'center',
-  },
-
   devWrap: {
     gap: theme.space.sm,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.color.border,
     paddingTop: theme.space.lg,
   },
-  devNote: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign: 'center',
-  },
-
-  spinner: { marginTop: theme.space.sm },
-
-  secondary: { marginTop: theme.space.sm, gap: theme.space.md, alignItems: 'center' },
-  refreshLink: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.body,
-    color: theme.color.primary,
-  },
-
-  skBlock: { height: 140, width: '100%', borderRadius: theme.radius.card },
-  skBtn: { height: 52, width: '100%', borderRadius: theme.radius.md },
+  secondary: { alignItems: 'center', marginTop: theme.space.sm },
 });

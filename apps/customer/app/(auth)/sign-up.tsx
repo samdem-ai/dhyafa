@@ -1,20 +1,28 @@
 /**
- * Sign-up screen — email + password (supabase.auth.signUp).
+ * Sign-up screen (Phase 4 rework) — email + password.
  *
- * On success: if a session is returned (email confirmation disabled in local
- * dev) we proceed back; otherwise we show a "check your email" confirmation.
+ * Built on src/ui. On success: if a session is returned (email confirmation
+ * disabled in local dev) we resume the validated `next` path (so checkout
+ * continues); otherwise we show a "check your email" state with a resend action.
  */
 
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, SafeAreaView } from 'react-native';
-import { Link, router } from 'expo-router';
+import { View, StyleSheet, Pressable } from 'react-native';
+import { Link, router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { Locale } from '@dyafa/i18n';
-import { signUpWithPassword, supabase } from '@/lib/auth';
+import { MailCheck } from 'lucide-react-native';
+import {
+  signUpWithPassword,
+  supabase,
+  authErrorMessage,
+  resendConfirmation,
+} from '@/lib/auth';
 import { AuthForm } from '@/components/AuthForm';
-import { EmptyState } from '@/components/ui';
+import { Screen, Header, Heading, Text, Button, EmptyState, useToast } from '@/ui';
+import { L, pick } from '@/lib/copy';
+import { safeNextPath } from '@/lib/searchParams';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const COPY = {
   title: { ar: 'أنشئ حسابك', fr: 'Créez votre compte', en: 'Create your account' },
@@ -31,11 +39,7 @@ const COPY = {
     fr: 'Échec de la création du compte. Réessayez.',
     en: 'Sign-up failed. Please try again.',
   },
-  checkEmailTitle: {
-    ar: 'تحقق من بريدك',
-    fr: 'Vérifiez vos e-mails',
-    en: 'Check your email',
-  },
+  checkEmailTitle: { ar: 'تحقق من بريدك', fr: 'Vérifiez vos e-mails', en: 'Check your email' },
   checkEmailBody: {
     ar: 'أرسلنا رابط تأكيد إلى بريدك الإلكتروني لإكمال التسجيل.',
     fr: 'Nous avons envoyé un lien de confirmation à votre adresse e-mail.',
@@ -43,16 +47,26 @@ const COPY = {
   },
 } as const;
 
-function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
+function pickC(m: { ar: string; fr: string; en: string }, l: Locale): string {
   return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
+}
+
+function resumeAfterAuth(next: string | undefined): void {
+  const target = safeNextPath(next);
+  if (target) router.replace(target as never);
+  else if (router.canGoBack()) router.back();
+  else router.replace('/');
 }
 
 export default function SignUpScreen() {
   const { i18n } = useTranslation('common');
   const locale = (i18n.language ?? 'en') as Locale;
+  const toast = useToast();
+  const params = useLocalSearchParams<{ next?: string }>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [confirmEmail, setConfirmEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
 
   async function handleSubmit({
     email,
@@ -70,81 +84,105 @@ export default function SignUpScreen() {
       // If local dev auto-confirms, a session exists immediately.
       const { data } = await supabase.auth.getSession();
       if (data.session) {
-        if (router.canGoBack()) router.back();
-        else router.replace('/');
+        resumeAfterAuth(params.next);
       } else {
-        setNeedsConfirm(true);
+        setConfirmEmail(email.trim());
       }
-    } catch {
-      setError(pick(COPY.failed, locale));
+    } catch (err) {
+      setError(authErrorMessage(err, locale, pickC(COPY.failed, locale)));
     } finally {
       setLoading(false);
     }
   }
 
-  if (needsConfirm) {
+  async function handleResend() {
+    if (!confirmEmail) return;
+    setResending(true);
+    try {
+      await resendConfirmation(confirmEmail);
+      toast.show({ message: pick(L.resendEmailSent, locale), tone: 'info' });
+    } catch {
+      toast.show({ message: pick(L.authErrorRateLimit, locale), tone: 'warning' });
+    } finally {
+      setResending(false);
+    }
+  }
+
+  // Preserve `next` when bouncing over to sign-in.
+  const signInHref = params.next
+    ? { pathname: '/(auth)/sign-in' as const, params: { next: params.next } }
+    : ('/(auth)/sign-in' as const);
+
+  if (confirmEmail) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <Screen>
+        <Header title={pickC(COPY.title, locale)} />
         <EmptyState
-          emoji="📧"
-          title={pick(COPY.checkEmailTitle, locale)}
-          subtitle={pick(COPY.checkEmailBody, locale)}
+          icon={MailCheck}
+          title={pickC(COPY.checkEmailTitle, locale)}
+          subtitle={pickC(COPY.checkEmailBody, locale)}
         />
-        <View style={styles.confirmFooter}>
-          <Link href="/(auth)/sign-in" asChild>
-            <Pressable accessibilityRole="link">
-              <Text style={styles.footerLink}>{pick(COPY.signIn, locale)}</Text>
+        <View style={styles.confirmActions}>
+          <Button
+            label={pick(L.resendEmail, locale)}
+            variant="secondary"
+            onPress={() => void handleResend()}
+            loading={resending}
+            fullWidth={false}
+          />
+          <Link href={signInHref} asChild>
+            <Pressable accessibilityRole="link" hitSlop={8}>
+              <Text variant="body-sm" weight="semibold" color="accent">
+                {pickC(COPY.signIn, locale)}
+              </Text>
             </Pressable>
           </Link>
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <Screen>
+      <Header title={pickC(COPY.title, locale)} />
       <View style={styles.header}>
-        <Text style={styles.title}>{pick(COPY.title, locale)}</Text>
-        <Text style={styles.subtitle}>{pick(COPY.subtitle, locale)}</Text>
+        <Heading level={1} color="primary">
+          {pickC(COPY.title, locale)}
+        </Heading>
+        <Text variant="body" color="textMuted" style={styles.subtitle}>
+          {pickC(COPY.subtitle, locale)}
+        </Text>
       </View>
 
       <AuthForm
         locale={locale}
         mode="sign-up"
-        submitLabel={pick(COPY.submit, locale)}
+        submitLabel={pickC(COPY.submit, locale)}
         loading={loading}
         error={error}
         onSubmit={handleSubmit}
         footer={
           <View style={styles.footer}>
-            <Text style={styles.footerText}>{pick(COPY.haveAccount, locale)} </Text>
-            <Link href="/(auth)/sign-in" asChild>
+            <Text variant="body-sm" color="textMuted">
+              {pickC(COPY.haveAccount, locale)}{' '}
+            </Text>
+            <Link href={signInHref} asChild>
               <Pressable accessibilityRole="link">
-                <Text style={styles.footerLink}>{pick(COPY.signIn, locale)}</Text>
+                <Text variant="body-sm" weight="semibold" color="accent">
+                  {pickC(COPY.signIn, locale)}
+                </Text>
               </Pressable>
             </Link>
           </View>
         }
       />
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
-  header: { paddingHorizontal: theme.space.xl, paddingTop: theme.space.xl },
-  title: {
-    fontFamily: RN_FONTS.displaySemiBold,
-    fontSize: theme.fontSize['heading-1'],
-    color: theme.color.primary,
-  },
-  subtitle: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.textMuted,
-    marginTop: theme.space.xs,
-    lineHeight: theme.lineHeight.body,
-  },
+  header: { paddingHorizontal: theme.space.xl, paddingTop: theme.space.lg },
+  subtitle: { marginTop: theme.space.xs },
   footer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -152,16 +190,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: theme.space.lg,
   },
-  footerText: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-  },
-  footerLink: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.accent,
-    fontWeight: '600',
-  },
-  confirmFooter: { alignItems: 'center', paddingBottom: theme.space['2xl'] },
+  confirmActions: { alignItems: 'center', gap: theme.space.lg, paddingBottom: theme.space['2xl'] },
 });

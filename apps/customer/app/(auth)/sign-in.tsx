@@ -1,17 +1,26 @@
 /**
- * Sign-in screen — email + password (supabase.auth.signInWithPassword).
- * On success, returns to where the user came from (router.back) or home.
+ * Sign-in screen (Phase 4 rework) — email + password.
+ *
+ * Built on src/ui (Screen/Header/Heading/Text/Button/TextField/BottomSheet/Toast).
+ *
+ * `next` is a VALIDATED internal pathname (via safeNextPath): the legacy 'host'
+ * token still works, and any in-app absolute path (e.g. the in-progress checkout
+ * `/booking/confirm?...`) is honored so the user returns with context intact.
+ * Auth errors are differentiated (invalid creds / unconfirmed email / rate-limit)
+ * with localized copy, and a forgot-password sheet calls resetPasswordForEmail.
  */
 
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, SafeAreaView } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { Link, router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { Locale } from '@dyafa/i18n';
-import { signInWithPassword } from '@/lib/auth';
+import { signInWithPassword, authErrorMessage, sendPasswordReset } from '@/lib/auth';
 import { AuthForm } from '@/components/AuthForm';
+import { Screen, Header, Heading, Text, Button, TextField, BottomSheet, useToast } from '@/ui';
+import { L, pick } from '@/lib/copy';
+import { safeNextPath } from '@/lib/searchParams';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const COPY = {
   title: { ar: 'مرحبًا بعودتك', fr: 'Bon retour', en: 'Welcome back' },
@@ -21,7 +30,7 @@ const COPY = {
     en: 'Sign in to manage your stays and hosting',
   },
   submit: { ar: 'تسجيل الدخول', fr: 'Se connecter', en: 'Sign in' },
-  noAccount: { ar: 'ليس لديك حساب؟', fr: 'Pas de compte ?', en: "No account?" },
+  noAccount: { ar: 'ليس لديك حساب؟', fr: 'Pas de compte ?', en: 'No account?' },
   signUp: { ar: 'أنشئ حسابًا', fr: 'Créer un compte', en: 'Sign up' },
   failed: {
     ar: 'تعذّر تسجيل الدخول. تحقق من بريدك وكلمة المرور.',
@@ -30,98 +39,185 @@ const COPY = {
   },
 } as const;
 
-function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
+function pickC(m: { ar: string; fr: string; en: string }, l: Locale): string {
   return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
+}
+
+/** Resolve where to go after a successful sign-in, honoring a validated `next`. */
+function resumeAfterAuth(next: string | undefined): void {
+  const target = safeNextPath(next);
+  if (target) {
+    router.replace(target as never);
+  } else if (router.canGoBack()) {
+    router.back();
+  } else {
+    router.replace('/');
+  }
 }
 
 export default function SignInScreen() {
   const { i18n } = useTranslation('common');
   const locale = (i18n.language ?? 'en') as Locale;
-  // `next` is a known route group ('host' | 'home') rather than a free-form
-  // path, so it stays compatible with expo-router typed routes.
+  const toast = useToast();
+  // `next` may be the legacy 'host' token OR a full in-app path (e.g. the
+  // in-progress `/booking/confirm?...`). safeNextPath validates it.
   const params = useLocalSearchParams<{ next?: string }>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   async function handleSubmit({ email, password }: { email: string; password: string }) {
     setLoading(true);
     setError(null);
     try {
       await signInWithPassword(email, password);
-      if (params.next === 'host') {
-        router.replace('/host');
-      } else if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace('/');
-      }
-    } catch {
-      setError(pick(COPY.failed, locale));
+      resumeAfterAuth(params.next);
+    } catch (err) {
+      setError(authErrorMessage(err, locale, pickC(COPY.failed, locale)));
     } finally {
       setLoading(false);
     }
   }
 
+  // Preserve `next` so a user who detours to sign-up still resumes the same flow.
+  const signUpHref = params.next
+    ? { pathname: '/(auth)/sign-up' as const, params: { next: params.next } }
+    : ('/(auth)/sign-up' as const);
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <Screen>
+      <Header title={pick(L.authSignInCta, locale)} />
       <View style={styles.header}>
-        <Text style={styles.title}>{pick(COPY.title, locale)}</Text>
-        <Text style={styles.subtitle}>{pick(COPY.subtitle, locale)}</Text>
+        <Heading level={1} color="primary">
+          {pickC(COPY.title, locale)}
+        </Heading>
+        <Text variant="body" color="textMuted" style={styles.subtitle}>
+          {pickC(COPY.subtitle, locale)}
+        </Text>
       </View>
 
       <AuthForm
         locale={locale}
         mode="sign-in"
-        submitLabel={pick(COPY.submit, locale)}
+        submitLabel={pickC(COPY.submit, locale)}
         loading={loading}
         error={error}
         onSubmit={handleSubmit}
         footer={
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>{pick(COPY.noAccount, locale)} </Text>
-            <Link href="/(auth)/sign-up" asChild>
-              <Pressable accessibilityRole="link">
-                <Text style={styles.footerLink}>{pick(COPY.signUp, locale)}</Text>
-              </Pressable>
-            </Link>
+          <View style={styles.footerCol}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setForgotOpen(true)}
+              hitSlop={8}
+              style={styles.forgot}
+            >
+              <Text variant="body-sm" weight="semibold" color="primary">
+                {pick(L.forgotPassword, locale)}
+              </Text>
+            </Pressable>
+            <View style={styles.footer}>
+              <Text variant="body-sm" color="textMuted">
+                {pickC(COPY.noAccount, locale)}{' '}
+              </Text>
+              <Link href={signUpHref} asChild>
+                <Pressable accessibilityRole="link">
+                  <Text variant="body-sm" weight="semibold" color="accent">
+                    {pickC(COPY.signUp, locale)}
+                  </Text>
+                </Pressable>
+              </Link>
+            </View>
           </View>
         }
       />
-    </SafeAreaView>
+
+      <ForgotPasswordSheet
+        visible={forgotOpen}
+        locale={locale}
+        onClose={() => setForgotOpen(false)}
+        onSent={() => {
+          setForgotOpen(false);
+          toast.show({ message: pick(L.resetPasswordSent, locale), tone: 'info' });
+        }}
+        onRateLimited={() => {
+          setForgotOpen(false);
+          toast.show({ message: pick(L.authErrorRateLimit, locale), tone: 'warning' });
+        }}
+      />
+    </Screen>
+  );
+}
+
+function ForgotPasswordSheet({
+  visible,
+  locale,
+  onClose,
+  onSent,
+  onRateLimited,
+}: {
+  visible: boolean;
+  locale: Locale;
+  onClose: () => void;
+  onSent: () => void;
+  onRateLimited: () => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (email.trim().length < 4) return;
+    setBusy(true);
+    try {
+      await sendPasswordReset(email);
+      onSent();
+    } catch {
+      // sendPasswordReset only rethrows on rate-limit.
+      onRateLimited();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <BottomSheet visible={visible} onClose={onClose} dismissible={!busy}>
+      <View style={styles.sheet}>
+        <Heading level={3}>{pick(L.resetPasswordTitle, locale)}</Heading>
+        <Text variant="body" color="textMuted">
+          {pick(L.resetPasswordBody, locale)}
+        </Text>
+        <TextField
+          label={pick(L.authEmailLabel, locale)}
+          value={email}
+          onChangeText={setEmail}
+          placeholder="you@example.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+          textContentType="emailAddress"
+          returnKeyType="send"
+          onSubmitEditing={() => void submit()}
+        />
+        <Button
+          label={pick(L.sendResetLink, locale)}
+          onPress={() => void submit()}
+          loading={busy}
+          disabled={email.trim().length < 4}
+        />
+      </View>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
-  header: { paddingHorizontal: theme.space.xl, paddingTop: theme.space.xl },
-  title: {
-    fontFamily: RN_FONTS.displaySemiBold,
-    fontSize: theme.fontSize['heading-1'],
-    color: theme.color.primary,
-  },
-  subtitle: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.textMuted,
-    marginTop: theme.space.xs,
-    lineHeight: theme.lineHeight.body,
-  },
+  header: { paddingHorizontal: theme.space.xl, paddingTop: theme.space.lg },
+  subtitle: { marginTop: theme.space.xs },
+  footerCol: { marginTop: theme.space.lg, gap: theme.space.lg, alignItems: 'center' },
+  forgot: { alignSelf: 'center' },
   footer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: theme.space.lg,
   },
-  footerText: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-  },
-  footerLink: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.accent,
-    fontWeight: '600',
-  },
+  sheet: { gap: theme.space.md, paddingTop: theme.space.sm },
 });

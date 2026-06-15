@@ -134,6 +134,25 @@ export function safeNextPath(next: string | undefined | null): string | null {
   return null;
 }
 
+/**
+ * Build a single in-app path string (pathname + query) suitable for passing as
+ * the `next` param to the auth screens. The result round-trips through
+ * safeNextPath() and can be handed straight to router.replace().
+ *
+ * Example: buildNextPath('/booking/confirm', { propertyId: 'x', checkIn: '2026-…' })
+ *   → '/booking/confirm?propertyId=x&checkIn=2026-…'
+ */
+export function buildNextPath(
+  pathname: string,
+  params: Record<string, string | number | undefined | null>,
+): string {
+  const query = Object.entries(params)
+    .filter(([, v]) => v != null && v !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join('&');
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 /** Parse a yyyy-mm-dd string to a local Date (midnight). Null on invalid. */
 export function parseDate(s: string | null | undefined): Date | null {
   if (!s) return null;
