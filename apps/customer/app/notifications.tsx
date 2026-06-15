@@ -134,7 +134,7 @@ export default function NotificationsScreen() {
         <ErrorState
           message={pick(L.loadError, locale)}
           onRetry={() => void refetch()}
-          retryLabel={pick(L.search, locale)}
+          retryLabel={pick(L.tryAgain, locale)}
         />
       ) : (
         <List<NotificationRow>

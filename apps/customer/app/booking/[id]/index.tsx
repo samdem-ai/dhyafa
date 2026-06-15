@@ -1,22 +1,18 @@
 /**
- * Booking / trip detail (M2).
+ * Booking / trip detail (M2, migrated onto @/ui).
  *
  * Status badge, contextual banner (request sent / awaiting payment), property
  * summary, dates + guests, the AUTHORITATIVE server price breakdown (the
  * snapshot columns on the booking row), and the booking code. awaiting_payment
  * bookings show a "complete payment" CTA → the pay stub.
+ *
+ * Built on src/ui (Screen / Header / Text / Button / Card / DetailSkeleton /
+ * RemoteImage) to match its flow-mates booking/confirm.tsx and pay.tsx. The
+ * localized screen-reader back label is automatic from Header.
  */
 
 import { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  Pressable,
-  I18nManager,
-} from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable, I18nManager } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, type Locale } from '@dyafa/i18n';
@@ -31,16 +27,23 @@ import { useSession } from '@/lib/auth';
 import { buildNextPath } from '@/lib/searchParams';
 import { getOrCreateConversation } from '@/lib/messaging';
 import { CancelBookingSheet } from '@/components/CancelBookingSheet';
-import { RemoteImage } from '@/components/RemoteImage';
 import { BookingStatusBadge, PriceBreakdown, type PriceLine } from '@/components/discovery';
-import { Skeleton, ErrorState, EmptyState, PrimaryButton } from '@/components/ui';
+import {
+  Screen,
+  Header,
+  Text,
+  Heading,
+  Button,
+  Card,
+  RemoteImage,
+  DetailSkeleton,
+  ErrorState,
+  EmptyState,
+} from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { useWilayaNames } from '@/lib/useWilayaNames';
 import { formatRange, formatDateTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
-
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
 export default function BookingDetailScreen() {
   const { i18n } = useTranslation('common');
@@ -104,30 +107,26 @@ export default function BookingDetailScreen() {
 
   if (booking === undefined || signedOut) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <TopBar title={pick(L.tripDetail, locale)} />
-        <View style={styles.body}>
-          <Skeleton style={styles.skImage} />
-          <Skeleton style={styles.skBlock} />
-          <Skeleton style={styles.skBlock} />
-        </View>
-      </SafeAreaView>
+      <Screen edges={['top']}>
+        <Header title={pick(L.tripDetail, locale)} />
+        <DetailSkeleton />
+      </Screen>
     );
   }
   if (error && booking === null) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <TopBar title={pick(L.tripDetail, locale)} />
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.goBack, locale)} />
-      </SafeAreaView>
+      <Screen edges={['top']}>
+        <Header title={pick(L.tripDetail, locale)} />
+        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.tryAgain, locale)} />
+      </Screen>
     );
   }
   if (booking === null) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <TopBar title={pick(L.tripDetail, locale)} />
+      <Screen edges={['top']}>
+        <Header title={pick(L.tripDetail, locale)} />
         <EmptyState emoji="🧳" title={pick(L.notFoundTitle, locale)} subtitle={pick(L.notFoundBody, locale)} />
-      </SafeAreaView>
+      </Screen>
     );
   }
 
@@ -158,38 +157,66 @@ export default function BookingDetailScreen() {
     booking.status === 'requested' ? pick(L.requestSentBody, locale) : pick(L.awaitingPaymentBody, locale);
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <TopBar title={pick(L.tripDetail, locale)} />
+    <Screen
+      edges={['top']}
+      footer={
+        booking.status === 'awaiting_payment' ? (
+          <View style={styles.footer}>
+            <Button
+              label={pick(L.completePayment, locale)}
+              variant="tertiary"
+              onPress={() => router.push(`/booking/${booking.id}/pay`)}
+            />
+          </View>
+        ) : undefined
+      }
+    >
+      <Header title={pick(L.tripDetail, locale)} />
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {/* Banner for actionable states */}
         {showBanner ? (
           <View style={[styles.banner, booking.status === 'awaiting_payment' && styles.bannerWarn]}>
-            <Text style={styles.bannerTitle}>{bannerTitle}</Text>
-            <Text style={styles.bannerBody}>{bannerBody}</Text>
+            <Text variant="title" weight="semibold">
+              {bannerTitle}
+            </Text>
+            <Text variant="body-sm">{bannerBody}</Text>
           </View>
         ) : null}
 
         {/* Property summary */}
-        <View style={styles.propCard}>
-          <RemoteImage uri={cover} alt={title} radius={theme.radius.md} style={styles.propImage} />
-          <View style={styles.propBody}>
-            <View style={styles.propHeader}>
-              <Text style={styles.propTitle} numberOfLines={2}>
-                {title}
-              </Text>
-              <BookingStatusBadge status={booking.status} locale={locale} />
+        <Card padding="md">
+          <View style={styles.propRow}>
+            <RemoteImage uri={cover} alt={title} radius={theme.radius.md} style={styles.propImage} />
+            <View style={styles.propBody}>
+              <View style={styles.propHeader}>
+                <Text variant="title" weight="semibold" numberOfLines={2} style={styles.propTitle}>
+                  {title}
+                </Text>
+                <BookingStatusBadge status={booking.status} locale={locale} />
+              </View>
+              {place ? (
+                <Text variant="body-sm" color="textMuted">
+                  {place}
+                </Text>
+              ) : null}
+              {prop ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push(`/property/${prop.id}`)}
+                  hitSlop={6}
+                  style={styles.viewListing}
+                >
+                  <Text variant="body-sm" weight="medium" color="accent">
+                    {pick(L.about, locale)} {I18nManager.isRTL ? '‹' : '›'}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
-            {place ? <Text style={styles.propPlace}>{place}</Text> : null}
-            {prop ? (
-              <Pressable accessibilityRole="button" onPress={() => router.push(`/property/${prop.id}`)} hitSlop={6}>
-                <Text style={styles.viewListing}>{pick(L.about, locale)} ›</Text>
-              </Pressable>
-            ) : null}
           </View>
-        </View>
+        </Card>
 
         {/* Dates + guests */}
-        <View style={styles.infoCard}>
+        <Card>
           <InfoRow label={pick(L.dates, locale)} value={formatRange(booking.check_in, booking.check_out, locale)} />
           <View style={styles.infoDivider} />
           <InfoRow
@@ -202,23 +229,23 @@ export default function BookingDetailScreen() {
               <InfoRow label={pick(L.payByDeadline, locale)} value={formatDateTime(booking.payment_deadline, locale)} />
             </>
           ) : null}
-        </View>
+        </Card>
 
         {/* Price breakdown (authoritative) */}
-        <View style={styles.priceCard}>
-          <Text style={styles.sectionTitle}>{pick(L.total, locale)}</Text>
+        <Card style={styles.priceCard}>
+          <Heading level={3}>{pick(L.total, locale)}</Heading>
           <PriceBreakdown lines={lines} totalLabel={pick(L.total, locale)} totalDzd={booking.total_dzd} locale={locale} />
-        </View>
+        </Card>
 
         {/* Actions: message host, and review when the stay is completed */}
         <View style={styles.actions}>
           {booking.status === 'completed' ? (
-            <PrimaryButton
+            <Button
               label={pick(L.leaveReview, locale)}
               onPress={() => router.push(`/review/${booking.id}`)}
             />
           ) : null}
-          <PrimaryButton
+          <Button
             label={pick(L.messageHost, locale)}
             variant="secondary"
             onPress={() => void onMessageHost()}
@@ -229,30 +256,31 @@ export default function BookingDetailScreen() {
             <Pressable
               accessibilityRole="button"
               onPress={() => setCancelOpen(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={({ pressed }) => [styles.cancelLink, pressed && styles.cancelLinkPressed]}
             >
-              <Text style={styles.cancelLinkText}>{pick(L.cancelBookingAction, locale)}</Text>
+              <Text variant="body-sm" weight="semibold" color="error" center>
+                {pick(L.cancelBookingAction, locale)}
+              </Text>
             </Pressable>
           ) : null}
-          {actionError ? <Text style={styles.actionError}>{actionError}</Text> : null}
+          {actionError ? (
+            <Text variant="body-sm" weight="medium" color="error">
+              {actionError}
+            </Text>
+          ) : null}
         </View>
 
         {/* Booking code */}
         <View style={styles.codeCard}>
-          <Text style={styles.codeLabel}>{pick(L.bookingCode, locale)}</Text>
-          <Text style={styles.codeValue}>{booking.code}</Text>
+          <Text variant="caption" color="textMuted">
+            {pick(L.bookingCode, locale)}
+          </Text>
+          <Text variant="title" weight="bold" color="primary" style={styles.codeValue}>
+            {booking.code}
+          </Text>
         </View>
       </ScrollView>
-
-      {/* CTA for awaiting payment */}
-      {booking.status === 'awaiting_payment' ? (
-        <View style={styles.footer}>
-          <PrimaryButton
-            label={pick(L.completePayment, locale)}
-            onPress={() => router.push(`/booking/${booking.id}/pay`)}
-          />
-        </View>
-      ) : null}
 
       {/* Cancel flow (quote_refund → confirm → cancel_booking) */}
       <CancelBookingSheet
@@ -262,56 +290,24 @@ export default function BookingDetailScreen() {
         onCancelled={() => void load()}
         locale={locale}
       />
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue} numberOfLines={1}>
+      <Text variant="body" color="textMuted">
+        {label}
+      </Text>
+      <Text variant="body" weight="semibold" numberOfLines={1} style={styles.infoValue}>
         {value}
       </Text>
     </View>
   );
 }
 
-function TopBar({ title }: { title: string }) {
-  return (
-    <View style={styles.topBar}>
-      <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8}>
-        <Text style={styles.topBack}>{I18nManager.isRTL ? '→' : '←'}</Text>
-      </Pressable>
-      <Text style={styles.topTitle}>{title}</Text>
-      <View style={styles.topSpacer} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
-
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.md,
-    gap: theme.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.color.border,
-  },
-  topBack: { fontFamily: RN_FONTS.bodyBold, fontSize: theme.fontSize['heading-3'], color: theme.color.text },
-  topTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: 'center',
-  },
-  topSpacer: { width: 24 },
-
   body: { padding: theme.space.xl, gap: theme.space.lg, paddingBottom: theme.space['2xl'] },
 
   banner: {
@@ -321,29 +317,8 @@ const styles = StyleSheet.create({
     gap: theme.space.xs,
   },
   bannerWarn: { backgroundColor: theme.color.warningBg },
-  bannerTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  bannerBody: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
-    lineHeight: theme.lineHeight['body-sm'],
-    textAlign,
-  },
 
-  propCard: {
-    flexDirection: 'row',
-    gap: theme.space.md,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.md,
-    ...theme.shadow.card,
-  },
+  propRow: { flexDirection: 'row', gap: theme.space.md },
   propImage: { width: 100, height: 100 },
   propBody: { flex: 1, gap: 2 },
   propHeader: {
@@ -352,34 +327,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: theme.space.sm,
   },
-  propTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  propPlace: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  viewListing: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.accent,
-    marginTop: theme.space.xs,
-    textAlign,
-  },
+  propTitle: { flex: 1 },
+  viewListing: { marginTop: theme.space.xs, alignSelf: 'flex-start' },
 
-  infoCard: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
-    ...theme.shadow.card,
-  },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -387,48 +337,15 @@ const styles = StyleSheet.create({
     gap: theme.space.md,
     paddingVertical: theme.space.sm,
   },
-  infoLabel: { fontFamily: RN_FONTS.arabicRegular, fontSize: theme.fontSize.body, color: theme.color.textMuted },
-  infoValue: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: I18nManager.isRTL ? 'left' : 'right',
-  },
-  infoDivider: { height: 1, backgroundColor: theme.color.border },
+  // Value aligns to the end edge (right in LTR, left in RTL).
+  infoValue: { flex: 1, textAlign: I18nManager.isRTL ? 'left' : 'right' },
+  infoDivider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border },
 
-  priceCard: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
-    gap: theme.space.md,
-    ...theme.shadow.card,
-  },
-  sectionTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
+  priceCard: { gap: theme.space.md },
 
   actions: { gap: theme.space.md },
-  actionError: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
-    textAlign,
-  },
   cancelLink: { alignSelf: 'center', paddingVertical: theme.space.sm, paddingHorizontal: theme.space.md },
   cancelLinkPressed: { opacity: 0.6 },
-  cancelLinkText: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['body-sm'],
-    fontWeight: '600',
-    color: theme.color.error,
-    textAlign: 'center',
-  },
 
   codeCard: {
     backgroundColor: theme.color.surfaceSunken,
@@ -437,23 +354,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: theme.space.xs,
   },
-  codeLabel: { fontFamily: RN_FONTS.arabicRegular, fontSize: theme.fontSize.caption, color: theme.color.textMuted },
-  codeValue: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize['heading-2'],
-    fontWeight: '700',
-    color: theme.color.primary,
-    letterSpacing: 2,
-  },
+  codeValue: { letterSpacing: 2 },
 
-  footer: {
-    padding: theme.space.xl,
-    paddingTop: theme.space.md,
-    borderTopWidth: 1,
-    borderTopColor: theme.color.border,
-    backgroundColor: theme.color.surface,
-  },
-
-  skImage: { width: '100%', height: 120, borderRadius: theme.radius.card },
-  skBlock: { height: 90, width: '100%', borderRadius: theme.radius.card },
+  footer: { paddingBottom: theme.space.md },
 });

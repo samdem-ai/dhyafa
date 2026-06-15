@@ -22,7 +22,8 @@ import { theme } from '@/theme';
 import { useSession } from '@/lib/auth';
 import { useToggleWishlist, useWishlistIds } from '@/lib/queries';
 import { L, pick } from '@/lib/copy';
-import { selection } from './haptics';
+import { useToast } from './Toast';
+import { error as errorHaptic, selection } from './haptics';
 
 export type WishlistHeartVariant = 'overlay' | 'plain';
 
@@ -51,6 +52,7 @@ export function WishlistHeart({
   const pathname = usePathname();
   const { data: ids } = useWishlistIds();
   const toggle = useToggleWishlist();
+  const toast = useToast();
   // Keep i18n subscribed so RTL/locale changes re-render the label.
   useTranslation('common');
 
@@ -64,8 +66,13 @@ export function WishlistHeart({
       return;
     }
     selection();
-    toggle.mutate(propertyId);
-  }, [user, pathname, toggle, propertyId]);
+    toggle.mutate(propertyId, {
+      onError: () => {
+        errorHaptic();
+        toast.show({ message: pick(L.wishlistError, locale), tone: 'error' });
+      },
+    });
+  }, [user, pathname, toggle, propertyId, toast, locale]);
 
   const fill = saved ? theme.color.accent : 'transparent';
   const stroke = saved ? theme.color.accent : onDark ? theme.color.white : theme.color.text;

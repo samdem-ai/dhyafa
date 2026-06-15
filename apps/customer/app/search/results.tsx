@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { View, Pressable, StyleSheet } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
@@ -244,7 +244,7 @@ export default function ResultsScreen() {
           ))}
         </View>
       ) : error && rows.length === 0 ? (
-        <ErrorState message={error} onRetry={() => void loadFirst()} retryLabel={pick(L.search, locale)} />
+        <ErrorState message={error} onRetry={() => void loadFirst()} retryLabel={pick(L.tryAgain, locale)} />
       ) : mode === 'map' ? (
         <Map
           markers={mapMarkers}

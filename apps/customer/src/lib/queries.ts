@@ -119,7 +119,11 @@ export function useToggleWishlist(): UseMutationResult<boolean, Error, string, {
       return { previous };
     },
     onError: (_err, _propertyId, ctx) => {
-      if (ctx?.previous) qc.setQueryData(idsKey, ctx.previous);
+      // Roll back unconditionally: onMutate may have written an optimistic Set
+      // even when `previous` was undefined (heart tapped before wishlistIds
+      // resolved). Writing undefined back forces a clean refetch state, so an
+      // offline failure can never leave the optimistic heart stuck.
+      qc.setQueryData(idsKey, ctx?.previous);
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: idsKey });

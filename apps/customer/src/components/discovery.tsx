@@ -323,14 +323,20 @@ export function GuestStepperRow({
         <Text style={styles.stepperLabel}>{label}</Text>
         {hint ? <Text style={styles.stepperHint}>{hint}</Text> : null}
       </View>
-      <View style={styles.stepperControls}>
+      <View
+        style={styles.stepperControls}
+        accessibilityRole="adjustable"
+        accessibilityValue={{ now: value, min, max }}
+      >
         <StepButton
           glyph="−"
           label={`${label} −`}
           disabled={value <= min}
           onPress={() => onChange(Math.max(min, value - 1))}
         />
-        <Text style={styles.stepperValue}>{value}</Text>
+        <Text style={styles.stepperValue} accessibilityLiveRegion="polite">
+          {value}
+        </Text>
         <StepButton
           glyph="+"
           label={`${label} +`}

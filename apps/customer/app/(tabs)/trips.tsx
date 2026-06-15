@@ -120,7 +120,7 @@ export default function TripsScreen() {
       ) : data === null ? (
         <SkeletonList count={3} />
       ) : error && data.length === 0 ? (
-        <ErrorState message={error} onRetry={() => void load(bucket)} retryLabel={pick(L.search, locale)} />
+        <ErrorState message={error} onRetry={() => void load(bucket)} retryLabel={pick(L.tryAgain, locale)} />
       ) : (
         <FlatList
           data={data}

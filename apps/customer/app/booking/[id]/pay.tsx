@@ -339,7 +339,7 @@ export default function PaymentScreen() {
           disabled={busy !== null}
         />
         <Text variant="caption" color="textMuted" center>
-          Chargily Pay · Edahabia / CIB
+          {pick(L.payProviderNote, locale)}
         </Text>
       </View>
 
@@ -361,7 +361,14 @@ export default function PaymentScreen() {
 
       {/* Manual refresh fallback (poll-on-focus is primary). */}
       <View style={styles.secondary}>
-        <Pressable onPress={() => void refresh()} disabled={busy !== null} hitSlop={8}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={pick(L.payRefreshStatus, locale)}
+          accessibilityState={{ disabled: busy !== null }}
+          onPress={() => void refresh()}
+          disabled={busy !== null}
+          hitSlop={8}
+        >
           <Text variant="body" weight="semibold" color="primary" center>
             {busy === 'refresh' ? pick(L.payWaitingConfirm, locale) : pick(L.payRefreshStatus, locale)}
           </Text>

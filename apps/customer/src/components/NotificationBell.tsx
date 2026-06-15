@@ -7,7 +7,7 @@
  * signed-out users (still a bell, but count 0 / no badge).
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, I18nManager } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
@@ -24,6 +24,11 @@ export function NotificationBell({ locale }: { locale: Locale }) {
   const { user } = useSession();
   const myUid = user?.id ?? null;
   const [count, setCount] = useState(0);
+  // Unique per component instance so two mounted bells (inbox + trips tabs, both
+  // kept alive by the Tabs navigator) don't collide on the same channel topic —
+  // supabase-js dedupes by topic, which would make the second .on() throw and
+  // either bell's unmount tear down the shared channel.
+  const instanceId = useId();
 
   const refresh = useCallback(async () => {
     if (!myUid) {
@@ -47,7 +52,7 @@ export function NotificationBell({ locale }: { locale: Locale }) {
   useEffect(() => {
     if (!myUid) return;
     const channel = supabaseClient
-      .channel(`notif-bell:${myUid}`)
+      .channel(`notif-bell:${myUid}:${instanceId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${myUid}` },
@@ -59,7 +64,7 @@ export function NotificationBell({ locale }: { locale: Locale }) {
     return () => {
       void supabaseClient.removeChannel(channel);
     };
-  }, [myUid, refresh]);
+  }, [myUid, instanceId, refresh]);
 
   const showBadge = count > 0;
   const badgeText = count > 9 ? '9+' : formatNumber(count, locale);

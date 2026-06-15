@@ -300,7 +300,7 @@ export default function BookingConfirmScreen() {
               variant="tertiary"
               onPress={() => void onSubmit()}
               loading={submitting}
-              disabled={occupancyExceeded || belowMinNights}
+              disabled={!!user && (occupancyExceeded || belowMinNights)}
             />
           </View>
         </View>

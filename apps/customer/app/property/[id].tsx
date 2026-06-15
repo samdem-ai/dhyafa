@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable, useWindowDimensions, I18nManager } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, type Locale } from '@dyafa/i18n';
@@ -158,7 +158,7 @@ export default function PropertyDetailScreen() {
     return (
       <Screen edges={['top']}>
         <Header title="" />
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.search, locale)} />
+        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.tryAgain, locale)} />
       </Screen>
     );
   }
@@ -684,7 +684,11 @@ function Reviews({ detail, locale }: { detail: PropertyDetail; locale: Locale })
           <Text variant="body" weight="semibold" color="primary">
             {pick(L.showAllReviews, locale)}
           </Text>
-          <ChevronRight size={18} color={theme.color.primary} />
+          <ChevronRight
+            size={18}
+            color={theme.color.primary}
+            style={{ transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] }}
+          />
         </Pressable>
       ) : null}
     </Section>
@@ -718,7 +722,7 @@ function RoomOption({
           {name}
         </Text>
         <Text variant="body-sm" color="textMuted">
-          {formatNumber(room.max_occupancy, locale)} {pick(L.guestsCountPlural, locale)} ·{' '}
+          {formatNumber(room.max_occupancy, locale)} {pick(L.guestsCountPlural, locale)}
         </Text>
         <PriceText amount={room.base_price_dzd} variant="inline" locale={locale} />
       </View>

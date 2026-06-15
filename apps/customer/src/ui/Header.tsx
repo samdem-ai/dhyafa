@@ -12,7 +12,10 @@ import { View, Pressable, StyleSheet, I18nManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import type { Locale } from '@dyafa/i18n';
 import { theme } from '@/theme';
+import { L, pick } from '@/lib/copy';
 import { Heading } from './Text';
 import { tap } from './haptics';
 
@@ -37,12 +40,17 @@ export function Header({
   title,
   showBack = true,
   onBack,
-  backLabel = 'Back',
+  backLabel,
   rightSlot,
   transparent = false,
   testID,
 }: HeaderProps) {
   const insets = useSafeAreaInsets();
+  const { i18n } = useTranslation('common');
+  const locale = (i18n.language ?? 'en') as Locale;
+  // Default the screen-reader back label to the localized "Go back"; an explicit
+  // backLabel prop still overrides per-caller.
+  const resolvedBackLabel = backLabel ?? pick(L.goBack, locale);
 
   function handleBack() {
     tap();
@@ -64,7 +72,7 @@ export function Header({
           {showBack ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={backLabel}
+              accessibilityLabel={resolvedBackLabel}
               onPress={handleBack}
               hitSlop={8}
               style={[styles.backBtn, transparent && styles.backBtnScrim]}

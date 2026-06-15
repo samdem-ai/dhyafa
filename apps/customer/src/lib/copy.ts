@@ -54,6 +54,7 @@ export const L = {
   guests: { ar: 'الضيوف', fr: 'Voyageurs', en: 'Guests' },
   search: { ar: 'بحث', fr: 'Rechercher', en: 'Search' },
   goBack: { ar: 'رجوع', fr: 'Retour', en: 'Go back' },
+  tryAgain: { ar: 'أعد المحاولة', fr: 'Réessayer', en: 'Try again' },
   clear: { ar: 'مسح', fr: 'Effacer', en: 'Clear' },
   maxGuests: { ar: 'الحد الأقصى للضيوف', fr: 'Maximum de voyageurs', en: 'Max guests' },
   done: { ar: 'تم', fr: 'Terminé', en: 'Done' },
@@ -276,6 +277,11 @@ export const L = {
   saved: { ar: 'محفوظ', fr: 'Enregistré', en: 'Saved' },
   saveToWishlist: { ar: 'أضف إلى المفضلة', fr: 'Ajouter aux favoris', en: 'Save to wishlist' },
   removeFromWishlist: { ar: 'إزالة من المفضلة', fr: 'Retirer des favoris', en: 'Remove from wishlist' },
+  wishlistError: {
+    ar: 'تعذّر تحديث المفضلة. حاول مرة أخرى.',
+    fr: 'Impossible de mettre à jour les favoris. Réessayez.',
+    en: 'Could not update your wishlist. Try again.',
+  },
   wishlistsEmptyTitle: { ar: 'احفظ الأماكن التي تحبها', fr: 'Enregistrez les lieux que vous aimez', en: 'Save places you love' },
   wishlistsEmptyBody: {
     ar: 'اضغط على القلب في أي إقامة لحفظها هنا.',
@@ -776,6 +782,11 @@ export const L = {
   payMethodEdahabia: { ar: 'الذهبية', fr: 'Edahabia', en: 'Edahabia' },
   payMethodCib: { ar: 'CIB', fr: 'CIB', en: 'CIB' },
   payMethodBaridiQr: { ar: 'بريدي موب (QR)', fr: 'BaridiMob (QR)', en: 'BaridiMob (QR)' },
+  payProviderNote: {
+    ar: 'الدفع عبر Chargily · Edahabia / CIB',
+    fr: 'Paiement via Chargily · Edahabia / CIB',
+    en: 'Chargily Pay · Edahabia / CIB',
+  },
   payOpenCheckout: { ar: 'أكمل الدفع في المتصفح…', fr: 'Terminez le paiement dans le navigateur…', en: 'Complete payment in the browser…' },
   payWaitingConfirm: { ar: 'بانتظار تأكيد الدفع…', fr: 'En attente de la confirmation…', en: 'Waiting for payment confirmation…' },
   payRefreshStatus: { ar: 'تحديث حالة الدفع', fr: 'Actualiser le statut', en: 'Refresh payment status' },

@@ -246,11 +246,21 @@ export function bookingErrorMessage(err: unknown, locale: Locale): string {
 /** Map a raw Postgres/Supabase error message to a known code. */
 function classifyError(message: string): BookingErrorCode {
   const m = message.toUpperCase();
-  if (m.includes('NO_AVAILABILITY')) return 'NO_AVAILABILITY';
-  if (m.includes('OCCUPANCY_EXCEEDED') || m.includes('OCCUPANCY')) return 'OCCUPANCY_EXCEEDED';
-  if (m.includes('PROPERTY_UNAVAILABLE') || m.includes('UNAVAILABLE')) return 'PROPERTY_UNAVAILABLE';
+  // A closed/blocked date (DATE_CLOSED, CLOSED_TO_ARRIVAL/DEPARTURE) is an
+  // availability problem, not an invalid-input problem — resolve it BEFORE any
+  // generic date check so it never falls through to INVALID_DATES.
+  if (
+    m.includes('NO_AVAILABILITY') ||
+    m.includes('DATE_CLOSED') ||
+    m.includes('CLOSED_TO_ARRIVAL') ||
+    m.includes('CLOSED_TO_DEPARTURE')
+  ) {
+    return 'NO_AVAILABILITY';
+  }
+  if (m.includes('OCCUPANCY')) return 'OCCUPANCY_EXCEEDED';
+  if (m.includes('UNAVAILABLE')) return 'PROPERTY_UNAVAILABLE';
   if (m.includes('MIN_NIGHTS')) return 'MIN_NIGHTS';
-  if (m.includes('INVALID_DATES') || m.includes('DATE')) return 'INVALID_DATES';
+  if (m.includes('INVALID_RANGE') || m.includes('INVALID_DATES')) return 'INVALID_DATES';
   return 'UNKNOWN';
 }
 

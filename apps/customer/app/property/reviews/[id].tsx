@@ -60,7 +60,7 @@ export default function AllReviewsScreen() {
       {detail === undefined ? (
         <ConversationSkeleton />
       ) : error && detail === null ? (
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.search, locale)} />
+        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.tryAgain, locale)} />
       ) : (
         <List<ReviewWithMeta>
           data={reviews}

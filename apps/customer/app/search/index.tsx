@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { View, Pressable, StyleSheet, ScrollView, I18nManager } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, type Locale } from '@dyafa/i18n';
@@ -332,7 +332,11 @@ function FieldRow({
           {value}
         </Text>
       </View>
-      <ChevronRight size={20} color={theme.color.ink300} />
+      <ChevronRight
+        size={20}
+        color={theme.color.ink300}
+        style={{ transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] }}
+      />
     </Pressable>
   );
 }

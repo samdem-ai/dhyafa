@@ -93,7 +93,7 @@ export default function InboxScreen() {
       ) : isLoading || data === undefined ? (
         <SkeletonList count={4} />
       ) : isError ? (
-        <ErrorState message={pick(L.loadError, locale)} onRetry={() => void refetch()} retryLabel={pick(L.search, locale)} />
+        <ErrorState message={pick(L.loadError, locale)} onRetry={() => void refetch()} retryLabel={pick(L.tryAgain, locale)} />
       ) : (
         <FlatList
           data={data}
