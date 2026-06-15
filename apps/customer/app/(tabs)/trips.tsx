@@ -25,10 +25,12 @@ import { useSession } from '@/lib/auth';
 import {
   listMyBookings,
   bookingCoverUrl,
+  isCancellable,
   type BookingWithProperty,
   type TripBucket,
 } from '@/lib/bookings';
 import { localizedName } from '@/lib/discovery';
+import { CancelBookingSheet } from '@/components/CancelBookingSheet';
 import { RemoteImage } from '@/components/RemoteImage';
 import { BookingStatusBadge } from '@/components/discovery';
 import { PrimaryButton, SkeletonList, ErrorState, EmptyState } from '@/components/ui';
@@ -55,6 +57,7 @@ export default function TripsScreen() {
   const [data, setData] = useState<BookingWithProperty[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<BookingWithProperty | null>(null);
 
   const load = useCallback(
     async (b: TripBucket) => {
@@ -130,10 +133,26 @@ export default function TripsScreen() {
             <EmptyState emoji="🧳" title={pick(L.tripsEmptyTitle, locale)} subtitle={pick(L.tripsEmptyBody, locale)} />
           }
           renderItem={({ item }) => (
-            <TripCard booking={item} locale={locale} wilayaName={wilayaNames.get(item.property?.wilaya_code ?? -1) ?? ''} />
+            <TripCard
+              booking={item}
+              locale={locale}
+              wilayaName={wilayaNames.get(item.property?.wilaya_code ?? -1) ?? ''}
+              onCancel={() => setCancelTarget(item)}
+            />
           )}
         />
       )}
+
+      {/* Cancel flow (quote_refund → confirm → cancel_booking) */}
+      {cancelTarget ? (
+        <CancelBookingSheet
+          booking={cancelTarget}
+          visible={cancelTarget != null}
+          onClose={() => setCancelTarget(null)}
+          onCancelled={() => void load(bucket)}
+          locale={locale}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -142,10 +161,12 @@ function TripCard({
   booking,
   locale,
   wilayaName,
+  onCancel,
 }: {
   booking: BookingWithProperty;
   locale: Locale;
   wilayaName: string;
+  onCancel: () => void;
 }) {
   const prop = booking.property;
   const title = prop
@@ -187,6 +208,17 @@ function TripCard({
               onPress={() => router.push(`/review/${booking.id}`)}
             />
           </View>
+        ) : null}
+
+        {isCancellable(booking.status) ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={onCancel}
+            hitSlop={6}
+            style={({ pressed }) => [styles.cancelLink, pressed && styles.cancelLinkPressed]}
+          >
+            <Text style={styles.cancelLinkText}>{pick(L.cancelBookingAction, locale)}</Text>
+          </Pressable>
         ) : null}
       </View>
     </Pressable>
@@ -273,4 +305,13 @@ const styles = StyleSheet.create({
     textAlign,
   },
   cardCta: { marginTop: theme.space.sm },
+  cancelLink: { marginTop: theme.space.sm, alignSelf: 'flex-start', paddingVertical: theme.space.xs },
+  cancelLinkPressed: { opacity: 0.6 },
+  cancelLinkText: {
+    fontFamily: RN_FONTS.arabicSemiBold,
+    fontSize: theme.fontSize['body-sm'],
+    fontWeight: '600',
+    color: theme.color.error,
+    textAlign,
+  },
 });

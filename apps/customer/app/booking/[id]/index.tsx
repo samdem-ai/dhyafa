@@ -23,12 +23,14 @@ import { formatNumber, type Locale } from '@dyafa/i18n';
 import {
   getBookingDetail,
   bookingCoverUrl,
+  isCancellable,
   type BookingWithProperty,
 } from '@/lib/bookings';
 import { localizedName } from '@/lib/discovery';
 import { useSession } from '@/lib/auth';
 import { buildNextPath } from '@/lib/searchParams';
 import { getOrCreateConversation } from '@/lib/messaging';
+import { CancelBookingSheet } from '@/components/CancelBookingSheet';
 import { RemoteImage } from '@/components/RemoteImage';
 import { BookingStatusBadge, PriceBreakdown, type PriceLine } from '@/components/discovery';
 import { Skeleton, ErrorState, EmptyState, PrimaryButton } from '@/components/ui';
@@ -51,6 +53,7 @@ export default function BookingDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [messaging, setMessaging] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const onMessageHost = useCallback(async () => {
     if (!id) return;
@@ -222,6 +225,15 @@ export default function BookingDetailScreen() {
             loading={messaging}
             disabled={messaging}
           />
+          {isCancellable(booking.status) ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setCancelOpen(true)}
+              style={({ pressed }) => [styles.cancelLink, pressed && styles.cancelLinkPressed]}
+            >
+              <Text style={styles.cancelLinkText}>{pick(L.cancelBookingAction, locale)}</Text>
+            </Pressable>
+          ) : null}
           {actionError ? <Text style={styles.actionError}>{actionError}</Text> : null}
         </View>
 
@@ -241,6 +253,15 @@ export default function BookingDetailScreen() {
           />
         </View>
       ) : null}
+
+      {/* Cancel flow (quote_refund → confirm → cancel_booking) */}
+      <CancelBookingSheet
+        booking={booking}
+        visible={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        onCancelled={() => void load()}
+        locale={locale}
+      />
     </SafeAreaView>
   );
 }
@@ -398,6 +419,15 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize['body-sm'],
     color: theme.color.error,
     textAlign,
+  },
+  cancelLink: { alignSelf: 'center', paddingVertical: theme.space.sm, paddingHorizontal: theme.space.md },
+  cancelLinkPressed: { opacity: 0.6 },
+  cancelLinkText: {
+    fontFamily: RN_FONTS.arabicSemiBold,
+    fontSize: theme.fontSize['body-sm'],
+    fontWeight: '600',
+    color: theme.color.error,
+    textAlign: 'center',
   },
 
   codeCard: {

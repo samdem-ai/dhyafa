@@ -378,6 +378,86 @@ export const L = {
     fr: 'Réservez ce logement pour discuter avec l’hôte.',
     en: 'Book this stay to start a conversation with the host.',
   },
+  messageRead: { ar: 'تمت القراءة', fr: 'Lu', en: 'Read' },
+  messageSent: { ar: 'تم الإرسال', fr: 'Envoyé', en: 'Sent' },
+
+  // ── Pre-booking inquiry (start_inquiry) ────────────────────────────────────
+  messageHostSheetTitle: {
+    ar: 'مراسلة المضيف',
+    fr: 'Contacter l’hôte',
+    en: 'Message the host',
+  },
+  messageHostSheetBody: {
+    ar: 'اطرح سؤالك عن الإقامة قبل الحجز.',
+    fr: 'Posez votre question sur le logement avant de réserver.',
+    en: 'Ask the host a question about this stay before you book.',
+  },
+  inquiryPlaceholder: {
+    ar: 'مرحبًا! لدي سؤال حول…',
+    fr: 'Bonjour ! J’ai une question sur…',
+    en: 'Hi! I have a question about…',
+  },
+  inquirySend: { ar: 'إرسال', fr: 'Envoyer', en: 'Send message' },
+  signInToMessage: {
+    ar: 'سجّل الدخول لمراسلة المضيف.',
+    fr: 'Connectez-vous pour contacter l’hôte.',
+    en: 'Sign in to message the host.',
+  },
+  inquiryFailed: {
+    ar: 'تعذّر إرسال الرسالة. حاول مرة أخرى.',
+    fr: 'Impossible d’envoyer le message. Réessayez.',
+    en: 'Could not send your message. Please try again.',
+  },
+  inquiryOwnProperty: {
+    ar: 'لا يمكنك مراسلة نفسك عن إعلانك.',
+    fr: 'Vous ne pouvez pas contacter l’hôte de votre propre annonce.',
+    en: 'You can’t message yourself about your own listing.',
+  },
+  inquiryNotAvailable: {
+    ar: 'هذا الإعلان غير متاح للمراسلة حاليًا.',
+    fr: 'Cette annonce n’est pas disponible pour le moment.',
+    en: 'This listing isn’t available to message right now.',
+  },
+
+  // ── Cancel booking (quote_refund + cancel_booking) ─────────────────────────
+  cancelBookingAction: { ar: 'إلغاء الحجز', fr: 'Annuler la réservation', en: 'Cancel booking' },
+  cancelBookingTitle: {
+    ar: 'إلغاء هذا الحجز؟',
+    fr: 'Annuler cette réservation ?',
+    en: 'Cancel this booking?',
+  },
+  cancelKeep: { ar: 'الاحتفاظ بالحجز', fr: 'Conserver', en: 'Keep booking' },
+  cancelConfirm: { ar: 'تأكيد الإلغاء', fr: 'Confirmer l’annulation', en: 'Confirm cancellation' },
+  cancelRefundFull: {
+    ar: 'سيُسترد المبلغ كاملًا:',
+    fr: 'Vous serez intégralement remboursé :',
+    en: 'You’ll be refunded:',
+  },
+  cancelNoRefund: {
+    ar: 'لا يوجد استرداد لهذا الإلغاء (انتهت نافذة الاسترداد).',
+    fr: 'Aucun remboursement pour cette annulation (délai dépassé).',
+    en: 'No refund applies to this cancellation (the refund window has passed).',
+  },
+  cancelNoChargeYet: {
+    ar: 'لم يُخصم أي مبلغ بعد، لذا لا يوجد استرداد.',
+    fr: 'Aucun paiement n’a encore été effectué, aucun remboursement n’est dû.',
+    en: 'No payment was taken yet, so there’s nothing to refund.',
+  },
+  cancelTierNote: {
+    ar: 'وفق سياسة الإلغاء:',
+    fr: 'Selon la politique d’annulation :',
+    en: 'Per the cancellation policy:',
+  },
+  cancelSuccessNoRefund: {
+    ar: 'تم إلغاء الحجز.',
+    fr: 'Réservation annulée.',
+    en: 'Booking cancelled.',
+  },
+  cancelSuccessRefund: {
+    ar: 'تم إلغاء الحجز. سيُسترد المبلغ.',
+    fr: 'Réservation annulée. Le remboursement est en cours.',
+    en: 'Booking cancelled. Your refund is on the way.',
+  },
 
   // ── Notifications ─────────────────────────────────────────────────────────
   notifications: { ar: 'الإشعارات', fr: 'Notifications', en: 'Notifications' },

@@ -56,6 +56,67 @@ export async function sendMessage(conversationId: string, body: string): Promise
   return data as string;
 }
 
+/**
+ * Mark the counterparty's unread messages in a conversation as read. Returns the
+ * number of messages newly marked (0 when nothing was unread). Used on thread
+ * focus to clear the inbox row + tab badge.
+ */
+export async function markConversationRead(conversationId: string): Promise<number> {
+  const { data, error } = await rpcClient.rpc('mark_conversation_read', {
+    p_conversation_id: conversationId,
+  });
+  if (error) throw new Error(error.message);
+  return typeof data === 'number' ? data : 0;
+}
+
+// ---------------------------------------------------------------------------
+// Pre-booking inquiry (guest → host, no booking required)
+// ---------------------------------------------------------------------------
+
+/** Business error codes start_inquiry raises (mapped to friendly copy). */
+export type InquiryErrorCode =
+  | 'OWN_PROPERTY'
+  | 'PROPERTY_NOT_AVAILABLE'
+  | 'PROPERTY_NOT_FOUND'
+  | 'EMPTY_BODY'
+  | 'NOT_AUTHENTICATED'
+  | 'UNKNOWN';
+
+export class InquiryError extends Error {
+  code: InquiryErrorCode;
+  constructor(code: InquiryErrorCode, message: string) {
+    super(message);
+    this.name = 'InquiryError';
+    this.code = code;
+  }
+}
+
+/** Map a raw Postgres/Supabase error message to a known inquiry code. */
+function classifyInquiryError(message: string): InquiryErrorCode {
+  const m = message.toUpperCase();
+  if (m.includes('OWN_PROPERTY')) return 'OWN_PROPERTY';
+  if (m.includes('PROPERTY_NOT_AVAILABLE')) return 'PROPERTY_NOT_AVAILABLE';
+  if (m.includes('PROPERTY_NOT_FOUND')) return 'PROPERTY_NOT_FOUND';
+  if (m.includes('EMPTY_BODY')) return 'EMPTY_BODY';
+  if (m.includes('NOT_AUTHENTICATED')) return 'NOT_AUTHENTICATED';
+  return 'UNKNOWN';
+}
+
+/**
+ * Start (or reuse) a pre-booking inquiry thread with a property's host and post
+ * the first message. Returns the conversation id. Throws an InquiryError with a
+ * classified code on failure so the caller can show friendly copy.
+ */
+export async function startInquiry(propertyId: string, body: string): Promise<string> {
+  const { data, error } = await rpcClient.rpc('start_inquiry', {
+    p_property_id: propertyId,
+    p_body: body,
+  });
+  if (error) throw new InquiryError(classifyInquiryError(error.message), error.message);
+  if (!data) throw new InquiryError('UNKNOWN', 'no conversation id returned');
+  return data as string;
+}
+
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------
@@ -80,7 +141,9 @@ export interface ConversationListItem {
   property: PropertyLite | null;
   /** The most recent message in the thread (preview). */
   lastMessage: Pick<MessageRow, 'id' | 'body' | 'sender_id' | 'created_at' | 'read_at'> | null;
-  /** True when the newest message was sent by the other party and is unread. */
+  /** Count of incoming (other-party) messages with read_at null. */
+  unreadCount: number;
+  /** True when there is at least one unread incoming message. */
   unread: boolean;
 }
 
@@ -125,7 +188,11 @@ export async function listConversations(myUid: string): Promise<ConversationList
       a.created_at < b.created_at ? 1 : -1,
     );
     const last = messages[0] ?? null;
-    const unread = last != null && last.sender_id !== myUid && last.read_at == null;
+    // Real unread treatment: every incoming message still unread, not just the
+    // newest (so a burst of host replies shows a count, not a single dot).
+    const unreadCount = messages.filter(
+      (m) => m.sender_id !== myUid && m.read_at == null,
+    ).length;
 
     return {
       id: raw.id,
@@ -136,7 +203,8 @@ export async function listConversations(myUid: string): Promise<ConversationList
       otherPartyName,
       property: raw.property,
       lastMessage: last,
-      unread,
+      unreadCount,
+      unread: unreadCount > 0,
     };
   });
 }

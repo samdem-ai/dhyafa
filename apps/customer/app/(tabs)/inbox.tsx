@@ -1,20 +1,21 @@
 /**
- * Inbox tab (M3) — unified conversations list.
+ * Inbox tab (P5b rework onto src/ui).
  *
- * Shows every conversation the signed-in user participates in, whether they are
- * the guest (conversations.guest_id = me) or the host (a host_profile they own).
- * RLS already scopes the rows; we render the other party, property title, the
- * last message + time, and an unread hint. Tapping opens the thread.
+ * Every conversation the signed-in user is part of (guest OR host side; RLS
+ * scopes the rows). Each row uses src/ui Avatar + a two-line ListItem-style
+ * layout: other party + property, last-message preview + time, and a real unread
+ * treatment — bold preview + a count badge when the thread has incoming messages
+ * with read_at null (derived per-conversation from useConversations()).
  *
- * Realtime: subscribes to message INSERTs across the caller's conversations and
- * refreshes the list so previews + ordering stay live. Signed-out users see a
- * sign-in prompt.
+ * Reads from the shared `conversations` TanStack query so the thread's
+ * mark-read invalidation refreshes this list (clears the badge). Realtime message
+ * INSERTs invalidate the same query so previews + ordering stay live. Empty +
+ * signed-out states.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   Pressable,
@@ -22,21 +23,18 @@ import {
   SafeAreaView,
   I18nManager,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
+import { formatNumber, type Locale } from '@dyafa/i18n';
 import type { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
-import type { Locale } from '@dyafa/i18n';
 import { supabaseClient } from '@/lib/supabase';
 import { useSession } from '@/lib/auth';
-import {
-  listConversations,
-  conversationCoverUrl,
-  type ConversationListItem,
-  type MessageRow,
-} from '@/lib/messaging';
+import { useConversations, queryKeys } from '@/lib/queries';
+import { conversationCoverUrl, type ConversationListItem, type MessageRow } from '@/lib/messaging';
 import { localizedName } from '@/lib/discovery';
 import { RemoteImage } from '@/components/RemoteImage';
-import { SkeletonList, ErrorState, EmptyState } from '@/components/ui';
+import { Text, Avatar, SkeletonList, ErrorState, EmptyState } from '@/ui';
 import { NotificationBell } from '@/components/NotificationBell';
 import { L, pick } from '@/lib/copy';
 import { formatDateTime } from '@/lib/dateFormat';
@@ -50,32 +48,13 @@ export default function InboxScreen() {
   const locale = (i18n.language ?? 'en') as Locale;
   const { user, loading: sessionLoading } = useSession();
   const myUid = user?.id ?? null;
+  const qc = useQueryClient();
 
-  const [data, setData] = useState<ConversationListItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, isError, refetch, isRefetching } = useConversations();
+
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!myUid) return;
-    setError(null);
-    try {
-      const rows = await listConversations(myUid);
-      setData(rows);
-    } catch {
-      setError(pick(L.loadError, locale));
-      setData([]);
-    }
-  }, [myUid, locale]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (myUid) {
-        void load();
-      }
-    }, [myUid, load]),
-  );
-
-  // Realtime: any new message refreshes the inbox previews + ordering.
+  // Realtime: any new message refreshes the inbox previews + ordering + unread.
   useEffect(() => {
     if (!myUid) return;
     const channel = supabaseClient
@@ -84,40 +63,45 @@ export default function InboxScreen() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (_payload: RealtimePostgresInsertPayload<MessageRow>) => {
-          void load();
+          void qc.invalidateQueries({ queryKey: queryKeys.conversations(myUid) });
+          void qc.invalidateQueries({ queryKey: ['unreadCounts', myUid] });
         },
       )
       .subscribe();
     return () => {
       void supabaseClient.removeChannel(channel);
     };
-  }, [myUid, load]);
+  }, [myUid, qc]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
+    await refetch();
     setRefreshing(false);
-  }, [load]);
+  }, [refetch]);
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <Text style={styles.title}>{pick(L.inbox, locale)}</Text>
+        <Text variant="title" weight="semibold" color="primary" style={styles.title}>
+          {pick(L.inbox, locale)}
+        </Text>
         <NotificationBell locale={locale} />
       </View>
 
       {!user && !sessionLoading ? (
         <EmptyState emoji="💬" title={pick(L.inbox, locale)} subtitle={pick(L.signInToSeeInbox, locale)} />
-      ) : data === null ? (
+      ) : isLoading || data === undefined ? (
         <SkeletonList count={4} />
-      ) : error && data.length === 0 ? (
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.search, locale)} />
+      ) : isError ? (
+        <ErrorState message={pick(L.loadError, locale)} onRetry={() => void refetch()} retryLabel={pick(L.search, locale)} />
       ) : (
         <FlatList
           data={data}
           keyExtractor={(c) => c.id}
           contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}
+          refreshControl={
+            <RefreshControl refreshing={refreshing || isRefetching} onRefresh={() => void onRefresh()} />
+          }
           ListEmptyComponent={
             <EmptyState emoji="💬" title={pick(L.inboxEmptyTitle, locale)} subtitle={pick(L.inboxEmptyBody, locale)} />
           }
@@ -136,33 +120,61 @@ function ConversationRow({ item, locale }: { item: ConversationListItem; locale:
       )
     : '';
   const cover = conversationCoverUrl(item);
-  const preview = item.lastMessage?.body ?? '';
+  const name = item.otherPartyName || pick(L.messages, locale);
+  const preview = item.lastMessage?.body ?? pick(L.noMessagesYet, locale);
   const time = item.lastMessage ? formatDateTime(item.lastMessage.created_at, locale) : '';
+  const unread = item.unread;
 
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={name}
       onPress={() => router.push(`/conversation/${item.id}`)}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
-      <RemoteImage uri={cover} alt={propertyTitle} radius={theme.radius.md} style={styles.thumb} />
+      {cover ? (
+        <RemoteImage uri={cover} alt={propertyTitle} radius={theme.radius.md} style={styles.thumb} />
+      ) : (
+        <Avatar name={name} size="lg" />
+      )}
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
-          <Text style={[styles.name, item.unread && styles.unreadName]} numberOfLines={1}>
-            {item.otherPartyName || pick(L.messages, locale)}
+          <Text
+            variant="body"
+            weight={unread ? 'bold' : 'semibold'}
+            numberOfLines={1}
+            style={styles.name}
+          >
+            {name}
           </Text>
-          {time ? <Text style={styles.time}>{time}</Text> : null}
+          {time ? (
+            <Text variant="overline" color={unread ? 'accent' : 'textMuted'}>
+              {time}
+            </Text>
+          ) : null}
         </View>
         {propertyTitle ? (
-          <Text style={styles.property} numberOfLines={1}>
+          <Text variant="caption" color="textMuted" numberOfLines={1} style={styles.property}>
             {propertyTitle}
           </Text>
         ) : null}
         <View style={styles.rowBottom}>
-          <Text style={[styles.preview, item.unread && styles.unreadPreview]} numberOfLines={1}>
+          <Text
+            variant="body-sm"
+            weight={unread ? 'semibold' : 'regular'}
+            color={unread ? 'text' : 'textMuted'}
+            numberOfLines={1}
+            style={styles.preview}
+          >
             {preview}
           </Text>
-          {item.unread ? <View style={styles.unreadDot} /> : null}
+          {unread ? (
+            <View style={styles.unreadBadge}>
+              <Text variant="overline" weight="bold" color="textOnPrimary">
+                {formatNumber(item.unreadCount, locale)}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
     </Pressable>
@@ -185,7 +197,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: RN_FONTS.displaySemiBold,
     fontSize: theme.fontSize['heading-1'],
-    color: theme.color.primary,
     textAlign,
   },
 
@@ -193,6 +204,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: theme.space.md,
+    alignItems: 'center',
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.card,
     padding: theme.space.md,
@@ -206,35 +218,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: theme.space.sm,
   },
-  name: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  unreadName: { color: theme.color.text },
-  time: { fontFamily: RN_FONTS.bodyRegular, fontSize: theme.fontSize.overline, color: theme.color.textMuted },
-  property: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign,
-  },
+  name: { flex: 1, textAlign },
+  property: { textAlign },
   rowBottom: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
-  preview: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  unreadPreview: { color: theme.color.text, fontFamily: RN_FONTS.arabicSemiBold, fontWeight: '600' },
-  unreadDot: {
-    width: 9,
-    height: 9,
+  preview: { flex: 1, textAlign },
+  unreadBadge: {
+    minWidth: 20,
+    height: 20,
     borderRadius: theme.radius.pill,
+    paddingHorizontal: 6,
     backgroundColor: theme.color.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

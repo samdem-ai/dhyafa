@@ -28,6 +28,7 @@ import {
   type PropertySummary,
 } from './discovery';
 import {
+  cancelBooking,
   listMyBookings,
   type BookingWithProperty,
   type TripBucket,
@@ -150,6 +151,33 @@ export function useMyBookings(bucket?: TripBucket): UseQueryResult<BookingWithPr
     queryKey: queryKeys.myBookings(uid ?? 'anon', bucket),
     queryFn: () => listMyBookings(bucket),
     enabled: uid != null,
+  });
+}
+
+export interface CancelBookingVars {
+  bookingId: string;
+  reason?: string | null;
+}
+
+/**
+ * Cancel a booking and refresh the trips + badges. Returns the refund amount in
+ * whole DZD. After settle we invalidate ALL myBookings buckets (the row moves to
+ * the Cancelled tab) and the unread-counts query (a cancelled awaiting_payment no
+ * longer needs the guest's attention). No optimistic update — the status change
+ * is server-authoritative and the action is confirmed behind a sheet.
+ */
+export function useCancelBooking(): UseMutationResult<number, Error, CancelBookingVars> {
+  const { user } = useSession();
+  const uid = user?.id ?? null;
+  const qc = useQueryClient();
+  return useMutation<number, Error, CancelBookingVars>({
+    mutationFn: ({ bookingId, reason }) => cancelBooking(bookingId, reason),
+    onSuccess: () => {
+      if (uid) {
+        void qc.invalidateQueries({ queryKey: ['myBookings', uid] });
+        void qc.invalidateQueries({ queryKey: ['unreadCounts', uid] });
+      }
+    },
   });
 }
 

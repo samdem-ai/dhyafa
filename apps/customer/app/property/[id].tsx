@@ -12,9 +12,9 @@
  * Language fallback (ar→fr→en) is indicated when content is shown in another
  * language than the active UI locale.
  *
- * The header carries a wishlist heart (Phase 5a). TODO(Phase 5b): a pre-booking
- *   "inquiry" message to the host without a booking (start_inquiry RPC), so
- *   "Message host" is intentionally omitted here until that lands.
+ * The header carries a wishlist heart (Phase 5a). A "Message host" action (P5b)
+ *   opens a compose sheet → start_inquiry RPC → routes to the new thread. Signed-
+ *   out guests are sent to sign-in with a `next` back to this property.
  */
 
 import { useCallback, useMemo, useState } from 'react';
@@ -35,6 +35,8 @@ import {
 } from '@/lib/discovery';
 import { priceQuote, nightsBetween, toDateParam, type PriceQuote } from '@/lib/bookings';
 import { categoryAverage, overallAverage, REVIEW_CATEGORIES, type ReviewCategory } from '@/lib/reviews';
+import { startInquiry, InquiryError } from '@/lib/messaging';
+import { useSession } from '@/lib/auth';
 import { GuestStepperRow } from '@/components/discovery';
 import { DateRangePicker } from '@/components/Calendar';
 import { ReviewItem } from '@/components/ReviewItem';
@@ -49,14 +51,16 @@ import {
   RatingStars,
   PriceText,
   BottomSheet,
+  TextField,
   PhotoGallery,
   DetailSkeleton,
   ErrorState,
   EmptyState,
   WishlistHeart,
+  haptics,
 } from '@/ui';
 import { L, pick, type LMessage } from '@/lib/copy';
-import { fromParams, parseDate } from '@/lib/searchParams';
+import { fromParams, parseDate, buildNextPath } from '@/lib/searchParams';
 import { formatRange, formatTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
 
@@ -75,7 +79,7 @@ const REVIEW_CAT_LABEL: Record<ReviewCategory, keyof typeof L> = {
   checkin: 'reviewCheckin',
 };
 
-type Sheet = 'dates' | 'guests' | null;
+type Sheet = 'dates' | 'guests' | 'inquiry' | null;
 
 export default function PropertyDetailScreen() {
   const { i18n } = useTranslation('common');
@@ -83,6 +87,7 @@ export default function PropertyDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = params.id;
   const searchState = fromParams(params as Record<string, string | undefined>);
+  const { user } = useSession();
 
   const [detail, setDetail] = useState<PropertyDetail | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +98,9 @@ export default function PropertyDetailScreen() {
   const [children, setChildren] = useState<number>(searchState.children ?? 0);
   const [roomTypeId, setRoomTypeId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [inquiryBody, setInquiryBody] = useState('');
+  const [inquirySending, setInquirySending] = useState(false);
+  const [inquiryError, setInquiryError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -211,6 +219,45 @@ export default function PropertyDetailScreen() {
 
   const ctaLabel = detail.instant_book ? pick(L.confirmAndBook, locale) : pick(L.reserve, locale);
 
+  function onMessageHost() {
+    // Signed-out → sign-in, resuming back to this property afterwards.
+    if (!user) {
+      router.push({
+        pathname: '/(auth)/sign-in',
+        params: { next: buildNextPath(`/property/${id}`, {}) },
+      });
+      return;
+    }
+    setInquiryError(null);
+    setSheet('inquiry');
+  }
+
+  async function onSendInquiry() {
+    const body = inquiryBody.trim();
+    if (!body || !id || inquirySending) return;
+    setInquirySending(true);
+    setInquiryError(null);
+    try {
+      const conversationId = await startInquiry(id, body);
+      haptics.success();
+      setSheet(null);
+      setInquiryBody('');
+      router.push(`/conversation/${conversationId}`);
+    } catch (e) {
+      haptics.error();
+      const code = e instanceof InquiryError ? e.code : 'UNKNOWN';
+      const msg =
+        code === 'OWN_PROPERTY'
+          ? pick(L.inquiryOwnProperty, locale)
+          : code === 'PROPERTY_NOT_AVAILABLE' || code === 'PROPERTY_NOT_FOUND'
+            ? pick(L.inquiryNotAvailable, locale)
+            : pick(L.inquiryFailed, locale);
+      setInquiryError(msg);
+    } finally {
+      setInquirySending(false);
+    }
+  }
+
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -327,6 +374,15 @@ export default function PropertyDetailScreen() {
             </Text>
           </Section>
 
+          {/* Message host (pre-booking inquiry) */}
+          <View style={styles.messageHostWrap}>
+            <Button
+              label={pick(L.messageHost, locale)}
+              variant="secondary"
+              onPress={onMessageHost}
+            />
+          </View>
+
           {/* Reviews (from joined detail.reviews — no second fetch) */}
           <Reviews detail={detail} locale={locale} />
         </View>
@@ -394,6 +450,31 @@ export default function PropertyDetailScreen() {
           ) : null}
         </View>
         <Button label={pick(L.done, locale)} onPress={() => setSheet(null)} disabled={occupancyExceeded} />
+      </BottomSheet>
+
+      {/* Message host — pre-booking inquiry compose */}
+      <BottomSheet visible={sheet === 'inquiry'} onClose={() => setSheet(null)} dismissible={!inquirySending}>
+        <View style={styles.inquirySheet}>
+          <Heading level={3}>{pick(L.messageHostSheetTitle, locale)}</Heading>
+          <Text variant="body" color="textMuted">
+            {pick(L.messageHostSheetBody, locale)}
+          </Text>
+          <TextField
+            value={inquiryBody}
+            onChangeText={setInquiryBody}
+            placeholder={pick(L.inquiryPlaceholder, locale)}
+            multiline
+            error={inquiryError ?? undefined}
+            autoCapitalize="sentences"
+          />
+          <Button
+            label={pick(L.inquirySend, locale)}
+            variant="tertiary"
+            onPress={() => void onSendInquiry()}
+            loading={inquirySending}
+            disabled={inquiryBody.trim().length === 0}
+          />
+        </View>
       </BottomSheet>
     </View>
   );
@@ -796,9 +877,13 @@ const styles = StyleSheet.create({
   widgetTap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   widgetCta: { minWidth: 140 },
 
+  // Message host
+  messageHostWrap: { marginTop: theme.space.xl },
+
   // Sheets
   sheetTitle: { marginBottom: theme.space.sm },
   calendarWrap: { height: 420, marginVertical: theme.space.sm },
   guestRows: { marginVertical: theme.space.md, gap: theme.space.md },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border },
+  inquirySheet: { gap: theme.space.md, paddingTop: theme.space.sm },
 });

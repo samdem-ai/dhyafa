@@ -1,21 +1,27 @@
 /**
- * Message thread (M3).
+ * Message thread (P5b rework onto src/ui).
  *
- * Loads the conversation header (other party + property title) and its messages,
- * renders them as bubbles aligned by sender, and lets the participant send a
- * message via send_message (which auto-notifies the other party).
+ * Renders the conversation as bubbles aligned by sender — mine (teal, end-aligned)
+ * vs theirs (surface, start-aligned, with the sender's Avatar + name) — with
+ * per-bubble timestamps and a read indicator under my latest sent message.
  *
- * Realtime: subscribes to INSERTs on `messages` filtered to this conversation and
- * appends new rows live (deduped by id, so the optimistic insert from our own
- * send doesn't double up). The channel is torn down on unmount.
+ * Read-state: on focus we call mark_conversation_read(id), then invalidate the
+ * `conversations` + `unreadCounts` queries so the inbox row and tab badge clear.
+ *
+ * Sending: OPTIMISTIC — a temp bubble appends immediately (pending), then the
+ * RPC resolves and we reconcile (swap the temp id for the real one) or roll back
+ * on failure. Realtime INSERTs for THIS conversation append live; dedupe keys on
+ * both the real id AND the optimistic body+sender so the echo of my own send
+ * never double-renders.
+ *
+ * Keyboard-avoiding compose bar, auto-scroll to newest, signed-out guard via the
+ * stack layout (this screen also no-ops cleanly without a user).
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  SafeAreaView,
   Pressable,
   TextInput,
   FlatList,
@@ -23,8 +29,10 @@ import {
   Platform,
   I18nManager,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, ArrowRight, Send, Check, CheckCheck } from 'lucide-react-native';
 import type { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
 import type { Locale } from '@dyafa/i18n';
 import { supabaseClient } from '@/lib/supabase';
@@ -32,17 +40,26 @@ import { useSession } from '@/lib/auth';
 import {
   getConversationHeader,
   listMessages,
+  markConversationRead,
   sendMessage,
   type ConversationHeader,
   type MessageRow,
 } from '@/lib/messaging';
-import { Skeleton, ErrorState } from '@/components/ui';
+import { queryKeys } from '@/lib/queries';
+import { Screen, Text, Avatar, Skeleton, ErrorState, useToast, haptics } from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { formatDateTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const textAlign = I18nManager.isRTL ? 'right' : 'left';
+
+/** A message in the UI list — a real row plus an optional optimistic flag. */
+type UiMessage = MessageRow & { pending?: boolean; failed?: boolean };
+
+/** Stable id for an optimistic bubble before the server assigns one. */
+function tempId(): string {
+  return `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export default function ConversationScreen() {
   const { i18n } = useTranslation('common');
@@ -50,22 +67,39 @@ export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useSession();
   const myUid = user?.id ?? null;
+  const qc = useQueryClient();
+  const toast = useToast();
 
   const [header, setHeader] = useState<ConversationHeader | null>(null);
-  const [messages, setMessages] = useState<MessageRow[] | null>(null);
+  const [messages, setMessages] = useState<UiMessage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
-  const listRef = useRef<FlatList<MessageRow>>(null);
+  const listRef = useRef<FlatList<UiMessage>>(null);
+  // Bodies of in-flight optimistic sends, to dedupe the realtime echo.
+  const pendingBodies = useRef<Set<string>>(new Set());
 
-  /** Append a message if it isn't already present (dedupe by id). */
-  const appendMessage = useCallback((m: MessageRow) => {
+  /** Append a server/realtime message, deduping by id AND optimistic echo. */
+  const appendIncoming = useCallback((m: MessageRow) => {
     setMessages((prev) => {
       const list = prev ?? [];
       if (list.some((x) => x.id === m.id)) return list;
+      // If this is the echo of one of my optimistic sends still showing as a
+      // temp bubble, replace that temp bubble in place rather than appending.
+      if (m.sender_id === myUid && pendingBodies.current.has(m.body ?? '')) {
+        pendingBodies.current.delete(m.body ?? '');
+        const idx = list.findIndex(
+          (x) => x.pending && x.sender_id === m.sender_id && x.body === m.body,
+        );
+        if (idx >= 0) {
+          const next = [...list];
+          next[idx] = m;
+          return next;
+        }
+      }
       return [...list, m];
     });
-  }, []);
+  }, [myUid]);
 
   const load = useCallback(async () => {
     if (!id || !myUid) return;
@@ -87,7 +121,31 @@ export default function ConversationScreen() {
     void load();
   }, [load]);
 
-  // Realtime: live-append inserts for this conversation.
+  // On focus: mark the counterparty's messages read, then clear the inbox row +
+  // tab badge. Guarded so it runs once per focus, not on every render.
+  useFocusEffect(
+    useCallback(() => {
+      if (!id || !myUid) return;
+      let active = true;
+      void (async () => {
+        try {
+          const n = await markConversationRead(id);
+          if (!active) return;
+          if (n > 0) {
+            void qc.invalidateQueries({ queryKey: queryKeys.conversations(myUid) });
+            void qc.invalidateQueries({ queryKey: ['unreadCounts', myUid] });
+          }
+        } catch {
+          // Read-marking is best-effort; never surface an error for it.
+        }
+      })();
+      return () => {
+        active = false;
+      };
+    }, [id, myUid, qc]),
+  );
+
+  // Realtime: live-append INSERTs for this conversation only.
   useEffect(() => {
     if (!id) return;
     const channel = supabaseClient
@@ -96,7 +154,12 @@ export default function ConversationScreen() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${id}` },
         (payload: RealtimePostgresInsertPayload<MessageRow>) => {
-          appendMessage(payload.new);
+          appendIncoming(payload.new);
+          // An incoming message from the other party while we're viewing the
+          // thread → mark it read immediately so it never lands as unread.
+          if (myUid && payload.new.sender_id !== myUid) {
+            void markConversationRead(id).catch(() => undefined);
+          }
         },
       )
       .subscribe();
@@ -104,48 +167,95 @@ export default function ConversationScreen() {
     return () => {
       void supabaseClient.removeChannel(channel);
     };
-  }, [id, appendMessage]);
+  }, [id, appendIncoming, myUid]);
 
-  // Keep the newest message in view.
+  // Keep the newest message in view as the list grows.
   useEffect(() => {
     if (messages && messages.length > 0) {
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     }
   }, [messages]);
 
-  async function onSend() {
+  const onSend = useCallback(async () => {
     const body = draft.trim();
-    if (!body || !id) return;
+    if (!body || !id || !myUid || sending) return;
+
+    const temp: UiMessage = {
+      id: tempId(),
+      conversation_id: id,
+      sender_id: myUid,
+      body,
+      read_at: null,
+      created_at: new Date().toISOString(),
+      deleted_at: null,
+      attachment_path: null,
+      pending: true,
+    };
+    const tmpKey = temp.id;
+    pendingBodies.current.add(body);
+    setMessages((prev) => [...(prev ?? []), temp]);
+    setDraft('');
     setSending(true);
-    setError(null);
+    haptics.tap();
+
     try {
-      await sendMessage(id, body);
-      setDraft('');
-      // The realtime INSERT will append it; refresh as a fallback in case the
-      // socket is delayed/unavailable.
-      const msgs = await listMessages(id);
-      setMessages(msgs);
+      const newId = await sendMessage(id, body);
+      // Reconcile: stamp the real id + clear pending. If the realtime echo
+      // already landed (same body), it removed our pendingBodies entry and may
+      // have replaced the temp — handle both by id-keying the swap.
+      setMessages((prev) => {
+        const list = prev ?? [];
+        if (list.some((x) => x.id === newId)) {
+          // Echo already inserted the real row; drop the temp if still present.
+          return list.filter((x) => x.id !== tmpKey);
+        }
+        return list.map((x) => (x.id === tmpKey ? { ...x, id: newId, pending: false } : x));
+      });
+      pendingBodies.current.delete(body);
     } catch {
-      setError(pick(L.messageFailed, locale));
+      // Roll back: mark the temp bubble as failed, restore the draft.
+      pendingBodies.current.delete(body);
+      setMessages((prev) =>
+        (prev ?? []).map((x) => (x.id === tmpKey ? { ...x, pending: false, failed: true } : x)),
+      );
+      haptics.error();
+      toast.show({ message: pick(L.messageFailed, locale), tone: 'error' });
     } finally {
       setSending(false);
     }
-  }
+  }, [draft, id, myUid, sending, locale, toast]);
 
   const title = header?.otherPartyName || pick(L.messages, locale);
+  const BackIcon = I18nManager.isRTL ? ArrowRight : ArrowLeft;
+
+  // Index of my last non-failed sent message — only it shows the read indicator.
+  const lastMineIndex = useMemo(() => {
+    if (!messages) return -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m && m.sender_id === myUid && !m.failed) return i;
+    }
+    return -1;
+  }, [messages, myUid]);
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <Screen edges={['top']}>
       <View style={styles.topBar}>
-        <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.topBack}>{I18nManager.isRTL ? '→' : '←'}</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={pick(L.goBack, locale)}
+          onPress={() => router.back()}
+          hitSlop={8}
+          style={styles.backBtn}
+        >
+          <BackIcon size={24} color={theme.color.text} />
         </Pressable>
         <View style={styles.topTitleWrap}>
-          <Text style={styles.topTitle} numberOfLines={1}>
+          <Text variant="title" weight="semibold" numberOfLines={1} style={styles.topTitle}>
             {title}
           </Text>
           {header?.propertyTitle ? (
-            <Text style={styles.topSubtitle} numberOfLines={1}>
+            <Text variant="caption" color="textMuted" numberOfLines={1} style={styles.topSubtitle}>
               {header.propertyTitle}
             </Text>
           ) : null}
@@ -173,20 +283,25 @@ export default function ConversationScreen() {
             keyExtractor={(m) => m.id}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             ListEmptyComponent={
               <View style={styles.emptyWrap}>
-                <Text style={styles.emptyText}>{pick(L.noMessagesYet, locale)}</Text>
+                <Text variant="body" color="textMuted" style={styles.emptyText}>
+                  {pick(L.noMessagesYet, locale)}
+                </Text>
               </View>
             }
-            renderItem={({ item }) => (
-              <MessageBubble message={item} mine={item.sender_id === myUid} locale={locale} />
+            renderItem={({ item, index }) => (
+              <MessageBubble
+                message={item}
+                mine={item.sender_id === myUid}
+                showReadIndicator={index === lastMineIndex}
+                otherPartyName={header?.otherPartyName ?? ''}
+                locale={locale}
+              />
             )}
           />
         )}
-
-        {error && messages && messages.length > 0 ? (
-          <Text style={styles.inlineError}>{error}</Text>
-        ) : null}
 
         {/* Composer */}
         <View style={styles.composer}>
@@ -211,37 +326,70 @@ export default function ConversationScreen() {
               pressed && styles.sendBtnPressed,
             ]}
           >
-            <Text style={styles.sendGlyph}>{I18nManager.isRTL ? '➤' : '➤'}</Text>
+            <Send
+              size={18}
+              color={theme.color.textOnPrimary}
+              style={{ transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] }}
+            />
           </Pressable>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
 function MessageBubble({
   message,
   mine,
+  showReadIndicator,
+  otherPartyName,
   locale,
 }: {
-  message: MessageRow;
+  message: UiMessage;
   mine: boolean;
+  showReadIndicator: boolean;
+  otherPartyName: string;
   locale: Locale;
 }) {
+  const read = message.read_at != null;
   return (
     <View style={[styles.bubbleRow, mine ? styles.bubbleRowMine : styles.bubbleRowTheirs]}>
-      <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
-        <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>{message.body ?? ''}</Text>
-        <Text style={[styles.bubbleTime, mine && styles.bubbleTimeMine]}>
-          {formatDateTime(message.created_at, locale)}
-        </Text>
+      {!mine ? <Avatar name={otherPartyName} size="sm" /> : null}
+      <View style={styles.bubbleCol}>
+        <View
+          style={[
+            styles.bubble,
+            mine ? styles.bubbleMine : styles.bubbleTheirs,
+            message.failed && styles.bubbleFailed,
+            message.pending && styles.bubblePending,
+          ]}
+        >
+          <Text variant="body" color={mine ? 'textOnPrimary' : 'text'} style={styles.bubbleText}>
+            {message.body ?? ''}
+          </Text>
+        </View>
+        <View style={[styles.metaRow, mine ? styles.metaRowMine : styles.metaRowTheirs]}>
+          <Text variant="overline" color="textMuted">
+            {message.pending
+              ? '…'
+              : message.failed
+                ? pick(L.messageFailed, locale)
+                : formatDateTime(message.created_at, locale)}
+          </Text>
+          {mine && showReadIndicator && !message.pending && !message.failed ? (
+            read ? (
+              <CheckCheck size={13} color={theme.color.accent} />
+            ) : (
+              <Check size={13} color={theme.color.textMuted} />
+            )
+          ) : null}
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
   flex: { flex: 1 },
 
   topBar: {
@@ -250,76 +398,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.space.lg,
     paddingVertical: theme.space.md,
     gap: theme.space.md,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.color.border,
     backgroundColor: theme.color.surface,
   },
-  topBack: { fontFamily: RN_FONTS.bodyBold, fontSize: theme.fontSize['heading-3'], color: theme.color.text },
+  backBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   topTitleWrap: { flex: 1 },
-  topTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  topSubtitle: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  topSpacer: { width: 24 },
+  topTitle: { textAlign },
+  topSubtitle: { textAlign },
+  topSpacer: { width: 28 },
 
   loading: { padding: theme.space.xl, gap: theme.space.md },
   skBubbleL: { height: 48, width: '70%', borderRadius: theme.radius.card, alignSelf: 'flex-start' },
   skBubbleR: { height: 48, width: '60%', borderRadius: theme.radius.card, alignSelf: 'flex-end' },
 
-  listContent: { padding: theme.space.lg, gap: theme.space.sm, flexGrow: 1 },
+  listContent: { padding: theme.space.lg, gap: theme.space.md, flexGrow: 1 },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.space['2xl'] },
-  emptyText: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.textMuted,
-    textAlign: 'center',
-  },
+  emptyText: { textAlign: 'center' },
 
-  bubbleRow: { flexDirection: 'row' },
+  bubbleRow: { flexDirection: 'row', alignItems: 'flex-end', gap: theme.space.sm },
   bubbleRowMine: { justifyContent: 'flex-end' },
   bubbleRowTheirs: { justifyContent: 'flex-start' },
+  bubbleCol: { maxWidth: '80%', gap: 2 },
   bubble: {
-    maxWidth: '80%',
     borderRadius: theme.radius.card,
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.space.sm,
-    gap: 2,
   },
-  bubbleMine: { backgroundColor: theme.color.primary },
-  bubbleTheirs: { backgroundColor: theme.color.surface, ...theme.shadow.xs },
-  bubbleText: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    lineHeight: theme.lineHeight.body,
-    textAlign,
-  },
-  bubbleTextMine: { color: theme.color.textOnPrimary },
-  bubbleTime: {
-    fontFamily: RN_FONTS.bodyRegular,
-    fontSize: theme.fontSize.overline,
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  bubbleTimeMine: { color: theme.color.teal100 },
-
-  inlineError: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.error,
-    paddingHorizontal: theme.space.lg,
-    paddingBottom: theme.space.xs,
-    textAlign,
-  },
+  bubbleMine: { backgroundColor: theme.color.primary, borderBottomRightRadius: theme.radius.sm },
+  bubbleTheirs: { backgroundColor: theme.color.surface, borderBottomLeftRadius: theme.radius.sm, ...theme.shadow.xs },
+  bubblePending: { opacity: 0.7 },
+  bubbleFailed: { backgroundColor: theme.color.errorBg },
+  bubbleText: { lineHeight: theme.lineHeight.body, textAlign },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaRowMine: { justifyContent: 'flex-end' },
+  metaRowTheirs: { justifyContent: 'flex-start' },
 
   composer: {
     flexDirection: 'row',
@@ -327,20 +440,21 @@ const styles = StyleSheet.create({
     gap: theme.space.sm,
     paddingHorizontal: theme.space.lg,
     paddingVertical: theme.space.md,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.color.border,
     backgroundColor: theme.color.surface,
   },
   input: {
     flex: 1,
     maxHeight: 120,
+    minHeight: 44,
     backgroundColor: theme.color.surfaceSunken,
     borderRadius: theme.radius.lg,
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.space.sm,
-    fontFamily: RN_FONTS.arabicRegular,
     fontSize: theme.fontSize.body,
     color: theme.color.text,
+    writingDirection: I18nManager.isRTL ? 'rtl' : 'ltr',
   },
   sendBtn: {
     width: 44,
@@ -352,9 +466,4 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { opacity: 0.4 },
   sendBtnPressed: { opacity: 0.85 },
-  sendGlyph: {
-    fontSize: 18,
-    color: theme.color.textOnPrimary,
-    transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }],
-  },
 });

@@ -480,6 +480,102 @@ export function paymentErrorMessage(code: PaymentErrorCode, locale: Locale): str
   return locale === 'fr' ? copy.fr : locale === 'en' ? copy.en : copy.ar;
 }
 
+// ---------------------------------------------------------------------------
+// Cancellation: quote_refund + cancel_booking (both return DZD; see §3/§6 RPCs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Statuses a GUEST may cancel from the app. cancel_booking permits
+ * requested / awaiting_payment (no money moved) and confirmed (refund engine);
+ * any other status raises ILLEGAL_TRANSITION, so we never offer the action.
+ */
+const GUEST_CANCELLABLE: BookingStatus[] = ['requested', 'awaiting_payment', 'confirmed'];
+
+/** True when this booking is in a state a guest can cancel. */
+export function isCancellable(status: BookingStatus): boolean {
+  return GUEST_CANCELLABLE.includes(status);
+}
+
+/**
+ * Quote the refund (whole DZD) for cancelling a booking now. Table-driven from
+ * the booking's cancellation tier + hours-before-check-in. Returns 0 when the
+ * refund window has closed. Pre-payment bookings (no money captured) also quote
+ * a value but cancel_booking will move no money for them.
+ */
+export async function quoteRefund(bookingId: string): Promise<number> {
+  const { data, error } = await supabaseClient.rpc('quote_refund', { p_booking_id: bookingId });
+  if (error) throw new CancelError(classifyCancelError(error.message), error.message);
+  return typeof data === 'number' ? data : 0;
+}
+
+/** Known business error codes cancel_booking / quote_refund raise. */
+export type CancelErrorCode =
+  | 'NOT_FOUND'
+  | 'FORBIDDEN'
+  | 'ILLEGAL_TRANSITION'
+  | 'UNKNOWN';
+
+export class CancelError extends Error {
+  code: CancelErrorCode;
+  constructor(code: CancelErrorCode, message: string) {
+    super(message);
+    this.name = 'CancelError';
+    this.code = code;
+  }
+}
+
+const CANCEL_ERROR_COPY: Record<CancelErrorCode, { ar: string; fr: string; en: string }> = {
+  NOT_FOUND: {
+    ar: 'تعذّر العثور على الحجز.',
+    fr: 'Réservation introuvable.',
+    en: 'Booking not found.',
+  },
+  FORBIDDEN: {
+    ar: 'لا يمكنك إلغاء هذا الحجز.',
+    fr: 'Vous ne pouvez pas annuler cette réservation.',
+    en: 'You can’t cancel this booking.',
+  },
+  ILLEGAL_TRANSITION: {
+    ar: 'لا يمكن إلغاء هذا الحجز في حالته الحالية.',
+    fr: 'Cette réservation ne peut pas être annulée dans son état actuel.',
+    en: 'This booking can’t be cancelled in its current state.',
+  },
+  UNKNOWN: {
+    ar: 'تعذّر إلغاء الحجز. حاول مرة أخرى.',
+    fr: 'Impossible d’annuler la réservation. Réessayez.',
+    en: 'Could not cancel the booking. Please try again.',
+  },
+};
+
+/** Map a raw Postgres/Supabase error message to a known cancel code. */
+function classifyCancelError(message: string): CancelErrorCode {
+  const m = message.toUpperCase();
+  if (m.includes('ILLEGAL_TRANSITION')) return 'ILLEGAL_TRANSITION';
+  if (m.includes('FORBIDDEN')) return 'FORBIDDEN';
+  if (m.includes('NOT_FOUND')) return 'NOT_FOUND';
+  return 'UNKNOWN';
+}
+
+/** Friendly localized message for a cancel error. */
+export function cancelErrorMessage(err: unknown, locale: Locale): string {
+  const code = err instanceof CancelError ? err.code : 'UNKNOWN';
+  const copy = CANCEL_ERROR_COPY[code];
+  return locale === 'fr' ? copy.fr : locale === 'en' ? copy.en : copy.ar;
+}
+
+/**
+ * Cancel a booking. Returns the refund amount in whole DZD (0 for pre-payment
+ * cancels). Throws a CancelError with a classified code on failure.
+ */
+export async function cancelBooking(bookingId: string, reason?: string | null): Promise<number> {
+  const { data, error } = await supabaseClient.rpc('cancel_booking', {
+    p_booking_id: bookingId,
+    p_reason: reason ?? undefined,
+  });
+  if (error) throw new CancelError(classifyCancelError(error.message), error.message);
+  return typeof data === 'number' ? data : 0;
+}
+
 /** Cover URL for a booking's property. */
 export function bookingCoverUrl(b: BookingWithProperty): string | null {
   const prop = b.property;
