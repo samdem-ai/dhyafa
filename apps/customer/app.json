@@ -3,6 +3,7 @@
     "name": "Dyafa",
     "slug": "dyafa-customer",
     "version": "0.1.0",
+    "runtimeVersion": "1.0.0",
     "scheme": "dyafa",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
