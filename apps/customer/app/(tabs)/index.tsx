@@ -1,21 +1,20 @@
 /**
- * Explore landing (Phase 2 — single-fetch rework).
+ * Explore landing (Phase 2 — single-fetch rework; redesigned Phase 8).
  *
  * A search-entry bar (opens the search modal) + curated rails over the approved
- * listings. ALL rails are now derived CLIENT-SIDE from ONE cached
- * useApprovedProperties() result (TanStack Query) — the old screen ran ~6 full
- * table reads per load (4× searchProperties + 2 wilaya lookups, each re-reading
- * the whole approved set with joins). Pull-to-refresh refetches the single
- * cached query.
+ * listings. ALL rails are derived CLIENT-SIDE from ONE cached
+ * useApprovedProperties() result (TanStack Query). Pull-to-refresh refetches the
+ * single cached query.
  *
  * Each rail's "see all" + its context (wilaya / property type) is wired into
  * /search/results via typed params so the results screen scopes correctly.
  */
 
 import { useMemo } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, I18nManager } from 'react-native';
+import { View, ScrollView, StyleSheet, Pressable, I18nManager } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Search, ChevronRight } from 'lucide-react-native';
 import type { Locale } from '@dyafa/i18n';
 import {
   localizedName,
@@ -24,13 +23,11 @@ import {
 } from '@/lib/discovery';
 import { useApprovedProperties } from '@/lib/queries';
 import { RailCard } from '@/components/discovery';
-import { Screen } from '@/ui';
-import { Skeleton, ErrorState } from '@/components/ui';
+import { Screen, Heading, Text, Skeleton, ErrorState } from '@/ui';
 import { NotificationBell } from '@/components/NotificationBell';
 import { L, pick } from '@/lib/copy';
 import { toParams, type SearchState } from '@/lib/searchParams';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const RAIL_LIMIT = 8;
 
@@ -42,7 +39,6 @@ interface RailData {
   key: string;
   title: string;
   items: PropertySummary[];
-  /** Params for the rail's "see all" → /search/results. */
   params: SearchState;
 }
 
@@ -54,7 +50,6 @@ function byRatingDesc(a: PropertySummary, b: PropertySummary): number {
 function buildRails(all: PropertySummary[], locale: Locale): RailData[] {
   const rails: RailData[] = [];
 
-  // Wilaya with the most approved listings → "Popular in <wilaya>".
   const countByWilaya = new Map<number, number>();
   const wilayaByCode = new Map<number, WilayaLite>();
   for (const p of all) {
@@ -83,7 +78,6 @@ function buildRails(all: PropertySummary[], locale: Locale): RailData[] {
     }
   }
 
-  // Top rated (4+), across all wilayas.
   const topRated = all.filter((p) => p.rating_avg >= 4).sort(byRatingDesc).slice(0, RAIL_LIMIT);
   if (topRated.length > 0) {
     rails.push({
@@ -94,7 +88,6 @@ function buildRails(all: PropertySummary[], locale: Locale): RailData[] {
     });
   }
 
-  // Beachfront (coastal wilayas).
   const beachfront = all
     .filter((p) => COASTAL_WILAYAS.includes(p.wilaya_code))
     .sort(byRatingDesc)
@@ -104,12 +97,10 @@ function buildRails(all: PropertySummary[], locale: Locale): RailData[] {
       key: 'beach',
       title: pick(L.railBeachfront, locale),
       items: beachfront,
-      // No multi-wilaya param; "see all" opens recommended results.
       params: { sort: 'rating' },
     });
   }
 
-  // Sahara escapes (Saharan wilayas).
   const sahara = all
     .filter((p) => SAHARA_WILAYAS.includes(p.wilaya_code))
     .sort(byRatingDesc)
@@ -132,10 +123,7 @@ export default function ExploreScreen() {
 
   const { data, isPending, isError, refetch, isRefetching } = useApprovedProperties();
 
-  const rails = useMemo(
-    () => (data ? buildRails(data, locale) : null),
-    [data, locale],
-  );
+  const rails = useMemo(() => (data ? buildRails(data, locale) : null), [data, locale]);
 
   return (
     <Screen
@@ -147,9 +135,13 @@ export default function ExploreScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.brand}>{pick(L.exploreGreeting, locale)}</Text>
-          <Text style={styles.tagline}>{pick(L.searchTitle, locale)}</Text>
+        <View style={styles.flex}>
+          <Heading level="display-lg" color="primary">
+            {pick(L.exploreGreeting, locale)}
+          </Heading>
+          <Text variant="body-lg" color="textMuted" style={styles.tagline}>
+            {pick(L.searchTitle, locale)}
+          </Text>
         </View>
         <NotificationBell locale={locale} />
       </View>
@@ -157,13 +149,16 @@ export default function ExploreScreen() {
       {/* Search entry */}
       <Pressable
         accessibilityRole="search"
+        accessibilityLabel={pick(L.search, locale)}
         onPress={() => router.push('/search')}
         style={({ pressed }) => [styles.searchBar, pressed && styles.pressed]}
       >
-        <Text style={styles.searchIcon}>🔍</Text>
-        <View style={styles.searchTextWrap}>
-          <Text style={styles.searchPrimary}>{pick(L.anyDestination, locale)}</Text>
-          <Text style={styles.searchSecondary}>
+        <Search size={20} color={theme.color.primary} strokeWidth={2.25} />
+        <View style={styles.flex}>
+          <Text variant="body" weight="semibold" numberOfLines={1}>
+            {pick(L.anyDestination, locale)}
+          </Text>
+          <Text variant="caption" color="textMuted" numberOfLines={1}>
             {pick(L.anyDates, locale)} · {pick(L.guests, locale)}
           </Text>
         </View>
@@ -176,12 +171,16 @@ export default function ExploreScreen() {
         <ErrorState
           message={pick(L.loadError, locale)}
           onRetry={() => void refetch()}
-          retryLabel={pick(L.search, locale)}
+          retryLabel={pick(L.tryAgain, locale)}
         />
       ) : rails.length === 0 ? (
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyTitle}>{pick(L.noResultsTitle, locale)}</Text>
-          <Text style={styles.emptyBody}>{pick(L.noResultsBody, locale)}</Text>
+          <Heading level={3} center>
+            {pick(L.noResultsTitle, locale)}
+          </Heading>
+          <Text variant="body" color="textMuted" center>
+            {pick(L.noResultsBody, locale)}
+          </Text>
         </View>
       ) : (
         rails.map((rail) => <Rail key={rail.key} rail={rail} locale={locale} />)
@@ -194,15 +193,25 @@ function Rail({ rail, locale }: { rail: RailData; locale: Locale }) {
   return (
     <View style={styles.rail}>
       <View style={styles.railHeader}>
-        <Text style={styles.railTitle} numberOfLines={1}>
+        <Text variant="title" weight="bold" numberOfLines={1} style={styles.flex}>
           {rail.title}
         </Text>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={pick(L.showResults, locale)}
           onPress={() => router.push({ pathname: '/search/results', params: toParams(rail.params) })}
-          hitSlop={6}
+          hitSlop={8}
+          style={styles.seeAll}
         >
-          <Text style={styles.seeAll}>{pick(L.showResults, locale)}</Text>
+          <Text variant="body-sm" weight="semibold" color="accent">
+            {pick(L.showResults, locale)}
+          </Text>
+          <ChevronRight
+            size={16}
+            color={theme.color.accent}
+            strokeWidth={2.5}
+            style={{ transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] }}
+          />
         </Pressable>
       </View>
       <ScrollView
@@ -249,11 +258,9 @@ function RailsSkeleton() {
   );
 }
 
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
-
 const styles = StyleSheet.create({
-  pressed: { opacity: 0.9 },
-  // Clear the bottom tab bar (the tab bar owns the safe-area inset).
+  pressed: { opacity: 0.85 },
+  flex: { flex: 1 },
   scrollContent: { paddingBottom: theme.space['4xl'] },
 
   header: {
@@ -263,52 +270,23 @@ const styles = StyleSheet.create({
     gap: theme.space.md,
     paddingHorizontal: theme.space.xl,
     paddingTop: theme.space.lg,
-    paddingBottom: theme.space.md,
+    paddingBottom: theme.space.lg,
   },
-  headerText: { flex: 1 },
-  brand: {
-    fontFamily: RN_FONTS.displaySemiBold,
-    fontSize: theme.fontSize['display-lg'],
-    fontWeight: '600',
-    color: theme.color.primary,
-    textAlign,
-  },
-  tagline: {
-    fontFamily: RN_FONTS.bodyRegular,
-    fontSize: theme.fontSize['body-lg'],
-    color: theme.color.textMuted,
-    marginTop: theme.space.xs,
-    textAlign,
-  },
+  tagline: { marginTop: theme.space.xs },
 
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: theme.space.xl,
-    marginBottom: theme.space.xl,
+    marginBottom: theme.space['2xl'],
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.pill,
     borderWidth: 1,
-    borderColor: theme.color.borderStrong,
+    borderColor: theme.color.border,
     paddingHorizontal: theme.space.lg,
     paddingVertical: theme.space.md,
     gap: theme.space.md,
-    ...theme.shadow.card,
-  },
-  searchIcon: { fontSize: 20 },
-  searchTextWrap: { flex: 1 },
-  searchPrimary: {
-    fontFamily: RN_FONTS.bodySemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  searchSecondary: {
-    fontFamily: RN_FONTS.bodyRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign,
+    ...theme.shadow.xs,
   },
 
   rail: { marginBottom: theme.space['2xl'] },
@@ -320,35 +298,10 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.md,
     gap: theme.space.sm,
   },
-  railTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-2'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  seeAll: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.accent,
-    fontWeight: '600',
-  },
-  railContent: { paddingHorizontal: theme.space.xl, gap: theme.space.md },
+  seeAll: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  railContent: { paddingHorizontal: theme.space.xl, gap: theme.space.lg },
 
   emptyWrap: { padding: theme.space['2xl'], alignItems: 'center', gap: theme.space.sm },
-  emptyTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    color: theme.color.text,
-    textAlign: 'center',
-  },
-  emptyBody: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.textMuted,
-    textAlign: 'center',
-  },
 
   // Skeleton
   skelTitle: {
@@ -358,8 +311,8 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.md,
     borderRadius: theme.radius.sm,
   },
-  skelCard: { width: 220, gap: theme.space.sm },
-  skelImage: { width: '100%', height: 150, borderRadius: theme.radius.card },
+  skelCard: { width: 240, gap: theme.space.sm },
+  skelImage: { width: '100%', height: 240, borderRadius: theme.radius.lg },
   skelLineWide: { height: 14, width: '80%', borderRadius: theme.radius.sm },
   skelLineNarrow: { height: 12, width: '50%', borderRadius: theme.radius.sm },
 });

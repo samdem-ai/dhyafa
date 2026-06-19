@@ -1,24 +1,26 @@
 /**
  * Shared presentational components for the guest discovery + booking surfaces:
- * rating row, instant-book / free-cancel badges, result card, rail card,
+ * rating row, instant-book / free-cancel chips, result card, rail card,
  * booking-status badge, guest stepper, and a price-breakdown panel.
  *
- * All token-styled + RTL-aware (logical props). Photography-forward cards reuse
- * RemoteImage for blur-up + fallback. No native deps.
+ * Redesign (Airbnb-style): cards are BORDERLESS and photography-forward — a
+ * rounded photo, then plain text directly on the page (no surface box, no
+ * shadow, no border). Icons are outline lucide glyphs (never emoji). All copy
+ * goes through the locale-aware <Text>/<Heading> primitives. RTL-aware.
  */
 
 import {
   View,
-  Text,
   StyleSheet,
   Pressable,
   I18nManager,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { Star, Zap, ShieldCheck } from 'lucide-react-native';
 import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
+import { Text } from '@/ui';
 import { L, pick } from '@/lib/copy';
 import {
   type PropertySummary,
@@ -30,10 +32,8 @@ import type { BookingStatus } from '@/lib/bookings';
 import { WishlistHeart } from '@/ui';
 import { RemoteImage } from './RemoteImage';
 
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
-
 // ---------------------------------------------------------------------------
-// Rating row (terracotta star — never yellow, per brand)
+// Rating row (small filled star — terracotta, per brand; never yellow)
 // ---------------------------------------------------------------------------
 export function RatingRow({
   rating,
@@ -47,50 +47,48 @@ export function RatingRow({
   size?: 'sm' | 'md';
 }) {
   const isNew = count === 0;
-  const fs = size === 'md' ? theme.fontSize['body-sm'] : theme.fontSize.caption;
+  const glyph = size === 'md' ? 15 : 13;
   return (
     <View style={styles.ratingRow}>
-      <Text style={[styles.ratingStar, { fontSize: fs }]}>★</Text>
+      <Star size={glyph} color={theme.color.ratingStar} fill={theme.color.ratingStar} strokeWidth={0} />
       {isNew ? (
-        <Text style={[styles.ratingValue, { fontSize: fs }]}>{pick(L.noReviews, locale)}</Text>
+        <Text variant="body-sm" weight="medium" color="textMuted">
+          {pick(L.noReviews, locale)}
+        </Text>
       ) : (
-        <>
-          <Text style={[styles.ratingValue, { fontSize: fs }]}>{formatNumber(rating, locale)}</Text>
-          <Text style={[styles.ratingCount, { fontSize: fs }]}>
-            {' '}
+        <Text variant="body-sm" weight="medium">
+          {formatNumber(rating, locale)}{' '}
+          <Text variant="body-sm" color="textMuted">
             ({formatNumber(count, locale)})
           </Text>
-        </>
+        </Text>
       )}
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Badges
+// Chips (outline icon + label; used on property detail, not crowding cards)
 // ---------------------------------------------------------------------------
-export function Badge({
+function Chip({
   label,
+  icon: Icon,
   tone = 'neutral',
 }: {
   label: string;
+  icon?: typeof Zap;
   tone?: 'neutral' | 'accent' | 'success';
 }) {
-  const bg =
-    tone === 'accent'
-      ? theme.color.terracotta100
-      : tone === 'success'
-        ? theme.color.successBg
-        : theme.color.surfaceSunken;
   const fg =
     tone === 'accent'
-      ? theme.color.accentHover
+      ? theme.color.accent
       : tone === 'success'
         ? theme.color.success
         : theme.color.textMuted;
   return (
-    <View style={[styles.badge, { backgroundColor: bg }]}>
-      <Text style={[styles.badgeText, { color: fg }]} numberOfLines={1}>
+    <View style={styles.chip}>
+      {Icon ? <Icon size={13} color={fg} strokeWidth={2} /> : null}
+      <Text variant="caption" weight="semibold" color={fg} numberOfLines={1}>
         {label}
       </Text>
     </View>
@@ -98,11 +96,11 @@ export function Badge({
 }
 
 export function InstantBookBadge({ locale }: { locale: Locale }) {
-  return <Badge label={`⚡ ${pick(L.instantBook, locale)}`} tone="accent" />;
+  return <Chip label={pick(L.instantBook, locale)} icon={Zap} tone="accent" />;
 }
 
 export function FreeCancelBadge({ locale }: { locale: Locale }) {
-  return <Badge label={pick(L.freeCancel, locale)} tone="success" />;
+  return <Chip label={pick(L.freeCancel, locale)} icon={ShieldCheck} tone="success" />;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,14 +140,16 @@ export function BookingStatusBadge({
   const tone = STATUS_TONE[status];
   const label = pick(L[STATUS_LABEL[status]], locale);
   return (
-    <View style={[styles.badge, { backgroundColor: tone.bg }]}>
-      <Text style={[styles.badgeText, { color: tone.fg }]}>{label}</Text>
+    <View style={[styles.statusBadge, { backgroundColor: tone.bg }]}>
+      <Text variant="caption" weight="semibold" color={tone.fg}>
+        {label}
+      </Text>
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Result card (full-width, photography-forward)
+// Result card (full-width, borderless, photo-first)
 // ---------------------------------------------------------------------------
 export function ResultCard({
   property,
@@ -178,40 +178,50 @@ export function ResultCard({
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.resultCard, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.imageWrap}>
-        <RemoteImage uri={cover} alt={altText} radius={theme.radius.card} style={styles.resultImage} />
+        <RemoteImage uri={cover} alt={altText} radius={theme.radius.lg} style={styles.resultImage} />
         <View style={styles.heartOverlay} pointerEvents="box-none">
           <WishlistHeart propertyId={property.id} locale={locale} variant="overlay" />
         </View>
+        {property.instant_book ? (
+          <View style={styles.imageTag} pointerEvents="none">
+            <Zap size={12} color={theme.color.accent} strokeWidth={2.25} fill={theme.color.accent} />
+            <Text variant="caption" weight="semibold">
+              {pick(L.instantBook, locale)}
+            </Text>
+          </View>
+        ) : null}
       </View>
-      <View style={styles.resultBody}>
-        <View style={styles.resultHeaderRow}>
-          <Text style={styles.resultTitle} numberOfLines={1}>
+
+      <View style={styles.body}>
+        <View style={styles.titleRow}>
+          <Text variant="body" weight="semibold" numberOfLines={1} style={styles.flex}>
             {title}
           </Text>
-          <RatingRow rating={property.rating_avg} count={property.review_count} locale={locale} />
+          {property.review_count > 0 ? (
+            <RatingRow rating={property.rating_avg} count={property.review_count} locale={locale} />
+          ) : null}
         </View>
         {place ? (
-          <Text style={styles.resultPlace} numberOfLines={1}>
+          <Text variant="body-sm" color="textMuted" numberOfLines={1}>
             {place}
           </Text>
         ) : null}
-
-        <View style={styles.badgeRow}>
-          {property.instant_book ? <InstantBookBadge locale={locale} /> : null}
-          {property.cancellation_tier === 'flexible' ? <FreeCancelBadge locale={locale} /> : null}
-        </View>
-
         <View style={styles.priceRow}>
           {property.from_price_dzd != null ? (
-            <Text style={styles.price}>
+            <Text variant="body" weight="bold" style={styles.ltr}>
               {formatDZD(property.from_price_dzd, locale)}
-              <Text style={styles.perNight}> {pick(L.perNight, locale)}</Text>
+              <Text variant="body-sm" color="textMuted" weight="regular">
+                {' '}
+                {pick(L.perNight, locale)}
+              </Text>
             </Text>
           ) : (
-            <Text style={styles.perNight}>—</Text>
+            <Text variant="body-sm" color="textMuted">
+              —
+            </Text>
           )}
         </View>
       </View>
@@ -220,7 +230,7 @@ export function ResultCard({
 }
 
 // ---------------------------------------------------------------------------
-// Rail card (compact, horizontal scroller)
+// Rail card (compact, horizontal scroller — borderless, photo-first)
 // ---------------------------------------------------------------------------
 export function RailCard({
   property,
@@ -242,28 +252,34 @@ export function RailCard({
       style={({ pressed }) => [styles.railCard, pressed && styles.pressed]}
     >
       <View style={styles.imageWrap}>
-        <RemoteImage uri={cover} alt={title} radius={theme.radius.card} style={styles.railImage} />
+        <RemoteImage uri={cover} alt={title} radius={theme.radius.lg} style={styles.railImage} />
         <View style={styles.heartOverlay} pointerEvents="box-none">
           <WishlistHeart propertyId={property.id} locale={locale} variant="overlay" />
         </View>
       </View>
       <View style={styles.railBody}>
-        <Text style={styles.railTitle} numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text variant="body-sm" weight="semibold" numberOfLines={1} style={styles.flex}>
+            {title}
+          </Text>
+          {property.review_count > 0 ? (
+            <RatingRow rating={property.rating_avg} count={property.review_count} locale={locale} />
+          ) : null}
+        </View>
         {place ? (
-          <Text style={styles.railPlace} numberOfLines={1}>
+          <Text variant="caption" color="textMuted" numberOfLines={1}>
             {place}
           </Text>
         ) : null}
-        <View style={styles.railFooter}>
-          {property.from_price_dzd != null ? (
-            <Text style={styles.railPrice}>{formatDZD(property.from_price_dzd, locale)}</Text>
-          ) : (
-            <Text style={styles.railPrice}>—</Text>
-          )}
-          <RatingRow rating={property.rating_avg} count={property.review_count} locale={locale} />
-        </View>
+        {property.from_price_dzd != null ? (
+          <Text variant="body-sm" weight="bold" style={styles.ltr}>
+            {formatDZD(property.from_price_dzd, locale)}
+            <Text variant="caption" color="textMuted" weight="regular">
+              {' '}
+              {pick(L.perNight, locale)}
+            </Text>
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -278,7 +294,7 @@ function StepButton({
   disabled,
   label,
 }: {
-  glyph: string;
+  glyph: '+' | '−';
   onPress: () => void;
   disabled: boolean;
   label: string;
@@ -290,14 +306,21 @@ function StepButton({
       accessibilityState={{ disabled }}
       onPress={onPress}
       disabled={disabled}
-      hitSlop={6}
+      hitSlop={8}
       style={({ pressed }) => [
         styles.stepBtn,
         disabled && styles.stepBtnDisabled,
         pressed && !disabled && styles.pressed,
       ]}
     >
-      <Text style={[styles.stepGlyph, disabled && styles.stepGlyphDisabled]}>{glyph}</Text>
+      <Text
+        variant="title"
+        weight="medium"
+        color={disabled ? 'textMuted' : 'primary'}
+        style={styles.stepGlyph}
+      >
+        {glyph}
+      </Text>
     </Pressable>
   );
 }
@@ -319,9 +342,15 @@ export function GuestStepperRow({
 }) {
   return (
     <View style={styles.stepperRow}>
-      <View style={styles.stepperLabelWrap}>
-        <Text style={styles.stepperLabel}>{label}</Text>
-        {hint ? <Text style={styles.stepperHint}>{hint}</Text> : null}
+      <View style={styles.flex}>
+        <Text variant="body" weight="semibold">
+          {label}
+        </Text>
+        {hint ? (
+          <Text variant="caption" color="textMuted">
+            {hint}
+          </Text>
+        ) : null}
       </View>
       <View
         style={styles.stepperControls}
@@ -334,7 +363,7 @@ export function GuestStepperRow({
           disabled={value <= min}
           onPress={() => onChange(Math.max(min, value - 1))}
         />
-        <Text style={styles.stepperValue} accessibilityLiveRegion="polite">
+        <Text variant="body" weight="semibold" center style={styles.stepperValue} accessibilityLiveRegion="polite">
           {value}
         </Text>
         <StepButton
@@ -375,139 +404,96 @@ export function PriceBreakdown({
     <View style={[styles.breakdown, style]}>
       {lines.map((line, i) => (
         <View key={`${line.label}-${i}`} style={styles.breakdownRow}>
-          <Text style={styles.breakdownLabel}>{line.label}</Text>
-          <Text style={styles.breakdownAmount}>{formatDZD(line.amountDzd, locale)}</Text>
+          <Text variant="body" color="textMuted" style={styles.flex}>
+            {line.label}
+          </Text>
+          <Text variant="body" style={styles.ltr}>
+            {formatDZD(line.amountDzd, locale)}
+          </Text>
         </View>
       ))}
       <View style={styles.breakdownDivider} />
       <View style={styles.breakdownRow}>
-        <Text style={styles.breakdownTotalLabel}>{totalLabel}</Text>
-        <Text style={styles.breakdownTotalAmount}>{formatDZD(totalDzd, locale)}</Text>
+        <Text variant="body-lg" weight="bold" style={styles.flex}>
+          {totalLabel}
+        </Text>
+        <Text variant="body-lg" weight="bold" style={styles.ltr}>
+          {formatDZD(totalDzd, locale)}
+        </Text>
       </View>
-      {note ? <Text style={styles.breakdownNote}>{note}</Text> : null}
+      {note ? (
+        <Text variant="caption" color="textMuted">
+          {note}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  pressed: { opacity: 0.9 },
+  pressed: { opacity: 0.85 },
+  flex: { flex: 1 },
+  ltr: { writingDirection: 'ltr' },
 
   // Rating
-  ratingRow: { flexDirection: 'row', alignItems: 'center' },
-  ratingStar: { color: theme.color.ratingStar, marginEnd: 2 },
-  ratingValue: {
-    fontFamily: RN_FONTS.bodySemiBold,
-    fontWeight: '600',
-    color: theme.color.text,
-  },
-  ratingCount: { fontFamily: RN_FONTS.bodyRegular, color: theme.color.textMuted },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
 
-  // Badges
-  badge: {
+  // Chips (icon + label, no fill box other than a faint sunken pill)
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.surfaceSunken,
+    paddingHorizontal: theme.space.sm,
+    paddingVertical: 4,
+  },
+  statusBadge: {
     alignSelf: 'flex-start',
     borderRadius: theme.radius.pill,
     paddingHorizontal: theme.space.sm,
     paddingVertical: 3,
   },
-  badgeText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    fontWeight: '600',
-  },
 
-  // Shared photo overlay (wishlist heart, top-end of the card image)
+  // Shared photo + overlays
   imageWrap: { position: 'relative' },
   heartOverlay: {
     position: 'absolute',
     top: theme.space.sm,
-    // Top-end corner in both writing directions.
     right: I18nManager.isRTL ? undefined : theme.space.sm,
     left: I18nManager.isRTL ? theme.space.sm : undefined,
   },
-
-  // Result card
-  resultCard: {
+  imageTag: {
+    position: 'absolute',
+    bottom: theme.space.sm,
+    left: I18nManager.isRTL ? undefined : theme.space.sm,
+    right: I18nManager.isRTL ? theme.space.sm : undefined,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    overflow: 'hidden',
-    ...theme.shadow.card,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: theme.space.sm,
+    paddingVertical: 4,
   },
-  resultImage: { width: '100%', height: 210 },
-  resultBody: { padding: theme.space.md, gap: theme.space.xs },
-  resultHeaderRow: {
+
+  // Result card — borderless, photo-first
+  card: { backgroundColor: 'transparent' },
+  resultImage: { width: '100%', aspectRatio: 4 / 3 },
+  body: { paddingTop: theme.space.sm, gap: 2 },
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.sm,
   },
-  resultTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  resultPlace: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.xs, marginTop: 2 },
-  priceRow: { marginTop: theme.space.xs },
-  price: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize.price,
-    fontWeight: '700',
-    color: theme.color.text,
-    textAlign,
-    // Keep the DZD numeral + symbol LTR even under RTL (bidi isolation).
-    writingDirection: 'ltr',
-  },
-  perNight: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    fontWeight: '400',
-    color: theme.color.textMuted,
-  },
+  priceRow: { marginTop: 2 },
 
-  // Rail card
-  railCard: {
-    width: 220,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    overflow: 'hidden',
-    ...theme.shadow.card,
-  },
-  railImage: { width: '100%', height: 150 },
-  railBody: { padding: theme.space.md, gap: 2 },
-  railTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  railPlace: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign,
-  },
-  railFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: theme.space.xs,
-  },
-  railPrice: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize['body-lg'],
-    fontWeight: '700',
-    color: theme.color.accent,
-    writingDirection: 'ltr',
-  },
+  // Rail card — borderless
+  railCard: { width: 240, backgroundColor: 'transparent' },
+  railImage: { width: '100%', aspectRatio: 1, height: undefined },
+  railBody: { paddingTop: theme.space.sm, gap: 2 },
 
   // Stepper
   stepperRow: {
@@ -515,20 +501,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.md,
-  },
-  stepperLabelWrap: { flex: 1 },
-  stepperLabel: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  stepperHint: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign,
   },
   stepperControls: { flexDirection: 'row', alignItems: 'center', gap: theme.space.md },
   stepBtn: {
@@ -541,21 +513,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stepBtnDisabled: { borderColor: theme.color.border, opacity: 0.5 },
-  stepGlyph: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: 20,
-    lineHeight: 22,
-    color: theme.color.primary,
-  },
-  stepGlyphDisabled: { color: theme.color.textMuted },
-  stepperValue: {
-    minWidth: 24,
-    textAlign: 'center',
-    fontFamily: RN_FONTS.bodySemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-  },
+  stepGlyph: { lineHeight: 24 },
+  stepperValue: { minWidth: 28 },
 
   // Breakdown
   breakdown: { gap: theme.space.sm },
@@ -565,45 +524,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: theme.space.md,
   },
-  breakdownLabel: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    textAlign,
-  },
-  breakdownAmount: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    writingDirection: 'ltr',
-  },
   breakdownDivider: {
     height: 1,
     backgroundColor: theme.color.border,
     marginVertical: theme.space.xs,
-  },
-  breakdownTotalLabel: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['body-lg'],
-    fontWeight: '700',
-    color: theme.color.text,
-    textAlign,
-  },
-  breakdownTotalAmount: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize['body-lg'],
-    fontWeight: '700',
-    color: theme.color.text,
-    writingDirection: 'ltr',
-  },
-  breakdownNote: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-    textAlign,
-    marginTop: theme.space.xs,
-    lineHeight: theme.lineHeight.caption,
   },
 });
