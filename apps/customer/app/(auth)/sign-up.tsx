@@ -1,9 +1,13 @@
 /**
- * Sign-up screen (Phase 4 rework) — email + password.
+ * Sign-up screen (Phase 4 rework; redesigned Phase 8) — email + password.
  *
- * Built on src/ui. On success: if a session is returned (email confirmation
- * disabled in local dev) we resume the validated `next` path (so checkout
- * continues); otherwise we show a "check your email" state with a resend action.
+ * Built on src/ui. Airy, text-first layout matching sign-in: a serif brand title
+ * carries the screen (no native header), the shared AuthForm field stack, and a
+ * sign-in link footer.
+ *
+ * On success: if a session is returned (email confirmation disabled in local
+ * dev) we resume the validated `next` path (so checkout continues); otherwise we
+ * show a centered "check your email" EmptyState with a resend action.
  */
 
 import { useState } from 'react';
@@ -116,7 +120,7 @@ export default function SignUpScreen() {
   if (confirmEmail) {
     return (
       <Screen>
-        <Header title={pickC(COPY.title, locale)} />
+        <Header />
         <EmptyState
           icon={MailCheck}
           title={pickC(COPY.checkEmailTitle, locale)}
@@ -144,12 +148,12 @@ export default function SignUpScreen() {
 
   return (
     <Screen>
-      <Header title={pickC(COPY.title, locale)} />
-      <View style={styles.header}>
-        <Heading level={1} color="primary">
+      <Header />
+      <View style={styles.intro}>
+        <Heading level="display-lg" color="primary">
           {pickC(COPY.title, locale)}
         </Heading>
-        <Text variant="body" color="textMuted" style={styles.subtitle}>
+        <Text variant="body-lg" color="textMuted" style={styles.subtitle}>
           {pickC(COPY.subtitle, locale)}
         </Text>
       </View>
@@ -181,14 +185,22 @@ export default function SignUpScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: theme.space.xl, paddingTop: theme.space.lg },
-  subtitle: { marginTop: theme.space.xs },
+  intro: {
+    paddingHorizontal: theme.space.xl,
+    paddingTop: theme.space.xl,
+    paddingBottom: theme.space.sm,
+  },
+  subtitle: { marginTop: theme.space.sm },
   footer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: theme.space.lg,
+    marginTop: theme.space.xl,
   },
-  confirmActions: { alignItems: 'center', gap: theme.space.lg, paddingBottom: theme.space['2xl'] },
+  confirmActions: {
+    alignItems: 'center',
+    gap: theme.space.xl,
+    paddingBottom: theme.space['3xl'],
+  },
 });

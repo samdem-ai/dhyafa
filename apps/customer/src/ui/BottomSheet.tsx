@@ -91,6 +91,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.surface,
     borderTopLeftRadius: theme.radius.sheet,
     borderTopRightRadius: theme.radius.sheet,
+    ...theme.shadow.sheet,
   },
   handle: {
     backgroundColor: theme.color.borderStrong,

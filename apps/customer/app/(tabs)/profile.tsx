@@ -1,54 +1,34 @@
 /**
- * Profile tab (M2).
+ * Profile tab (M2; redesigned Phase 8).
  *
  * Shows the signed-in user (or a sign-in CTA), shortcuts to Trips + Wishlists,
  * language picker, "Switch to Hosting" (auth-gated become_host → /host), and
  * sign-out. Reuses the host-entry mechanism from the previous home screen.
+ *
+ * Redesign (Airbnb-style): clean list rows via the <ListItem> primitive with
+ * Lucide outline icons (never emoji), an <Avatar> identity, <Heading> title, and
+ * the action primitives. Generous whitespace, minimal elevation.
  */
 
+import type { ComponentType } from 'react';
 import { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  Pressable,
-  ActivityIndicator,
-  I18nManager,
-} from 'react-native';
+import { View, StyleSheet, SafeAreaView, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Luggage, Heart, Globe, Home, type LucideProps } from 'lucide-react-native';
 import type { Locale } from '@dyafa/i18n';
 import { useSession, signOut } from '@/lib/auth';
 import { ensureHostAndRefresh } from '@/lib/listings';
-import { PrimaryButton } from '@/components/ui';
+import { Heading, Text, Button, ListItem, Avatar } from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
-function Row({
-  glyph,
-  label,
-  value,
-  onPress,
-}: {
-  glyph: string;
-  label: string;
-  value?: string;
-  onPress: () => void;
-}) {
+/** Leading icon for a profile row — Lucide outline glyph in a faint sunken circle. */
+function RowIcon({ icon: Icon }: { icon: ComponentType<LucideProps> }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-    >
-      <Text style={styles.rowGlyph}>{glyph}</Text>
-      <Text style={styles.rowLabel}>{label}</Text>
-      {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-      <Text style={styles.rowChevron}>{I18nManager.isRTL ? '‹' : '›'}</Text>
-    </Pressable>
+    <View style={styles.rowIcon}>
+      <Icon size={20} color={theme.color.primary} strokeWidth={2} />
+    </View>
   );
 }
 
@@ -87,74 +67,75 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.title}>{pick(L.profileTitle, locale)}</Text>
+          <Heading level={1} color="primary">
+            {pick(L.profileTitle, locale)}
+          </Heading>
         </View>
 
-        {/* Identity card */}
+        {/* Identity */}
         <View style={styles.identity}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarGlyph}>{user ? '🙂' : '👤'}</Text>
-          </View>
+          <Avatar uri={null} name={user ? displayName : ''} size="lg" />
           <View style={styles.identityText}>
-            <Text style={styles.identityName} numberOfLines={1}>
+            <Text variant="title" weight="semibold" numberOfLines={1}>
               {user ? displayName : pick(L.notSignedIn, locale)}
             </Text>
-            {user && email ? (
-              <Text style={styles.identitySub} numberOfLines={1}>
-                {email}
-              </Text>
-            ) : (
-              <Text style={styles.identitySub}>{pick(L.signInToBook, locale)}</Text>
-            )}
+            <Text variant="body-sm" color="textMuted" numberOfLines={1}>
+              {user && email ? email : pick(L.signInToBook, locale)}
+            </Text>
           </View>
         </View>
 
         {!user && !loading ? (
           <View style={styles.signInWrap}>
-            <PrimaryButton
-              label={pick(L.signIn, locale)}
-              onPress={() => router.push('/(auth)/sign-in')}
-            />
+            <Button label={pick(L.signIn, locale)} onPress={() => router.push('/(auth)/sign-in')} />
           </View>
         ) : null}
 
         {/* Shortcuts */}
         <View style={styles.group}>
-          <Row glyph="🧳" label={pick(L.myTrips, locale)} onPress={() => router.navigate('/(tabs)/trips')} />
-          <Row
-            glyph="🤍"
-            label={pick(L.wishlists, locale)}
-            value={pick(L.wishlistsSoon, locale)}
+          <ListItem
+            title={pick(L.myTrips, locale)}
+            leading={<RowIcon icon={Luggage} />}
+            onPress={() => router.navigate('/(tabs)/trips')}
+          />
+          <ListItem
+            title={pick(L.wishlists, locale)}
+            leading={<RowIcon icon={Heart} />}
+            trailing={
+              <Text variant="body-sm" color="textMuted">
+                {pick(L.wishlistsSoon, locale)}
+              </Text>
+            }
             onPress={() => router.navigate('/(tabs)/wishlists')}
           />
-          <Row glyph="🌐" label={pick(L.language, locale)} onPress={() => router.push('/onboarding')} />
+          <ListItem
+            title={pick(L.language, locale)}
+            leading={<RowIcon icon={Globe} />}
+            onPress={() => router.push('/onboarding')}
+          />
         </View>
 
-        {/* Host entry */}
+        {/* Host entry — brand (teal) mode switch. */}
         <View style={styles.hostWrap}>
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            label={pick(L.switchToHosting, locale)}
+            variant="primary"
+            icon={Home}
+            loading={hosting}
+            disabled={loading}
             onPress={() => void onSwitchToHosting()}
-            disabled={hosting || loading}
-            style={({ pressed }) => [styles.hostCta, pressed && styles.pressed]}
-          >
-            {hosting ? (
-              <ActivityIndicator color={theme.color.textOnPrimary} />
-            ) : (
-              <Text style={styles.hostCtaText}>🏡 {pick(L.switchToHosting, locale)}</Text>
-            )}
-          </Pressable>
-          {hostError ? <Text style={styles.hostError}>{hostError}</Text> : null}
+          />
+          {hostError ? (
+            <Text variant="caption" color="error" center style={styles.hostError}>
+              {hostError}
+            </Text>
+          ) : null}
         </View>
 
         {/* Sign out */}
         {user ? (
           <View style={styles.signOutWrap}>
-            <PrimaryButton
-              label={pick(L.signOut, locale)}
-              variant="secondary"
-              onPress={() => void signOut()}
-            />
+            <Button label={pick(L.signOut, locale)} variant="secondary" onPress={() => void signOut()} />
           </View>
         ) : null}
       </ScrollView>
@@ -162,117 +143,39 @@ export default function ProfileScreen() {
   );
 }
 
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.color.bg },
   scroll: { paddingBottom: theme.space['2xl'] },
-  pressed: { opacity: 0.9 },
 
-  header: { paddingHorizontal: theme.space.xl, paddingTop: theme.space.lg, paddingBottom: theme.space.sm },
-  title: {
-    fontFamily: RN_FONTS.displaySemiBold,
-    fontSize: theme.fontSize['heading-1'],
-    color: theme.color.primary,
-    textAlign,
+  header: {
+    paddingHorizontal: theme.space.xl,
+    paddingTop: theme.space.lg,
+    paddingBottom: theme.space.sm,
   },
 
   identity: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space.md,
-    marginHorizontal: theme.space.xl,
+    paddingHorizontal: theme.space.xl,
     marginTop: theme.space.md,
-    padding: theme.space.lg,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    ...theme.shadow.card,
   },
-  avatar: {
-    width: 56,
-    height: 56,
+  identityText: { flex: 1, gap: 2 },
+
+  signInWrap: { marginHorizontal: theme.space.xl, marginTop: theme.space.lg },
+
+  group: { marginTop: theme.space['2xl'] },
+  rowIcon: {
+    width: 40,
+    height: 40,
     borderRadius: theme.radius.pill,
     backgroundColor: theme.color.surfaceSunken,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarGlyph: { fontSize: 28 },
-  identityText: { flex: 1 },
-  identityName: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  identitySub: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    marginTop: 2,
-    textAlign,
-  },
 
-  signInWrap: { marginHorizontal: theme.space.xl, marginTop: theme.space.lg },
+  hostWrap: { marginHorizontal: theme.space.xl, marginTop: theme.space['2xl'] },
+  hostError: { marginTop: theme.space.sm },
 
-  group: {
-    marginHorizontal: theme.space.xl,
-    marginTop: theme.space.lg,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    overflow: 'hidden',
-    ...theme.shadow.card,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.md,
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.color.border,
-  },
-  rowGlyph: { fontSize: 20 },
-  rowLabel: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    textAlign,
-  },
-  rowValue: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-  },
-  rowChevron: {
-    fontFamily: RN_FONTS.bodyRegular,
-    fontSize: theme.fontSize['heading-3'],
-    color: theme.color.textMuted,
-  },
-
-  hostWrap: { marginHorizontal: theme.space.xl, marginTop: theme.space.xl },
-  hostCta: {
-    backgroundColor: theme.color.primary,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.space.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...theme.shadow.card,
-  },
-  hostCtaText: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.textOnPrimary,
-  },
-  hostError: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.error,
-    textAlign: 'center',
-    marginTop: theme.space.sm,
-  },
-
-  signOutWrap: { marginHorizontal: theme.space.xl, marginTop: theme.space.xl },
+  signOutWrap: { marginHorizontal: theme.space.xl, marginTop: theme.space.lg },
 });

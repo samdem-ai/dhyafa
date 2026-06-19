@@ -6,8 +6,9 @@
  * snapshot columns on the booking row), and the booking code. awaiting_payment
  * bookings show a "complete payment" CTA → the pay stub.
  *
- * Built on src/ui (Screen / Header / Text / Button / Card / DetailSkeleton /
- * RemoteImage) to match its flow-mates booking/confirm.tsx and pay.tsx. The
+ * Built on src/ui (Screen / Header / Text / Button / DetailSkeleton /
+ * RemoteImage). Airbnb-style: borderless, photo-first, sans-bold section
+ * headers — matching its flow-mates booking/confirm.tsx and pay.tsx. The
  * localized screen-reader back label is automatic from Header.
  */
 
@@ -16,6 +17,7 @@ import { View, StyleSheet, ScrollView, Pressable, I18nManager } from 'react-nati
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, type Locale } from '@dyafa/i18n';
+import { Luggage, ChevronRight } from 'lucide-react-native';
 import {
   getBookingDetail,
   bookingCoverUrl,
@@ -32,9 +34,7 @@ import {
   Screen,
   Header,
   Text,
-  Heading,
   Button,
-  Card,
   RemoteImage,
   DetailSkeleton,
   ErrorState,
@@ -125,7 +125,9 @@ export default function BookingDetailScreen() {
     return (
       <Screen edges={['top']}>
         <Header title={pick(L.tripDetail, locale)} />
-        <EmptyState emoji="🧳" title={pick(L.notFoundTitle, locale)} subtitle={pick(L.notFoundBody, locale)} />
+        <View style={styles.centerFill}>
+          <EmptyState icon={Luggage} title={pick(L.notFoundTitle, locale)} subtitle={pick(L.notFoundBody, locale)} />
+        </View>
       </Screen>
     );
   }
@@ -183,40 +185,44 @@ export default function BookingDetailScreen() {
           </View>
         ) : null}
 
-        {/* Property summary */}
-        <Card padding="md">
-          <View style={styles.propRow}>
-            <RemoteImage uri={cover} alt={title} radius={theme.radius.md} style={styles.propImage} />
-            <View style={styles.propBody}>
-              <View style={styles.propHeader}>
-                <Text variant="title" weight="semibold" numberOfLines={2} style={styles.propTitle}>
-                  {title}
-                </Text>
-                <BookingStatusBadge status={booking.status} locale={locale} />
-              </View>
-              {place ? (
-                <Text variant="body-sm" color="textMuted">
-                  {place}
-                </Text>
-              ) : null}
-              {prop ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => router.push(`/property/${prop.id}`)}
-                  hitSlop={6}
-                  style={styles.viewListing}
-                >
-                  <Text variant="body-sm" weight="medium" color="accent">
-                    {pick(L.about, locale)} {I18nManager.isRTL ? '‹' : '›'}
-                  </Text>
-                </Pressable>
-              ) : null}
+        {/* Property summary — borderless, photo-first */}
+        <View style={styles.propRow}>
+          <RemoteImage uri={cover} alt={title} radius={theme.radius.lg} style={styles.propImage} />
+          <View style={styles.propBody}>
+            <View style={styles.propHeader}>
+              <Text variant="body" weight="semibold" numberOfLines={2} style={styles.propTitle}>
+                {title}
+              </Text>
+              <BookingStatusBadge status={booking.status} locale={locale} />
             </View>
+            {place ? (
+              <Text variant="body-sm" color="textMuted">
+                {place}
+              </Text>
+            ) : null}
+            {prop ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push(`/property/${prop.id}`)}
+                hitSlop={6}
+                style={styles.viewListing}
+              >
+                <Text variant="body-sm" weight="semibold" color="accent">
+                  {pick(L.about, locale)}
+                </Text>
+                <ChevronRight
+                  size={16}
+                  color={theme.color.accent}
+                  strokeWidth={2.5}
+                  style={{ transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] }}
+                />
+              </Pressable>
+            ) : null}
           </View>
-        </Card>
+        </View>
 
         {/* Dates + guests */}
-        <Card>
+        <View style={styles.section}>
           <InfoRow label={pick(L.dates, locale)} value={formatRange(booking.check_in, booking.check_out, locale)} />
           <View style={styles.infoDivider} />
           <InfoRow
@@ -229,13 +235,15 @@ export default function BookingDetailScreen() {
               <InfoRow label={pick(L.payByDeadline, locale)} value={formatDateTime(booking.payment_deadline, locale)} />
             </>
           ) : null}
-        </Card>
+        </View>
 
         {/* Price breakdown (authoritative) */}
-        <Card style={styles.priceCard}>
-          <Heading level={3}>{pick(L.total, locale)}</Heading>
+        <View style={styles.priceSection}>
+          <Text variant="title" weight="bold">
+            {pick(L.total, locale)}
+          </Text>
           <PriceBreakdown lines={lines} totalLabel={pick(L.total, locale)} totalDzd={booking.total_dzd} locale={locale} />
-        </Card>
+        </View>
 
         {/* Actions: message host, and review when the stay is completed */}
         <View style={styles.actions}>
@@ -308,7 +316,8 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  body: { padding: theme.space.xl, gap: theme.space.lg, paddingBottom: theme.space['2xl'] },
+  body: { padding: theme.space.xl, gap: theme.space['2xl'], paddingBottom: theme.space['3xl'] },
+  centerFill: { flex: 1, justifyContent: 'center' },
 
   banner: {
     backgroundColor: theme.color.successBg,
@@ -319,7 +328,7 @@ const styles = StyleSheet.create({
   bannerWarn: { backgroundColor: theme.color.warningBg },
 
   propRow: { flexDirection: 'row', gap: theme.space.md },
-  propImage: { width: 100, height: 100 },
+  propImage: { width: 96, height: 96 },
   propBody: { flex: 1, gap: 2 },
   propHeader: {
     flexDirection: 'row',
@@ -328,8 +337,15 @@ const styles = StyleSheet.create({
     gap: theme.space.sm,
   },
   propTitle: { flex: 1 },
-  viewListing: { marginTop: theme.space.xs, alignSelf: 'flex-start' },
+  viewListing: {
+    marginTop: theme.space.xs,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
 
+  section: { gap: theme.space.xs },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -341,18 +357,16 @@ const styles = StyleSheet.create({
   infoValue: { flex: 1, textAlign: I18nManager.isRTL ? 'left' : 'right' },
   infoDivider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border },
 
-  priceCard: { gap: theme.space.md },
+  priceSection: { gap: theme.space.md },
 
   actions: { gap: theme.space.md },
   cancelLink: { alignSelf: 'center', paddingVertical: theme.space.sm, paddingHorizontal: theme.space.md },
   cancelLinkPressed: { opacity: 0.6 },
 
   codeCard: {
-    backgroundColor: theme.color.surfaceSunken,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
     alignItems: 'center',
     gap: theme.space.xs,
+    paddingTop: theme.space.sm,
   },
   codeValue: { letterSpacing: 2 },
 

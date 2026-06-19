@@ -1,7 +1,10 @@
 /**
- * Sign-in screen (Phase 4 rework) — email + password.
+ * Sign-in screen (Phase 4 rework; redesigned Phase 8) — email + password.
  *
  * Built on src/ui (Screen/Header/Heading/Text/Button/TextField/BottomSheet/Toast).
+ * Airy, text-first layout: a serif brand title carries the screen (no native
+ * header), generous whitespace, the shared AuthForm field stack, and an outline
+ * forgot-password sheet.
  *
  * `next` is a VALIDATED internal pathname (via safeNextPath): the legacy 'host'
  * token still works, and any in-app absolute path (e.g. the in-progress checkout
@@ -86,12 +89,12 @@ export default function SignInScreen() {
 
   return (
     <Screen>
-      <Header title={pick(L.authSignInCta, locale)} />
-      <View style={styles.header}>
-        <Heading level={1} color="primary">
+      <Header />
+      <View style={styles.intro}>
+        <Heading level="display-lg" color="primary">
           {pickC(COPY.title, locale)}
         </Heading>
-        <Text variant="body" color="textMuted" style={styles.subtitle}>
+        <Text variant="body-lg" color="textMuted" style={styles.subtitle}>
           {pickC(COPY.subtitle, locale)}
         </Text>
       </View>
@@ -209,9 +212,13 @@ function ForgotPasswordSheet({
 }
 
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: theme.space.xl, paddingTop: theme.space.lg },
-  subtitle: { marginTop: theme.space.xs },
-  footerCol: { marginTop: theme.space.lg, gap: theme.space.lg, alignItems: 'center' },
+  intro: {
+    paddingHorizontal: theme.space.xl,
+    paddingTop: theme.space.xl,
+    paddingBottom: theme.space.sm,
+  },
+  subtitle: { marginTop: theme.space.sm },
+  footerCol: { marginTop: theme.space.xl, gap: theme.space.xl, alignItems: 'center' },
   forgot: { alignSelf: 'center' },
   footer: {
     flexDirection: 'row',
@@ -219,5 +226,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  sheet: { gap: theme.space.md, paddingTop: theme.space.sm },
+  sheet: { gap: theme.space.md, paddingTop: theme.space.sm, paddingBottom: theme.space.lg },
 });

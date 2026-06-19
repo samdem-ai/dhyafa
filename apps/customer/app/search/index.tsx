@@ -157,29 +157,33 @@ export default function SearchEntryScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <FieldRow
-          icon={MapPin}
-          label={pick(L.destination, locale)}
-          value={selectedWilayaName}
-          onPress={() => setSheet('destination')}
-        />
-        <FieldRow
-          icon={CalendarIcon}
-          label={pick(L.dates, locale)}
-          value={datesLabel}
-          onPress={() => setSheet('dates')}
-        />
-        <FieldRow
-          icon={Users}
-          label={pick(L.guests, locale)}
-          value={guestsLabel}
-          onPress={() => setSheet('guests')}
-        />
+        <View style={styles.fieldGroup}>
+          <FieldRow
+            icon={MapPin}
+            label={pick(L.destination, locale)}
+            value={selectedWilayaName}
+            onPress={() => setSheet('destination')}
+          />
+          <View style={styles.fieldDivider} />
+          <FieldRow
+            icon={CalendarIcon}
+            label={pick(L.dates, locale)}
+            value={datesLabel}
+            onPress={() => setSheet('dates')}
+          />
+          <View style={styles.fieldDivider} />
+          <FieldRow
+            icon={Users}
+            label={pick(L.guests, locale)}
+            value={guestsLabel}
+            onPress={() => setSheet('guests')}
+          />
+        </View>
 
         {/* Popular destinations */}
         {popular.length > 0 ? (
           <View style={styles.popularWrap}>
-            <Text variant="overline" color="textMuted" weight="semibold" style={styles.popularLabel}>
+            <Text variant="title" weight="bold">
               {pick(L.popularDestinations, locale)}
             </Text>
             <View style={styles.chipWrap}>
@@ -321,20 +325,19 @@ function FieldRow({
       onPress={onPress}
       style={({ pressed }) => [styles.fieldRow, pressed && styles.pressed]}
     >
-      <View style={styles.fieldIcon}>
-        <Icon size={20} color={theme.color.primary} />
-      </View>
+      <Icon size={22} color={theme.color.primary} strokeWidth={2} />
       <View style={styles.fieldBody}>
         <Text variant="caption" color="textMuted">
           {label}
         </Text>
-        <Text variant="body" weight="semibold" numberOfLines={1}>
+        <Text variant="body-lg" weight="semibold" numberOfLines={1}>
           {value}
         </Text>
       </View>
       <ChevronRight
         size={20}
         color={theme.color.ink300}
+        strokeWidth={2}
         style={{ transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] }}
       />
     </Pressable>
@@ -346,30 +349,25 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   clearBtn: { paddingHorizontal: theme.space.sm },
 
-  scroll: { padding: theme.space.xl, gap: theme.space.md, paddingBottom: theme.space['2xl'] },
+  scroll: { padding: theme.space.xl, gap: theme.space['2xl'], paddingBottom: theme.space['2xl'] },
 
+  fieldGroup: {
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    backgroundColor: theme.color.surface,
+    paddingHorizontal: theme.space.lg,
+  },
   fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space.md,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    borderWidth: 1,
-    borderColor: theme.color.border,
-    padding: theme.space.lg,
+    paddingVertical: theme.space.lg,
   },
-  fieldIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.color.infoBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  fieldDivider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border },
   fieldBody: { flex: 1, gap: 2 },
 
-  popularWrap: { marginTop: theme.space.md, gap: theme.space.sm },
-  popularLabel: { marginStart: theme.space.xs },
+  popularWrap: { gap: theme.space.md },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
 
   sheetTitle: { marginBottom: theme.space.sm },

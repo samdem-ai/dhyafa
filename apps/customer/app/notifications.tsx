@@ -17,13 +17,20 @@
  * pull-to-refresh. Signed-out users see a sign-in prompt.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, type ComponentType } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
-import { Bell } from 'lucide-react-native';
+import {
+  Bell,
+  MessageCircle,
+  Star,
+  Luggage,
+  CreditCard,
+  type LucideProps,
+} from 'lucide-react-native';
 import type { Locale } from '@dyafa/i18n';
 import { supabaseClient } from '@/lib/supabase';
 import { useSession } from '@/lib/auth';
@@ -33,13 +40,11 @@ import {
   notificationTitle,
   notificationBody,
   notificationRoute,
-  notificationGlyph,
   type NotificationRow,
 } from '@/lib/notifications';
 import {
   Screen,
   Header,
-  Text,
   ListItem,
   Badge,
   List,
@@ -50,6 +55,19 @@ import {
 import { L, pick } from '@/lib/copy';
 import { formatDateTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
+
+/**
+ * Outline-lucide glyph for a notification row, by type prefix. Local to the
+ * screen (the lib's notificationGlyph returns emoji, which the design language
+ * bans) — pure presentation, no behavior change.
+ */
+function notificationIcon(type: string): ComponentType<LucideProps> {
+  if (type.startsWith('message')) return MessageCircle;
+  if (type.startsWith('review')) return Star;
+  if (type.startsWith('booking')) return Luggage;
+  if (type.startsWith('payment')) return CreditCard;
+  return Bell;
+}
 
 export default function NotificationsScreen() {
   const { i18n } = useTranslation('common');
@@ -123,19 +141,23 @@ export default function NotificationsScreen() {
       <Header title={pick(L.notifications, locale)} onBack={() => router.back()} />
 
       {!user && !sessionLoading ? (
-        <EmptyState
-          icon={Bell}
-          title={pick(L.notifications, locale)}
-          subtitle={pick(L.signInToSeeNotifications, locale)}
-        />
+        <View style={styles.centerFill}>
+          <EmptyState
+            icon={Bell}
+            title={pick(L.notifications, locale)}
+            subtitle={pick(L.signInToSeeNotifications, locale)}
+          />
+        </View>
       ) : isPending ? (
         <ConversationSkeleton count={6} />
       ) : isError ? (
-        <ErrorState
-          message={pick(L.loadError, locale)}
-          onRetry={() => void refetch()}
-          retryLabel={pick(L.tryAgain, locale)}
-        />
+        <View style={styles.centerFill}>
+          <ErrorState
+            message={pick(L.loadError, locale)}
+            onRetry={() => void refetch()}
+            retryLabel={pick(L.tryAgain, locale)}
+          />
+        </View>
       ) : (
         <List<NotificationRow>
           data={data ?? []}
@@ -175,6 +197,7 @@ function NotificationRowItem({
   const title = notificationTitle(notification, locale);
   const body = notificationBody(notification, locale);
   const time = formatDateTime(notification.created_at, locale);
+  const Icon = notificationIcon(notification.type);
 
   return (
     <ListItem
@@ -184,8 +207,12 @@ function NotificationRowItem({
       chevron={false}
       style={[styles.row, unread && styles.rowUnread]}
       leading={
-        <View style={styles.glyphWrap}>
-          <Text style={styles.glyph}>{notificationGlyph(notification)}</Text>
+        <View style={[styles.glyphWrap, unread && styles.glyphWrapUnread]}>
+          <Icon
+            size={20}
+            color={unread ? theme.color.primary : theme.color.textMuted}
+            strokeWidth={2}
+          />
         </View>
       }
       trailing={
@@ -201,13 +228,14 @@ const styles = StyleSheet.create({
   row: { alignItems: 'flex-start' },
   rowUnread: { backgroundColor: theme.color.infoBg },
   glyphWrap: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: theme.radius.pill,
     backgroundColor: theme.color.surfaceSunken,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  glyph: { fontSize: 20 },
-  emptyWrap: { flex: 1, paddingTop: theme.space['4xl'] },
+  glyphWrapUnread: { backgroundColor: theme.color.surface },
+  centerFill: { flex: 1, justifyContent: 'center' },
+  emptyWrap: { flex: 1, justifyContent: 'center' },
 });

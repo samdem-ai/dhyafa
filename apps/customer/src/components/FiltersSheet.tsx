@@ -301,7 +301,7 @@ export function FiltersSheet({ visible, onClose, state, locale, onApply }: Filte
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text variant="title" weight="semibold">
+      <Text variant="title" weight="bold">
         {title}
       </Text>
       {children}
@@ -314,13 +314,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.space.sm,
+    marginBottom: theme.space.md,
   },
   scroll: { maxHeight: 480 },
-  section: { gap: theme.space.md, marginBottom: theme.space.xl },
+  section: { gap: theme.space.md, marginBottom: theme.space['2xl'] },
   priceRow: { flexDirection: 'row', gap: theme.space.md },
   priceField: { flex: 1 },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
   bottomPad: { height: theme.space.lg },
-  footer: { paddingTop: theme.space.md },
+  footer: {
+    paddingTop: theme.space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.color.border,
+  },
 });

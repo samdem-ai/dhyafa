@@ -27,6 +27,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatNumber, type Locale } from '@dyafa/i18n';
+import { MessageCircle } from 'lucide-react-native';
 import type { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
 import { supabaseClient } from '@/lib/supabase';
 import { useSession } from '@/lib/auth';
@@ -34,12 +35,11 @@ import { useConversations, queryKeys } from '@/lib/queries';
 import { conversationCoverUrl, type ConversationListItem, type MessageRow } from '@/lib/messaging';
 import { localizedName } from '@/lib/discovery';
 import { RemoteImage } from '@/components/RemoteImage';
-import { Text, Avatar, SkeletonList, ErrorState, EmptyState } from '@/ui';
+import { Heading, Text, Avatar, SkeletonList, ErrorState, EmptyState } from '@/ui';
 import { NotificationBell } from '@/components/NotificationBell';
 import { L, pick } from '@/lib/copy';
 import { formatDateTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
@@ -82,28 +82,47 @@ export default function InboxScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <Text variant="title" weight="semibold" color="primary" style={styles.title}>
+        <Heading level={1} color="primary">
           {pick(L.inbox, locale)}
-        </Text>
+        </Heading>
         <NotificationBell locale={locale} />
       </View>
 
       {!user && !sessionLoading ? (
-        <EmptyState emoji="💬" title={pick(L.inbox, locale)} subtitle={pick(L.signInToSeeInbox, locale)} />
+        <View style={styles.centerFill}>
+          <EmptyState
+            icon={MessageCircle}
+            title={pick(L.inbox, locale)}
+            subtitle={pick(L.signInToSeeInbox, locale)}
+          />
+        </View>
       ) : isLoading || data === undefined ? (
         <SkeletonList count={4} />
       ) : isError ? (
-        <ErrorState message={pick(L.loadError, locale)} onRetry={() => void refetch()} retryLabel={pick(L.tryAgain, locale)} />
+        <View style={styles.centerFill}>
+          <ErrorState
+            message={pick(L.loadError, locale)}
+            onRetry={() => void refetch()}
+            retryLabel={pick(L.tryAgain, locale)}
+          />
+        </View>
       ) : (
         <FlatList
           data={data}
           keyExtractor={(c) => c.id}
           contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={() => <View style={styles.sep} />}
           refreshControl={
             <RefreshControl refreshing={refreshing || isRefetching} onRefresh={() => void onRefresh()} />
           }
           ListEmptyComponent={
-            <EmptyState emoji="💬" title={pick(L.inboxEmptyTitle, locale)} subtitle={pick(L.inboxEmptyBody, locale)} />
+            <View style={styles.centerFill}>
+              <EmptyState
+                icon={MessageCircle}
+                title={pick(L.inboxEmptyTitle, locale)}
+                subtitle={pick(L.inboxEmptyBody, locale)}
+              />
+            </View>
           }
           renderItem={({ item }) => <ConversationRow item={item} locale={locale} />}
         />
@@ -133,7 +152,7 @@ function ConversationRow({ item, locale }: { item: ConversationListItem; locale:
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       {cover ? (
-        <RemoteImage uri={cover} alt={propertyTitle} radius={theme.radius.md} style={styles.thumb} />
+        <RemoteImage uri={cover} alt={propertyTitle} radius={theme.radius.lg} style={styles.thumb} />
       ) : (
         <Avatar name={name} size="lg" />
       )}
@@ -183,7 +202,8 @@ function ConversationRow({ item, locale }: { item: ConversationListItem; locale:
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.color.bg },
-  pressed: { opacity: 0.92 },
+  pressed: { opacity: 0.6 },
+  centerFill: { flex: 1, justifyContent: 'center' },
 
   header: {
     flexDirection: 'row',
@@ -191,26 +211,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: theme.space.xl,
     paddingTop: theme.space.lg,
-    paddingBottom: theme.space.sm,
+    paddingBottom: theme.space.md,
     gap: theme.space.md,
   },
-  title: {
-    fontFamily: RN_FONTS.displaySemiBold,
-    fontSize: theme.fontSize['heading-1'],
-    textAlign,
-  },
 
-  listContent: { padding: theme.space.xl, gap: theme.space.md, flexGrow: 1 },
+  listContent: {
+    paddingHorizontal: theme.space.xl,
+    paddingVertical: theme.space.md,
+    flexGrow: 1,
+  },
+  sep: { height: theme.space.xl },
   row: {
     flexDirection: 'row',
     gap: theme.space.md,
     alignItems: 'center',
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.md,
-    ...theme.shadow.card,
   },
-  thumb: { width: 56, height: 56 },
+  thumb: { width: 64, height: 64 },
   rowBody: { flex: 1, gap: 2, justifyContent: 'center' },
   rowTop: {
     flexDirection: 'row',

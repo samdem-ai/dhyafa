@@ -1,13 +1,15 @@
 /**
- * Property detail (Phase 4 rework).
+ * Property detail (Phase 4 rework; redesigned Phase 8 — Airbnb-style hero).
  *
- * Built on src/ui: a <PhotoGallery> (paged expo-image — no per-frame setState
- * jank), a transparent <Header> over a gallery scrim, amenities grid, rules,
- * cancellation policy, room-type select, and reviews read from the JOINED
- * `detail.reviews` (getPropertyDetail already joins author + reply — no second
- * fetch). A sticky bottom booking widget (PriceText + Reserve CTA) with separate
- * dates vs guests tap targets and an OCCUPANCY GUARD in the guests sheet
- * (max_occupancy enforced on adults+children together, not independently).
+ * Built on src/ui: an edge-to-edge <PhotoGallery> (paged expo-image — no
+ * per-frame setState jank) under a transparent <Header> over a scrim, then
+ * generous-whitespace content sections (sans-bold headers), an amenities grid
+ * with OUTLINE lucide icons, rules, cancellation policy, room-type select, and
+ * reviews read from the JOINED `detail.reviews` (getPropertyDetail already joins
+ * author + reply — no second fetch). A sticky bottom booking widget (PriceText +
+ * Reserve CTA, shadow.xs) with separate dates vs guests tap targets and an
+ * OCCUPANCY GUARD in the guests sheet (max_occupancy enforced on adults+children
+ * together, not independently).
  *
  * Language fallback (ar→fr→en) is indicated when content is shown in another
  * language than the active UI locale.
@@ -22,7 +24,15 @@ import { View, StyleSheet, ScrollView, Pressable, useWindowDimensions, I18nManag
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, type Locale } from '@dyafa/i18n';
-import { Calendar as CalendarIcon, Users, Zap, ChevronRight, Languages } from 'lucide-react-native';
+import {
+  Calendar as CalendarIcon,
+  Users,
+  Star,
+  Check,
+  Clock,
+  ChevronRight,
+  Languages,
+} from 'lucide-react-native';
 import {
   getPropertyDetail,
   resolvePhotoUrl,
@@ -37,7 +47,7 @@ import { priceQuote, nightsBetween, toDateParam, type PriceQuote } from '@/lib/b
 import { categoryAverage, overallAverage, REVIEW_CATEGORIES, type ReviewCategory } from '@/lib/reviews';
 import { startInquiry, InquiryError } from '@/lib/messaging';
 import { useSession } from '@/lib/auth';
-import { GuestStepperRow } from '@/components/discovery';
+import { GuestStepperRow, InstantBookBadge } from '@/components/discovery';
 import { DateRangePicker } from '@/components/Calendar';
 import { ReviewItem } from '@/components/ReviewItem';
 import {
@@ -46,9 +56,6 @@ import {
   Text,
   Heading,
   Button,
-  Card,
-  Chip,
-  RatingStars,
   PriceText,
   BottomSheet,
   TextField,
@@ -158,7 +165,9 @@ export default function PropertyDetailScreen() {
     return (
       <Screen edges={['top']}>
         <Header title="" />
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.tryAgain, locale)} />
+        <View style={styles.centerFill}>
+          <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.tryAgain, locale)} />
+        </View>
       </Screen>
     );
   }
@@ -166,11 +175,13 @@ export default function PropertyDetailScreen() {
     return (
       <Screen edges={['top']}>
         <Header title="" />
-        <EmptyState
-          title={pick(L.notFoundTitle, locale)}
-          subtitle={pick(L.notFoundBody, locale)}
-          action={{ label: pick(L.backToExplore, locale), onPress: () => router.back() }}
-        />
+        <View style={styles.centerFill}>
+          <EmptyState
+            title={pick(L.notFoundTitle, locale)}
+            subtitle={pick(L.notFoundBody, locale)}
+            action={{ label: pick(L.backToExplore, locale), onPress: () => router.back() }}
+          />
+        </View>
       </Screen>
     );
   }
@@ -265,29 +276,25 @@ export default function PropertyDetailScreen() {
         <Gallery uris={photoUris} altPrefix={title} propertyId={detail.id} locale={locale} />
 
         <View style={styles.body}>
-          <Heading level={1}>{title}</Heading>
-          {place ? (
-            <Text variant="body" color="textMuted">
-              {place}
-            </Text>
-          ) : null}
-          <View style={styles.ratingWrap}>
-            <RatingStars value={detail.rating_avg} size={18} />
-            <Text variant="body-sm" weight="semibold">
-              {detail.review_count === 0
-                ? pick(L.noReviews, locale)
-                : `${formatNumber(detail.rating_avg, locale)} · ${formatNumber(detail.review_count, locale)} ${
-                    detail.review_count === 1 ? pick(L.reviewsCount, locale) : pick(L.reviewsCountPlural, locale)
-                  }`}
-            </Text>
-            {detail.instant_book ? (
-              <View style={styles.instantPill}>
-                <Zap size={12} color={theme.color.accentHover} />
-                <Text variant="caption" weight="semibold" color="accentHover">
-                  {pick(L.instantBook, locale)}
-                </Text>
-              </View>
+          {/* Title block */}
+          <View style={styles.titleBlock}>
+            <Heading level={1}>{title}</Heading>
+            {place ? (
+              <Text variant="body-lg" color="textMuted">
+                {place}
+              </Text>
             ) : null}
+            <View style={styles.ratingWrap}>
+              <Star size={16} color={theme.color.ratingStar} fill={theme.color.ratingStar} strokeWidth={0} />
+              <Text variant="body-sm" weight="semibold">
+                {detail.review_count === 0
+                  ? pick(L.noReviews, locale)
+                  : `${formatNumber(detail.rating_avg, locale)} · ${formatNumber(detail.review_count, locale)} ${
+                      detail.review_count === 1 ? pick(L.reviewsCount, locale) : pick(L.reviewsCountPlural, locale)
+                    }`}
+              </Text>
+              {detail.instant_book ? <InstantBookBadge locale={locale} /> : null}
+            </View>
           </View>
 
           {/* Description */}
@@ -317,16 +324,14 @@ export default function PropertyDetailScreen() {
             </Section>
           ) : null}
 
-          {/* Amenities grid */}
+          {/* Amenities grid — outline lucide check marks, never the DB emoji */}
           {detail.amenities.length > 0 ? (
             <Section title={pick(L.whatThisPlaceOffers, locale)}>
               <View style={styles.amenityGrid}>
                 {detail.amenities.slice(0, 10).map((a) => (
                   <View key={a.id} style={styles.amenityItem}>
-                    <Text variant="body" style={styles.amenityIcon}>
-                      {a.icon ?? '•'}
-                    </Text>
-                    <Text variant="body-sm" numberOfLines={2} style={styles.flex}>
+                    <Check size={18} color={theme.color.primary} strokeWidth={2} />
+                    <Text variant="body" numberOfLines={2} style={styles.flex}>
                       {localizedName(a, locale)}
                     </Text>
                   </View>
@@ -335,25 +340,31 @@ export default function PropertyDetailScreen() {
             </Section>
           ) : null}
 
-          {/* Check-in / out */}
+          {/* Check-in / out — borderless rows with outline clock icons */}
           <Section title={pick(L.checkInOut, locale)}>
             <View style={styles.timesRow}>
-              <Card style={styles.timeBox}>
-                <Text variant="caption" color="textMuted">
-                  {pick(L.checkIn, locale)}
-                </Text>
-                <Text variant="title" weight="semibold">
-                  {formatTime(detail.checkin_time)}
-                </Text>
-              </Card>
-              <Card style={styles.timeBox}>
-                <Text variant="caption" color="textMuted">
-                  {pick(L.checkOut, locale)}
-                </Text>
-                <Text variant="title" weight="semibold">
-                  {formatTime(detail.checkout_time)}
-                </Text>
-              </Card>
+              <View style={styles.timeBox}>
+                <Clock size={18} color={theme.color.primary} strokeWidth={2} />
+                <View style={styles.flex}>
+                  <Text variant="caption" color="textMuted">
+                    {pick(L.checkIn, locale)}
+                  </Text>
+                  <Text variant="title" weight="semibold">
+                    {formatTime(detail.checkin_time)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.timeBox}>
+                <Clock size={18} color={theme.color.primary} strokeWidth={2} />
+                <View style={styles.flex}>
+                  <Text variant="caption" color="textMuted">
+                    {pick(L.checkOut, locale)}
+                  </Text>
+                  <Text variant="title" weight="semibold">
+                    {formatTime(detail.checkout_time)}
+                  </Text>
+                </View>
+              </View>
             </View>
           </Section>
 
@@ -376,11 +387,7 @@ export default function PropertyDetailScreen() {
 
           {/* Message host (pre-booking inquiry) */}
           <View style={styles.messageHostWrap}>
-            <Button
-              label={pick(L.messageHost, locale)}
-              variant="secondary"
-              onPress={onMessageHost}
-            />
+            <Button label={pick(L.messageHost, locale)} variant="secondary" onPress={onMessageHost} />
           </View>
 
           {/* Reviews (from joined detail.reviews — no second fetch) */}
@@ -495,7 +502,7 @@ function maxChildrenFor(room: RoomTypeRow | null, adults: number): number {
   return Math.min(room.max_children ?? Math.max(0, room.max_occupancy - 1), byTotal);
 }
 
-// ── Gallery (transparent header + scrim) ─────────────────────────────────────
+// ── Gallery (edge-to-edge photo + transparent header over scrim) ─────────────
 function Gallery({
   uris,
   altPrefix,
@@ -508,7 +515,7 @@ function Gallery({
   locale: Locale;
 }) {
   const { width } = useWindowDimensions();
-  const height = width * 0.72;
+  const height = width * 0.82;
   return (
     <View style={[styles.gallery, { height }]}>
       <PhotoGalleryOrPlaceholder uris={uris} height={height} altPrefix={altPrefix} />
@@ -550,7 +557,7 @@ function PhotoGalleryOrPlaceholder({
   return <PhotoGallery uris={uris} height={height} altPrefix={altPrefix} />;
 }
 
-// ── Booking widget ───────────────────────────────────────────────────────────
+// ── Booking widget (sticky footer — shadow.xs) ───────────────────────────────
 function BookingWidget({
   nightly,
   quote,
@@ -593,7 +600,7 @@ function BookingWidget({
             hitSlop={6}
             style={styles.widgetTap}
           >
-            <CalendarIcon size={13} color={theme.color.accent} />
+            <CalendarIcon size={13} color={theme.color.accent} strokeWidth={2} />
             <Text variant="caption" color="accent" weight="medium" numberOfLines={1}>
               {checkIn && checkOut ? formatRange(checkIn, checkOut, locale) : pick(L.addDates, locale)}
             </Text>
@@ -605,7 +612,7 @@ function BookingWidget({
             hitSlop={6}
             style={styles.widgetTap}
           >
-            <Users size={13} color={theme.color.accent} />
+            <Users size={13} color={theme.color.accent} strokeWidth={2} />
             <Text variant="caption" color="accent" weight="medium">
               {formatNumber(guests, locale)}
             </Text>
@@ -642,12 +649,10 @@ function Reviews({ detail, locale }: { detail: PropertyDetail; locale: Locale })
   const headlineCount = detail.review_count > 0 ? detail.review_count : reviews.length;
 
   return (
-    <Section
-      title={`${pick(L.reviews, locale)} · ${formatNumber(headlineCount, locale)}`}
-    >
+    <Section title={`${pick(L.reviews, locale)} · ${formatNumber(headlineCount, locale)}`}>
       <View style={styles.reviewHeadline}>
-        <RatingStars value={headlineScore} size={18} />
-        <Text variant="title" weight="semibold">
+        <Star size={20} color={theme.color.ratingStar} fill={theme.color.ratingStar} strokeWidth={0} />
+        <Text variant="title" weight="bold">
           {formatNumber(headlineScore, locale)}
         </Text>
       </View>
@@ -679,14 +684,16 @@ function Reviews({ detail, locale }: { detail: PropertyDetail; locale: Locale })
         <Pressable
           accessibilityRole="button"
           onPress={() => router.push(`/property/reviews/${detail.id}`)}
+          hitSlop={8}
           style={({ pressed }) => [styles.showAll, pressed && styles.pressed]}
         >
-          <Text variant="body" weight="semibold" color="primary">
+          <Text variant="body" weight="semibold" color="accent">
             {pick(L.showAllReviews, locale)}
           </Text>
           <ChevronRight
             size={18}
-            color={theme.color.primary}
+            color={theme.color.accent}
+            strokeWidth={2.5}
             style={{ transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] }}
           />
         </Pressable>
@@ -695,7 +702,7 @@ function Reviews({ detail, locale }: { detail: PropertyDetail; locale: Locale })
   );
 }
 
-// ── Room option ───────────────────────────────────────────────────────────
+// ── Room option (selectable — keeps radio selection state) ──────────────────
 function RoomOption({
   room,
   locale,
@@ -737,7 +744,9 @@ function RoomOption({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
-      <Heading level={2}>{title}</Heading>
+      <Text variant="title" weight="bold" style={styles.sectionTitle}>
+        {title}
+      </Text>
       {children}
     </View>
   );
@@ -747,7 +756,7 @@ function FallbackNote({ show, locale }: { show: boolean; locale: Locale }) {
   if (!show) return null;
   return (
     <View style={styles.fallbackNote}>
-      <Languages size={14} color={theme.color.textMuted} />
+      <Languages size={14} color={theme.color.textMuted} strokeWidth={2} />
       <Text variant="caption" color="textMuted" style={styles.flex}>
         {pick(L.langFallbackNote, locale)}
       </Text>
@@ -758,7 +767,8 @@ function FallbackNote({ show, locale }: { show: boolean; locale: Locale }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.color.bg },
   flex: { flex: 1 },
-  pressed: { opacity: 0.9 },
+  pressed: { opacity: 0.85 },
+  centerFill: { flex: 1, justifyContent: 'center' },
   scrollContent: { paddingBottom: 150 },
 
   // Gallery
@@ -777,7 +787,8 @@ const styles = StyleSheet.create({
   // Scrim chip behind the header heart for contrast over light photos.
   headerHeart: { backgroundColor: theme.color.overlay },
 
-  body: { padding: theme.space.xl, gap: theme.space.sm },
+  body: { paddingHorizontal: theme.space.xl, paddingTop: theme.space.xl },
+  titleBlock: { gap: theme.space.xs },
   ratingWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -785,17 +796,9 @@ const styles = StyleSheet.create({
     marginTop: theme.space.xs,
     flexWrap: 'wrap',
   },
-  instantPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: theme.color.terracotta100,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: 3,
-  },
 
-  section: { marginTop: theme.space.xl, gap: theme.space.md },
+  section: { marginTop: theme.space['2xl'], gap: theme.space.md },
+  sectionTitle: { marginBottom: theme.space.xs },
   paragraph: { lineHeight: theme.lineHeight.body },
   fallbackNote: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
 
@@ -806,7 +809,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: theme.space.md,
     backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
+    borderRadius: theme.radius.lg,
     borderWidth: 1.5,
     borderColor: theme.color.border,
     padding: theme.space.lg,
@@ -832,12 +835,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: theme.space.sm,
     paddingVertical: theme.space.sm,
+    paddingEnd: theme.space.sm,
   },
-  amenityIcon: { width: 24, textAlign: 'center' },
 
   // Times
-  timesRow: { flexDirection: 'row', gap: theme.space.md },
-  timeBox: { flex: 1, gap: theme.space.xs },
+  timesRow: { flexDirection: 'row', gap: theme.space.xl },
+  timeBox: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
 
   // Reviews
   reviewHeadline: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
@@ -853,13 +856,9 @@ const styles = StyleSheet.create({
   showAll: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: theme.space.xs,
     paddingVertical: theme.space.md,
     marginTop: theme.space.sm,
-    borderWidth: 1.5,
-    borderColor: theme.color.border,
-    borderRadius: theme.radius.md,
   },
 
   // Sticky widget
@@ -873,7 +872,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.color.border,
-    ...theme.shadow.raised,
+    ...theme.shadow.xs,
   },
   widgetInfo: { flex: 1, gap: 2 },
   widgetPriceRow: { flexDirection: 'row', alignItems: 'baseline' },
@@ -882,7 +881,7 @@ const styles = StyleSheet.create({
   widgetCta: { minWidth: 140 },
 
   // Message host
-  messageHostWrap: { marginTop: theme.space.xl },
+  messageHostWrap: { marginTop: theme.space['2xl'] },
 
   // Sheets
   sheetTitle: { marginBottom: theme.space.sm },

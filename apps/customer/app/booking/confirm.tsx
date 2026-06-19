@@ -30,6 +30,7 @@ import {
   getPropertyDetail,
   propertyTitle,
   localizedName,
+  coverUrl,
   type PropertyDetail,
   type RoomTypeRow,
 } from '@/lib/discovery';
@@ -49,9 +50,8 @@ import {
   Screen,
   Header,
   Text,
-  Heading,
   Button,
-  Card,
+  RemoteImage,
   TextField,
   DetailSkeleton,
   ErrorState,
@@ -180,6 +180,7 @@ export default function BookingConfirmScreen() {
 
   const title = propertyTitle(detail, locale);
   const place = detail.wilaya ? localizedName(detail.wilaya, locale) : '';
+  const cover = coverUrl(detail);
   const roomName = localizedName(
     { name_ar: room.name_ar, name_fr: room.name_fr, name_en: room.name_en },
     locale,
@@ -317,34 +318,43 @@ export default function BookingConfirmScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Trip summary */}
-          <Card>
-            <Text variant="title" weight="semibold" numberOfLines={2}>
-              {title}
-            </Text>
-            {place ? (
-              <Text variant="body-sm" color="textMuted">
-                {place}
-              </Text>
-            ) : null}
-            {roomName ? (
-              <Text variant="body-sm" weight="medium" color="primary" style={styles.gapTop}>
-                {roomName}
-              </Text>
-            ) : null}
+          {/* Trip summary — borderless, photo-first */}
+          <View style={styles.summary}>
+            <View style={styles.summaryHead}>
+              <RemoteImage uri={cover} alt={title} radius={theme.radius.lg} style={styles.summaryImage} />
+              <View style={styles.summaryText}>
+                <Text variant="body" weight="semibold" numberOfLines={2}>
+                  {title}
+                </Text>
+                {place ? (
+                  <Text variant="body-sm" color="textMuted" numberOfLines={1}>
+                    {place}
+                  </Text>
+                ) : null}
+                {roomName ? (
+                  <Text variant="body-sm" weight="medium" color="primary" numberOfLines={1} style={styles.gapTop}>
+                    {roomName}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
             <View style={styles.divider} />
             <SummaryRow label={pick(L.dates, locale)} value={formatRange(checkIn, checkOut, locale)} />
+            <View style={styles.summaryDivider} />
             <SummaryRow
               label={pick(L.guests, locale)}
               value={`${formatNumber(guests, locale)} ${guests === 1 ? pick(L.guestsCount, locale) : pick(L.guestsCountPlural, locale)}`}
             />
             {units > 1 ? (
-              <SummaryRow
-                label={pick(L.quantity, locale)}
-                value={`${formatNumber(units, locale)} ${units === 1 ? pick(L.unit, locale) : pick(L.units, locale)}`}
-              />
+              <>
+                <View style={styles.summaryDivider} />
+                <SummaryRow
+                  label={pick(L.quantity, locale)}
+                  value={`${formatNumber(units, locale)} ${units === 1 ? pick(L.unit, locale) : pick(L.units, locale)}`}
+                />
+              </>
             ) : null}
-          </Card>
+          </View>
 
           {/* Quantity (multi-unit) */}
           {maxUnits > 1 ? (
@@ -385,12 +395,12 @@ export default function BookingConfirmScreen() {
 
           {/* Min-nights notice (surfaced before submit) */}
           {belowMinNights ? (
-            <Card variant="flat">
+            <View style={styles.notice}>
               <Text variant="body-sm" weight="medium" color="error">
                 {pick(L.minNightsError, locale)}: {formatNumber(detail.min_nights, locale)}{' '}
                 {detail.min_nights === 1 ? pick(L.night, locale) : pick(L.nights, locale)}
               </Text>
-            </Card>
+            </View>
           ) : null}
 
           {/* Price breakdown */}
@@ -464,7 +474,9 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
-      <Heading level={3}>{title}</Heading>
+      <Text variant="title" weight="bold">
+        {title}
+      </Text>
       {children}
     </View>
   );
@@ -472,21 +484,35 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  body: { padding: theme.space.xl, gap: theme.space.xl, paddingBottom: theme.space['2xl'] },
+  body: { padding: theme.space.xl, gap: theme.space['2xl'], paddingBottom: theme.space['3xl'] },
   gapTop: { marginTop: theme.space.xs },
 
+  // Trip summary (borderless, photo-first)
+  summary: { gap: theme.space.xs },
+  summaryHead: { flexDirection: 'row', gap: theme.space.md, alignItems: 'center' },
+  summaryImage: { width: 88, height: 88 },
+  summaryText: { flex: 1, gap: 2 },
+
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border, marginVertical: theme.space.md },
+  summaryDivider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border },
   summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.md,
-    paddingVertical: theme.space.xs,
+    paddingVertical: theme.space.sm,
   },
   // Value aligns to the end edge (right in LTR, left in RTL).
   summaryValue: { flex: 1, textAlign: I18nManager.isRTL ? 'left' : 'right' },
 
   section: { gap: theme.space.md },
+
+  // Inline error notice (borderless, tinted)
+  notice: {
+    backgroundColor: theme.color.errorBg,
+    borderRadius: theme.radius.card,
+    padding: theme.space.lg,
+  },
 
   footer: {
     flexDirection: 'row',

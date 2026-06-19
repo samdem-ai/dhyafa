@@ -140,7 +140,7 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },

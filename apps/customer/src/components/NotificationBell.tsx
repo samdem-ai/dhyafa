@@ -5,11 +5,15 @@
  * caller's notifications so the badge stays live while the app is foregrounded.
  * Tapping opens the notifications screen. Renders nothing meaningful for
  * signed-out users (still a bell, but count 0 / no badge).
+ *
+ * Redesign (Airbnb-style): outline lucide `Bell` glyph (never emoji), badge text
+ * through the locale-aware <Text> primitive (never hand-rolled RN_FONTS).
  */
 
 import { useCallback, useEffect, useId, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, I18nManager } from 'react-native';
+import { View, Pressable, StyleSheet, I18nManager } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { Bell } from 'lucide-react-native';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import type { Locale } from '@dyafa/i18n';
 import { formatNumber } from '@dyafa/i18n';
@@ -18,7 +22,7 @@ import { useSession } from '@/lib/auth';
 import { unreadNotificationCount, type NotificationRow } from '@/lib/notifications';
 import { L, pick } from '@/lib/copy';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
+import { Text } from '@/ui';
 
 export function NotificationBell({ locale }: { locale: Locale }) {
   const { user } = useSession();
@@ -77,10 +81,12 @@ export function NotificationBell({ locale }: { locale: Locale }) {
       hitSlop={8}
       style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
     >
-      <Text style={styles.glyph}>🔔</Text>
+      <Bell size={22} color={theme.color.text} strokeWidth={2} />
       {showBadge ? (
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{badgeText}</Text>
+          <Text variant="overline" weight="bold" color="white" center style={styles.badgeText}>
+            {badgeText}
+          </Text>
         </View>
       ) : null}
     </Pressable>
@@ -96,7 +102,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressed: { opacity: 0.7 },
-  glyph: { fontSize: 22 },
   badge: {
     position: 'absolute',
     top: 2,
@@ -113,10 +118,5 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: theme.color.surface,
   },
-  badgeText: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: 10,
-    fontWeight: '700',
-    color: theme.color.white,
-  },
+  badgeText: { lineHeight: 14 },
 });

@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     paddingVertical: theme.space.md,
     paddingHorizontal: theme.space.lg,
-    ...theme.shadow.raised,
+    ...theme.shadow.xs,
   },
   msg: { flex: 1 },
 });

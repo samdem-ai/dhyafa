@@ -38,6 +38,7 @@ import {
   Screen,
   Header,
   Text,
+  Heading,
   List,
   PropertyCardSkeleton,
   EmptyState,
@@ -269,7 +270,9 @@ export default function ResultsScreen() {
           ))}
         </View>
       ) : error && rows.length === 0 ? (
-        <ErrorState message={error} onRetry={() => void loadFirst()} retryLabel={pick(L.tryAgain, locale)} />
+        <View style={styles.centerFill}>
+          <ErrorState message={error} onRetry={() => void loadFirst()} retryLabel={pick(L.tryAgain, locale)} />
+        </View>
       ) : mode === 'map' ? (
         <Map
           markers={mapMarkers}
@@ -288,7 +291,7 @@ export default function ResultsScreen() {
           loadingMore={loadingMore}
           ItemSeparatorComponent={() => <View style={styles.sep} />}
           emptyComponent={
-            <View style={styles.emptyWrap}>
+            <View style={styles.centerFill}>
               <EmptyState
                 title={pick(L.noResultsTitle, locale)}
                 subtitle={pick(L.noResultsBody, locale)}
@@ -309,9 +312,9 @@ export default function ResultsScreen() {
 
       {/* Sort sheet */}
       <BottomSheet visible={sortOpen} onClose={() => setSortOpen(false)}>
-        <Text variant="title" weight="semibold" style={styles.sheetTitle}>
+        <Heading level={3} style={styles.sheetTitle}>
           {pick(L.sortBy, locale)}
-        </Text>
+        </Heading>
         {SORT_KEYS.map((k) => {
           const active = k === sort;
           return (
@@ -322,10 +325,10 @@ export default function ResultsScreen() {
               onPress={() => applySort(k)}
               style={({ pressed }) => [styles.sortRow, pressed && styles.pressed]}
             >
-              <Text variant="body-lg" color={active ? 'primary' : 'text'}>
+              <Text variant="body-lg" weight={active ? 'semibold' : 'regular'} color={active ? 'accent' : 'text'}>
                 {pick(SORT_LABEL[k], locale)}
               </Text>
-              {active ? <Check size={20} color={theme.color.primary} /> : null}
+              {active ? <Check size={20} color={theme.color.accent} strokeWidth={2.25} /> : null}
             </Pressable>
           );
         })}
@@ -359,8 +362,8 @@ function ControlPill({
       onPress={onPress}
       style={({ pressed }) => [styles.controlBtn, pressed && styles.pressed]}
     >
-      <Icon size={16} color={theme.color.text} />
-      <Text variant="body-sm" weight="medium" numberOfLines={1}>
+      <Icon size={16} color={theme.color.text} strokeWidth={2} />
+      <Text variant="body-sm" weight="semibold" numberOfLines={1}>
         {label}
       </Text>
     </Pressable>
@@ -386,7 +389,7 @@ function ToggleItem({
       onPress={onPress}
       style={[styles.toggleItem, active && styles.toggleItemActive]}
     >
-      <Icon size={18} color={active ? theme.color.text : theme.color.textMuted} />
+      <Icon size={18} color={active ? theme.color.text : theme.color.textMuted} strokeWidth={2} />
     </Pressable>
   );
 }
@@ -398,8 +401,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.space.sm,
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.xl,
+    paddingVertical: theme.space.md,
   },
   controlBtn: {
     flexDirection: 'row',
@@ -430,10 +433,10 @@ const styles = StyleSheet.create({
   },
   toggleItemActive: { backgroundColor: theme.color.surface, ...theme.shadow.xs },
 
-  skeletonWrap: { padding: theme.space.lg, gap: theme.space.lg },
-  listContent: { padding: theme.space.lg },
-  sep: { height: theme.space.lg },
-  emptyWrap: { paddingTop: theme.space['4xl'] },
+  skeletonWrap: { paddingHorizontal: theme.space.xl, paddingVertical: theme.space.lg, gap: theme.space['2xl'] },
+  listContent: { paddingHorizontal: theme.space.xl, paddingVertical: theme.space.lg },
+  sep: { height: theme.space.xl },
+  centerFill: { flex: 1, justifyContent: 'center' },
 
   sheetTitle: { marginBottom: theme.space.sm },
   sortRow: {

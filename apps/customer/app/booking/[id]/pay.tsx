@@ -35,9 +35,7 @@ import {
   Screen,
   Header,
   Text,
-  Heading,
   Button,
-  Card,
   Chip,
   PriceText,
   StatusPill,
@@ -278,8 +276,8 @@ export default function PaymentScreen() {
     <Screen edges={['top']} scroll contentContainerStyle={styles.body}>
       <Header title={pick(L.paymentTitle, locale)} />
 
-      {/* Amount due + live countdown */}
-      <Card>
+      {/* Amount due + live countdown — borderless, centered */}
+      <View style={styles.amountBlock}>
         <Text variant="body" color="textMuted" center>
           {pick(L.amountDue, locale)}
         </Text>
@@ -301,19 +299,19 @@ export default function PaymentScreen() {
         <Text variant="caption" color="textMuted" center style={styles.code}>
           {pick(L.bookingCode, locale)}: {booking.code}
         </Text>
-      </Card>
+      </View>
 
       {notice ? (
-        <Card variant="flat">
+        <View style={styles.notice}>
           <Text variant="body-sm" color="text">
             {notice}
           </Text>
-        </Card>
+        </View>
       ) : null}
 
       {/* Payment method chips */}
       <View style={styles.methods}>
-        <Text variant="body-sm" weight="semibold">
+        <Text variant="title" weight="bold">
           {pick(L.payChoosePaymentMethod, locale)}
         </Text>
         <View style={styles.methodRow}>
@@ -379,15 +377,24 @@ export default function PaymentScreen() {
 }
 
 const styles = StyleSheet.create({
-  body: { padding: theme.space.xl, gap: theme.space.lg },
+  body: { padding: theme.space.xl, gap: theme.space['2xl'] },
   guard: { flex: 1 },
   statusGuard: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: theme.space.md, padding: theme.space['2xl'] },
 
+  // Amount due (borderless, centered)
+  amountBlock: { gap: theme.space.xs, paddingTop: theme.space.md },
   amount: { alignItems: 'center', marginVertical: theme.space.xs },
   deadlineWrap: { gap: 2, marginTop: theme.space.xs },
   code: { marginTop: theme.space.sm },
 
-  methods: { gap: theme.space.sm },
+  // Inline notice (borderless, tinted)
+  notice: {
+    backgroundColor: theme.color.surfaceSunken,
+    borderRadius: theme.radius.card,
+    padding: theme.space.lg,
+  },
+
+  methods: { gap: theme.space.md },
   methodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
 
   payWrap: { gap: theme.space.sm },
