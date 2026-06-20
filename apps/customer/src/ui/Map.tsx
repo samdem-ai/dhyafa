@@ -1,19 +1,20 @@
 /**
  * Map — a real interactive map via OpenStreetMap (free, no token, no native
  * build). Renders Leaflet + OSM raster tiles inside a react-native-webview, so
- * it works in Expo Go today.
+ * it works in Expo Go today. The view is locked to Algeria (maxBounds).
  *
  * Two modes:
  *  - READ-ONLY (default): plots `markers`; tapping a pin → `onMarkerPress(id)`.
  *  - SELECTABLE (`onPress` provided): a tap drops/moves a draggable pin and
  *    reports the coordinate via `onPress(lat, lng)` — used by the host
- *    listing-location step to set the property's coordinates.
+ *    listing-location step. The map recenters when `region` changes (e.g. the
+ *    host picks a wilaya) via injected JS, without reloading the WebView.
  *
- * Coordinates shown for guests are the privacy-safe approximate ones (≈110 m)
- * from properties_public — never the exact address.
+ * Guest coordinates are the privacy-safe approximate ones (≈110 m) from
+ * properties_public — never the exact address.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { theme } from '@/theme';
@@ -44,6 +45,9 @@ export interface MapProps {
   body?: string;
   testID?: string;
 }
+
+// Algeria bounding box (SW, NE) with a little padding — the map can't pan away.
+const ALGERIA_BOUNDS = '[[18.5, -9.0],[37.5, 12.5]]';
 
 function isValid(m: MapMarker): boolean {
   return (
@@ -80,26 +84,31 @@ function buildHtml(markers: MapMarker[], region: MapRegion | undefined, selectab
   var pts = ${data};
   var center = ${centerJson};
   var selectable = ${selectable ? 'true' : 'false'};
-  var map = L.map('map', { zoomControl: true, attributionControl: true });
+  var ALGERIA = ${ALGERIA_BOUNDS};
+  var map = L.map('map', {
+    zoomControl: true, attributionControl: true,
+    maxBounds: ALGERIA, maxBoundsViscosity: 1.0, minZoom: 5
+  });
+  window.map = map;
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '&copy; OpenStreetMap'
+    maxZoom: 19, bounds: ALGERIA, attribution: '&copy; OpenStreetMap'
   }).addTo(map);
   function post(obj){ if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(obj)); }
   var valid = pts.filter(function(p){ return typeof p.lat==='number' && typeof p.lng==='number'; });
 
   if (selectable) {
     var pin = null;
-    function place(lat,lng){
+    window.placePin = function(lat,lng){
       if (pin) { pin.setLatLng([lat,lng]); }
       else {
         pin = L.marker([lat,lng], { draggable:true }).addTo(map);
         pin.on('dragend', function(e){ var p=e.target.getLatLng(); post({type:'press',lat:p.lat,lng:p.lng}); });
       }
-    }
-    map.on('click', function(e){ place(e.latlng.lat,e.latlng.lng); post({type:'press',lat:e.latlng.lat,lng:e.latlng.lng}); });
-    if (valid.length) { place(valid[0].lat, valid[0].lng); map.setView([valid[0].lat, valid[0].lng], 13); }
-    else if (center) { map.setView([center[1],center[0]], 12); }
-    else { map.setView([28.0339, 1.6596], 5); }
+    };
+    map.on('click', function(e){ window.placePin(e.latlng.lat,e.latlng.lng); post({type:'press',lat:e.latlng.lat,lng:e.latlng.lng}); });
+    if (valid.length) { window.placePin(valid[0].lat, valid[0].lng); map.setView([valid[0].lat, valid[0].lng], 13); }
+    else if (center) { map.setView([center[1],center[0]], 11); }
+    else { map.fitBounds(ALGERIA); }
   } else {
     if (valid.length) {
       var layers = valid.map(function(p){
@@ -116,7 +125,7 @@ function buildHtml(markers: MapMarker[], region: MapRegion | undefined, selectab
     } else if (center) {
       map.setView([center[1],center[0]], 13);
     } else {
-      map.setView([28.0339, 1.6596], 5);
+      map.fitBounds(ALGERIA);
     }
   }
 </script></body></html>`;
@@ -124,13 +133,23 @@ function buildHtml(markers: MapMarker[], region: MapRegion | undefined, selectab
 
 export function Map({ markers = [], region, onMarkerPress, onPress, testID }: MapProps) {
   const selectable = !!onPress;
-  // Memo on the INITIAL inputs only (selectable mode manages its pin in-webview,
-  // so we don't reload on every coordinate change → no flicker).
+  const ref = useRef<WebView>(null);
+
+  // Build the HTML once for selectable maps (the pin + recenter are driven via
+  // injected JS afterward, so we don't reload the WebView on every change).
   const html = useMemo(
     () => buildHtml(markers, region, selectable),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectable ? 'selectable' : JSON.stringify(markers), JSON.stringify(region)],
+    [selectable ? 'selectable' : JSON.stringify(markers), selectable ? '' : JSON.stringify(region)],
   );
+
+  // Recenter the (selectable) map when the region changes — e.g. wilaya picked.
+  useEffect(() => {
+    if (!selectable || !region || !ref.current) return;
+    ref.current.injectJavaScript(
+      `if(window.map){window.map.setView([${region.latitude}, ${region.longitude}], 11);} true;`,
+    );
+  }, [selectable, region?.latitude, region?.longitude]);
 
   const onMessage = (e: WebViewMessageEvent) => {
     const raw = e.nativeEvent.data;
@@ -141,7 +160,6 @@ export function Map({ markers = [], region, onMarkerPress, onPress, testID }: Ma
         onPress?.(msg.lat, msg.lng);
       }
     } catch {
-      // Back-compat: a bare id string.
       if (raw) onMarkerPress?.(raw);
     }
   };
@@ -149,6 +167,7 @@ export function Map({ markers = [], region, onMarkerPress, onPress, testID }: Ma
   return (
     <View style={styles.fill} testID={testID}>
       <WebView
+        ref={ref}
         originWhitelist={['*']}
         source={{ html }}
         onMessage={onMessage}

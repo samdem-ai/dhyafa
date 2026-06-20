@@ -46,7 +46,7 @@ export type AmenityRow = Tables['amenities']['Row'];
 // Lookups select only the columns the wizard needs.
 export type WilayaRow = Pick<
   Tables['wilayas']['Row'],
-  'code' | 'name_ar' | 'name_fr' | 'name_en'
+  'code' | 'name_ar' | 'name_fr' | 'name_en' | 'lat' | 'lng'
 >;
 export type CommuneRow = Pick<
   Tables['communes']['Row'],
@@ -192,7 +192,7 @@ export async function listAmenities(): Promise<AmenityRow[]> {
 export async function listWilayas(): Promise<WilayaRow[]> {
   const { data, error } = await supabase
     .from('wilayas')
-    .select('code,name_ar,name_fr,name_en')
+    .select('code,name_ar,name_fr,name_en,lat,lng')
     .order('code', { ascending: true });
   if (error) throw error;
   return data ?? [];

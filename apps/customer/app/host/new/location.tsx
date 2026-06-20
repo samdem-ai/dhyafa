@@ -291,9 +291,17 @@ export default function StepLocation() {
                 ? [{ id: 'me', latitude: Number(draft.lat), longitude: Number(draft.lng) }]
                 : []
             }
-            onPress={(lat, lng) =>
-              patch({ lat: lat.toFixed(6), lng: lng.toFixed(6) })
+            region={
+              selectedWilaya?.lat != null && selectedWilaya?.lng != null
+                ? {
+                    latitude: Number(selectedWilaya.lat),
+                    longitude: Number(selectedWilaya.lng),
+                    latitudeDelta: 0.5,
+                    longitudeDelta: 0.5,
+                  }
+                : undefined
             }
+            onPress={(lat, lng) => patch({ lat: lat.toFixed(6), lng: lng.toFixed(6) })}
           />
         </View>
         <View style={styles.coordRow}>
