@@ -11,7 +11,7 @@ services:
       dockerfile: deploy/Dockerfile.web
       args:
         APP: admin
-        PORT: "8411"
+        PORT: "8511"
         NEXT_PUBLIC_SUPABASE_URL: "${PUBLIC_API_URL}"
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
     image: dyafa-admin:latest
@@ -21,7 +21,7 @@ services:
       NEXT_PUBLIC_SUPABASE_URL: "${PUBLIC_API_URL}"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
     ports:
-      - "8411:8411"
+      - "8511:8511"
     restart: unless-stopped
 
   hotel:
@@ -30,7 +30,7 @@ services:
       dockerfile: deploy/Dockerfile.web
       args:
         APP: hotel
-        PORT: "8412"
+        PORT: "8512"
         NEXT_PUBLIC_SUPABASE_URL: "${PUBLIC_API_URL}"
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
     image: dyafa-hotel:latest
@@ -40,5 +40,5 @@ services:
       NEXT_PUBLIC_SUPABASE_URL: "${PUBLIC_API_URL}"
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
     ports:
-      - "8412:8412"
+      - "8512:8512"
     restart: unless-stopped
