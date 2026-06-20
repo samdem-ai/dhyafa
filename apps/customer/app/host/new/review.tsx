@@ -143,6 +143,11 @@ export default function StepReview() {
   async function persistRooms(propertyId: string): Promise<void> {
     const isSingle = draft.listingKind === 'single_unit';
     const existing = await listRoomTypes(propertyId);
+    // Ids of rooms that actually belong to THIS property. A persisted draft can
+    // carry a room.id from a previous listing; trusting it would UPDATE a row of
+    // another property (or a deleted one), leaving this property with zero
+    // room_types and making submit_property_for_review fail with a 400.
+    const existingIds = new Set(existing.map((r) => r.id));
     // Work on a local copy so we can stamp ids and push back once at the end.
     const next: RoomTypeDraft[] = draft.rooms.map((r) => ({ ...r }));
 
@@ -161,9 +166,11 @@ export default function StepReview() {
         cleaningFeeDzd: toInt(room.cleaningFeeDzd),
         inventoryCount: 1,
       };
-      // Prefer the room's own persisted id, then any existing default row.
+      // Prefer the room's own persisted id IF it belongs to this property, then
+      // any existing default row; otherwise insert a fresh one.
       const currentId =
-        room.id ?? (existing.find((r) => r.is_default) ?? existing[0])?.id;
+        (room.id && existingIds.has(room.id) ? room.id : undefined) ??
+        (existing.find((r) => r.is_default) ?? existing[0])?.id;
       if (currentId) {
         await updateRoomType(currentId, {
           name_ar: payload.nameAr,
@@ -199,7 +206,7 @@ export default function StepReview() {
         cleaningFeeDzd: toInt(room.cleaningFeeDzd),
         inventoryCount: Math.max(1, toInt(room.inventoryCount)),
       };
-      if (room.id) {
+      if (room.id && existingIds.has(room.id)) {
         await updateRoomType(room.id, {
           name_ar: payload.nameAr,
           name_fr: payload.nameFr,
@@ -239,8 +246,10 @@ export default function StepReview() {
 
       haptics.success();
       setDone(true);
-    } catch {
-      setError(pick(COPY.submitError, locale));
+    } catch (e) {
+      if (__DEV__) console.warn('[review] submit failed:', e);
+      const detail = e instanceof Error && e.message ? e.message : '';
+      setError(pick(COPY.submitError, locale) + (detail ? `\n(${detail})` : ''));
     } finally {
       setSubmitting(false);
     }
