@@ -435,6 +435,7 @@ export default function HostCalendarScreen() {
                   }}
                   monthsAhead={6}
                   dayMeta={dayMeta}
+                  scroll={false}
                 />
               )}
             </View>

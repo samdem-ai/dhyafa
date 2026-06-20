@@ -119,6 +119,13 @@ export interface DateRangePickerProps {
    * callers omit it and get the plain picker.
    */
   dayMeta?: Record<string, DayMeta>;
+  /**
+   * Whether the picker owns a vertical ScrollView (default true). Set FALSE when
+   * embedding inside another vertical ScrollView (e.g. the host calendar page) —
+   * nesting two vertical scrollers traps the outer scroll so the edit panel
+   * below becomes unreachable. With false, the parent scroll handles everything.
+   */
+  scroll?: boolean;
 }
 
 /** Local 'YYYY-MM-DD' key for a Date (no TZ shift). */
@@ -137,6 +144,7 @@ export function DateRangePicker({
   minDate,
   monthsAhead = 12,
   dayMeta,
+  scroll = true,
 }: DateRangePickerProps) {
   const today = startOfDay(new Date());
   const min = minDate ? startOfDay(minDate) : today;
@@ -168,7 +176,11 @@ export function DateRangePicker({
   const weekdays = WEEKDAY_LABELS[locale];
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+    <ScrollView
+      scrollEnabled={scroll}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.scroll}
+    >
       <View style={styles.weekHeader}>
         {weekdays.map((w, i) => (
           <View key={i} style={styles.weekdayCell}>

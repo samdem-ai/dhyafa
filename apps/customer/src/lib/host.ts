@@ -55,9 +55,11 @@ export interface HostBooking extends BookingRow {
   } | null;
 }
 
+// bookings has TWO FKs to profiles (guest_id + cancelled_by), so the guest
+// embed MUST name the FK explicitly or PostgREST errors with PGRST201.
 const HOST_BOOKING_SELECT = `
   *,
-  guest:profiles ( id, display_name ),
+  guest:profiles!bookings_guest_id_fkey ( id, display_name ),
   property:properties ( id, title_ar, title_fr, title_en ),
   room_type:room_types ( id, name_ar, name_fr, name_en )
 `;
