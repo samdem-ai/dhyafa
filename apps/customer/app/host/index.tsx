@@ -35,6 +35,7 @@ import {
 } from 'lucide-react-native';
 import { listMyProperties, getMyHostProfileId, localizedName, type PropertyRow } from '@/lib/listings';
 import { getHostPerformance } from '@/lib/host';
+import { useWizard } from '@/lib/wizard';
 import { supabase } from '@/lib/auth';
 import {
   Screen,
@@ -85,6 +86,7 @@ function propertyTitle(p: PropertyRow, locale: Locale): string {
 export default function HostHomeScreen() {
   const { i18n } = useTranslation('common');
   const locale = (i18n.language ?? 'en') as Locale;
+  const { reset: resetWizard } = useWizard();
 
   const [properties, setProperties] = useState<PropertyRow[] | null>(null);
   const [activeListings, setActiveListings] = useState<number | null>(null);
@@ -132,8 +134,13 @@ export default function HostHomeScreen() {
     setRefreshing(false);
   }, [load]);
 
-  function goCreate() {
+  async function goCreate() {
     haptics.tap();
+    // Start a CLEAN listing: clear any persisted/edited draft first, otherwise the
+    // wizard reopens the last (in-progress, submitted, or just-edited) draft and
+    // you can never start a second listing. Resuming an in-progress draft is done
+    // by tapping that listing in the list (it routes with ?propertyId).
+    await resetWizard();
     router.push('/host/new');
   }
 
