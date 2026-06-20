@@ -140,7 +140,7 @@ function initialDraft(): WizardDraft {
 }
 
 /** AsyncStorage key for the persisted in-progress wizard draft. */
-const DRAFT_STORAGE_KEY = 'dyafa.wizard.draft.v1';
+export const DRAFT_STORAGE_KEY = 'dyafa.wizard.draft.v1';
 
 interface WizardContextValue {
   draft: WizardDraft;
