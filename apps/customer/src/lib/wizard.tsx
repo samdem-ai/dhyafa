@@ -32,7 +32,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createDraftProperty,
   ensureHostAndRefresh,
-  getMyHostProfileId,
   updateProperty,
   type CancellationTier,
   type ListingKind,
@@ -219,16 +218,16 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     if (creating.current) return creating.current;
 
     const run = (async () => {
-      // become_host (non-hosts only) + refreshSession so the host_id claim is
-      // present before the insert — otherwise RLS rejects the write.
-      let hostProfileId = draft.hostProfileId ?? (await getMyHostProfileId());
-      if (!hostProfileId) {
-        hostProfileId = await ensureHostAndRefresh();
-      }
-
       if (draft.propertyTypeId == null || draft.wilayaCode == null) {
         throw new Error('PROPERTY_TYPE_AND_WILAYA_REQUIRED');
       }
+
+      // ALWAYS become_host (no-op if already a host) + refreshSession so the
+      // current access token carries the host_id JWT claim. The properties INSERT
+      // policy is `host_profile_id = my_host_id()` — if the user became a host in
+      // a session whose token was never refreshed, host_id is absent and the
+      // insert is RLS-blocked (surfaced before as a misleading "save" error).
+      const hostProfileId = await ensureHostAndRefresh();
 
       const id = await createDraftProperty({
         hostProfileId,

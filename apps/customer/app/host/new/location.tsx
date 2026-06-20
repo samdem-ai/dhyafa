@@ -175,9 +175,9 @@ export default function StepLocation() {
       });
       router.push('/host/new/photos');
     } catch (e) {
-      // Distinguish auth/claim failure from network/RLS.
+      // Distinguish host/claim/RLS failure from a real network error.
       const msg = e instanceof Error ? e.message : '';
-      if (/PROPERTY_TYPE|host|claim|JWT|auth/i.test(msg)) {
+      if (/PROPERTY_TYPE|host|claim|JWT|auth|row-level security|policy|42501/i.test(msg)) {
         setSaveError(pick(COPY.saveAuthError, locale));
       } else {
         setSaveError(pick(COPY.saveNetError, locale));

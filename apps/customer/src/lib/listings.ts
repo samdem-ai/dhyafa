@@ -222,26 +222,38 @@ export interface PropertyWithChildren extends PropertyRow {
  * Create a draft property early in the wizard so child rows (photos, room
  * types, amenities) have a parent to attach to. Returns the new property id.
  */
+/** RFC4122 v4 UUID (no native crypto dependency — fine for a DB row id). */
+function uuidv4(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export async function createDraftProperty(input: {
   hostProfileId: string;
   propertyTypeId: number;
   listingKind: ListingKind;
   wilayaCode: number;
 }): Promise<string> {
+  // Generate the id client-side and insert with return=minimal (no .select()).
+  // The properties SELECT policy uses can_act_on_property() (a subquery on
+  // properties) which can't see the just-inserted row mid-statement, so a
+  // RETURNING/representation insert (.select().single()) is RLS-rejected (403).
+  // A client id + minimal insert sidesteps the select-back entirely.
+  const id = uuidv4();
   const insert: PropertyInsert = {
+    id,
     host_profile_id: input.hostProfileId,
     property_type_id: input.propertyTypeId,
     listing_kind: input.listingKind as PropertyInsert['listing_kind'],
     wilaya_code: input.wilayaCode,
     status: 'draft' as PropertyInsert['status'],
   };
-  const { data, error } = await supabase
-    .from('properties')
-    .insert(insert)
-    .select('id')
-    .single();
+  const { error } = await supabase.from('properties').insert(insert);
   if (error) throw error;
-  return data.id;
+  return id;
 }
 
 /** Patch a draft property with any subset of editable columns. */
