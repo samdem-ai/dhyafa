@@ -23,6 +23,11 @@ const PUBLIC_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN || '';
 
 module.exports = ({ config }) => ({
   ...config,
+  // Disable expo-updates so the dev server (Expo Go) does NOT invoke
+  // expo-updates' `runtimeversion:resolve` subprocess, which crashes on this
+  // Windows host (exit 0xC0000142) and 500s the dev manifest. OTA updates aren't
+  // used in the Expo Go dev workflow; re-enable for an EAS production build.
+  updates: { ...(config.updates ?? {}), enabled: false },
   plugins: [
     ...(config.plugins ?? []),
     [
