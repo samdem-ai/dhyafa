@@ -61,6 +61,7 @@ export function toParams(state: SearchState): SearchParamRecord {
   if (state.amenityIds && state.amenityIds.length > 0) {
     p['amenityIds'] = state.amenityIds.join(',');
   }
+  if (state.listingKind) p['listingKind'] = state.listingKind;
   if (state.sort) p['sort'] = state.sort;
   return p;
 }
@@ -86,6 +87,10 @@ export function fromParams(params: SearchParamRecord): SearchState {
     instantBookOnly: params['instantBookOnly'] === '1',
     minRating: numOrUndef(params['minRating']) ?? null,
     amenityIds: idsOrUndef(params['amenityIds']),
+    listingKind:
+      params['listingKind'] === 'single_unit' || params['listingKind'] === 'multi_room'
+        ? params['listingKind']
+        : null,
     sort: sortOrUndef(params['sort']),
   };
 }
@@ -101,6 +106,7 @@ export function toFilters(state: SearchState): SearchFilters {
     instantBookOnly: state.instantBookOnly,
     minRating: state.minRating ?? null,
     amenityIds: state.amenityIds,
+    listingKind: state.listingKind ?? null,
     sort: state.sort,
   };
 }

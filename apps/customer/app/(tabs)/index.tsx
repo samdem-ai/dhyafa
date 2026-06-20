@@ -23,7 +23,7 @@ import {
 } from '@/lib/discovery';
 import { useApprovedProperties } from '@/lib/queries';
 import { RailCard } from '@/components/discovery';
-import { Screen, Heading, Text, Skeleton, ErrorState } from '@/ui';
+import { Screen, Heading, Text, Skeleton, ErrorState, SegmentedControl } from '@/ui';
 import { NotificationBell } from '@/components/NotificationBell';
 import { L, pick } from '@/lib/copy';
 import { toParams, type SearchState } from '@/lib/searchParams';
@@ -164,6 +164,24 @@ export default function ExploreScreen() {
         </View>
       </Pressable>
 
+      {/* Hotels vs vacation-homes — quick category launcher into results */}
+      <View style={styles.category}>
+        <SegmentedControl<'all' | 'single_unit' | 'multi_room'>
+          options={[
+            { value: 'all', label: pick(L.catAll, locale) },
+            { value: 'single_unit', label: pick(L.catHomes, locale) },
+            { value: 'multi_room', label: pick(L.catHotels, locale) },
+          ]}
+          value="all"
+          onChange={(v) =>
+            router.push({
+              pathname: '/search/results',
+              params: toParams({ sort: 'recommended', listingKind: v === 'all' ? null : v }),
+            })
+          }
+        />
+      </View>
+
       {/* Content states */}
       {isPending || rails === null ? (
         <RailsSkeleton />
@@ -278,7 +296,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: theme.space.xl,
-    marginBottom: theme.space['2xl'],
+    marginBottom: theme.space.md,
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.pill,
     borderWidth: 1,
@@ -288,6 +306,7 @@ const styles = StyleSheet.create({
     gap: theme.space.md,
     ...theme.shadow.xs,
   },
+  category: { marginHorizontal: theme.space.xl, marginBottom: theme.space['2xl'] },
 
   rail: { marginBottom: theme.space['2xl'] },
   railHeader: {

@@ -120,6 +120,8 @@ export interface SearchFilters {
   minRating?: number | null;
   /** Amenity ids that must ALL be present. */
   amenityIds?: number[];
+  /** Listing kind: 'single_unit' = vacation homes, 'multi_room' = hotels. */
+  listingKind?: Database['public']['Enums']['listing_kind'] | null;
   sort?: SortKey;
 }
 
@@ -228,6 +230,7 @@ export function coverUrl(p: Pick<PropertySummary, 'cover_photo_path' | 'photos'>
 
 function passesFilters(p: PropertySummary, f: SearchFilters, amenityByProp: Set<string> | null): boolean {
   if (f.wilayaCode != null && p.wilaya_code !== f.wilayaCode) return false;
+  if (f.listingKind && p.listing_kind !== f.listingKind) return false;
   if (f.instantBookOnly && !p.instant_book) return false;
   if (f.minRating != null && p.rating_avg < f.minRating) return false;
   if (f.propertyTypeIds && f.propertyTypeIds.length > 0 && !f.propertyTypeIds.includes(p.property_type_id)) {
@@ -368,6 +371,7 @@ export async function searchPropertiesPage(
     .is('deleted_at', null);
 
   if (filters.wilayaCode != null) query = query.eq('wilaya_code', filters.wilayaCode);
+  if (filters.listingKind) query = query.eq('listing_kind', filters.listingKind);
   if (filters.propertyTypeIds && filters.propertyTypeIds.length > 0) {
     query = query.in('property_type_id', filters.propertyTypeIds);
   }
@@ -442,6 +446,7 @@ export async function countMatchingProperties(filters: SearchFilters = {}): Prom
       .eq('status', 'approved')
       .is('deleted_at', null);
     if (filters.wilayaCode != null) query = query.eq('wilaya_code', filters.wilayaCode);
+    if (filters.listingKind) query = query.eq('listing_kind', filters.listingKind);
     if (filters.propertyTypeIds && filters.propertyTypeIds.length > 0) {
       query = query.in('property_type_id', filters.propertyTypeIds);
     }

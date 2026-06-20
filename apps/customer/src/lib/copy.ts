@@ -74,6 +74,10 @@ export const L = {
   sort: { ar: 'ترتيب', fr: 'Trier', en: 'Sort' },
   list: { ar: 'قائمة', fr: 'Liste', en: 'List' },
   map: { ar: 'خريطة', fr: 'Carte', en: 'Map' },
+  // Listing-kind category filter (single_unit = homes, multi_room = hotels)
+  catAll: { ar: 'الكل', fr: 'Tous', en: 'All' },
+  catHomes: { ar: 'منازل العطلات', fr: 'Logements', en: 'Vacation homes' },
+  catHotels: { ar: 'فنادق', fr: 'Hôtels', en: 'Hotels' },
   sortRecommended: { ar: 'موصى به', fr: 'Recommandé', en: 'Recommended' },
   sortPriceAsc: { ar: 'السعر: من الأقل', fr: 'Prix : croissant', en: 'Price: low to high' },
   sortPriceDesc: { ar: 'السعر: من الأعلى', fr: 'Prix : décroissant', en: 'Price: high to low' },

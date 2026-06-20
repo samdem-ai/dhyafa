@@ -44,6 +44,7 @@ import {
   EmptyState,
   ErrorState,
   BottomSheet,
+  SegmentedControl,
   Map,
 } from '@/ui';
 import { L, pick, type LMessage } from '@/lib/copy';
@@ -234,6 +235,22 @@ export default function ResultsScreen() {
         onBack={() => router.back()}
       />
 
+      {/* Hotels vs vacation-homes category */}
+      <View style={styles.category}>
+        <SegmentedControl<'all' | 'single_unit' | 'multi_room'>
+          options={[
+            { value: 'all', label: pick(L.catAll, locale) },
+            { value: 'single_unit', label: pick(L.catHomes, locale) },
+            { value: 'multi_room', label: pick(L.catHotels, locale) },
+          ]}
+          value={state.listingKind ?? 'all'}
+          onChange={(v) => {
+            hapticSelection();
+            router.setParams(toParams({ ...state, listingKind: v === 'all' ? null : v }));
+          }}
+        />
+      </View>
+
       {/* Controls */}
       <View style={styles.controls}>
         <ControlPill
@@ -397,6 +414,7 @@ function ToggleItem({
 const styles = StyleSheet.create({
   pressed: { opacity: 0.9 },
 
+  category: { paddingHorizontal: theme.space.xl, paddingTop: theme.space.md },
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
