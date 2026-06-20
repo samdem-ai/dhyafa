@@ -216,7 +216,7 @@ export default function StepPhotos() {
   }
   if (error && photos.length === 0) {
     return (
-      <View style={styles.fill}>
+      <View style={styles.errorFill}>
         <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(COPY.retry, locale)} />
       </View>
     );
@@ -304,16 +304,19 @@ export default function StepPhotos() {
 
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={pick(COPY.add, locale)}
           onPress={() => void onAdd()}
           disabled={busy}
-          style={styles.addTile}
+          style={({ pressed }) => [styles.addTile, pressed && styles.addTilePressed]}
         >
           {busy ? (
-            <ActivityIndicator color={theme.color.primary} />
+            <ActivityIndicator color={theme.color.accent} />
           ) : (
             <>
-              <Plus size={22} color={theme.color.primary} />
-              <Text variant="body-sm" weight="semibold" color="primary" center>
+              <View style={styles.addIcon}>
+                <Plus size={24} color={theme.color.accent} strokeWidth={2} />
+              </View>
+              <Text variant="body-sm" weight="semibold" color="accent" center>
                 {pick(COPY.add, locale)}
               </Text>
             </>
@@ -327,8 +330,8 @@ export default function StepPhotos() {
         </Text>
       ) : null}
       {actionError ? (
-        <View style={styles.errorBox}>
-          <Text variant="body-sm" color="error" center>
+        <View style={styles.notice}>
+          <Text variant="body-sm" weight="medium" color="error" center>
             {actionError}
           </Text>
         </View>
@@ -346,11 +349,12 @@ const TILE = '47%';
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: theme.color.bg },
+  errorFill: { flex: 1, backgroundColor: theme.color.bg, justifyContent: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.md },
   tile: {
     width: TILE,
     aspectRatio: 1,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.lg,
     overflow: 'hidden',
     backgroundColor: theme.color.surfaceSunken,
   },
@@ -362,7 +366,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: theme.color.primary,
+    backgroundColor: theme.color.accent,
     borderRadius: theme.radius.pill,
     paddingHorizontal: theme.space.sm,
     paddingVertical: 2,
@@ -409,15 +413,22 @@ const styles = StyleSheet.create({
   addTile: {
     width: TILE,
     aspectRatio: 1,
-    borderRadius: theme.radius.md,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: theme.color.borderStrong,
+    borderRadius: theme.radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: theme.space.xs,
-    backgroundColor: theme.color.surface,
+    gap: theme.space.sm,
+    backgroundColor: theme.color.surfaceSunken,
     paddingHorizontal: theme.space.sm,
+  },
+  addTilePressed: { opacity: 0.85 },
+  addIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.color.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...theme.shadow.xs,
   },
   skeletonGrid: {
     flexDirection: 'row',
@@ -425,10 +436,10 @@ const styles = StyleSheet.create({
     gap: theme.space.md,
     padding: theme.space.xl,
   },
-  skeletonTile: { width: TILE, aspectRatio: 1, borderRadius: theme.radius.md },
-  errorBox: {
+  skeletonTile: { width: TILE, aspectRatio: 1, borderRadius: theme.radius.lg },
+  notice: {
     backgroundColor: theme.color.errorBg,
-    padding: theme.space.md,
-    borderRadius: theme.radius.md,
+    padding: theme.space.lg,
+    borderRadius: theme.radius.card,
   },
 });

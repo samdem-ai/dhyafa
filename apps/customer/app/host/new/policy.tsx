@@ -4,15 +4,15 @@
  */
 
 import { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet, Pressable, Switch } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Check } from 'lucide-react-native';
 import type { Locale } from '@dyafa/i18n';
 import { useWizard } from '@/lib/wizard';
 import type { CancellationTier } from '@/lib/listings';
 import { WizardChrome } from '@/components/WizardChrome';
-import { SelectCard, ToggleRow, TextField } from '@/components/fields';
-import { FieldLabel } from '@/components/ui';
+import { TextField, FieldLabel, Text } from '@/ui';
 import { cancellationTierCopy, pick as pickL } from '@/lib/copy';
 import { theme } from '@/theme';
 
@@ -58,40 +58,97 @@ export default function StepPolicy() {
       subtitle={pick(COPY.subtitle, locale)}
       onNext={onNext}
     >
-      <FieldLabel label={pick(COPY.cancellation, locale)} />
-      <View style={styles.list}>
-        {TIER_VALUES.map((value) => {
-          const c = cancellationTierCopy(value);
-          return (
-            <SelectCard
-              key={value}
-              title={pickL(c.label, locale)}
-              subtitle={pickL(c.window, locale)}
-              selected={draft.cancellationTier === value}
-              onPress={() => patch({ cancellationTier: value })}
-            />
-          );
-        })}
+      <View style={styles.section}>
+        <Text variant="title" weight="bold">
+          {pick(COPY.cancellation, locale)}
+        </Text>
+        <View style={styles.options}>
+          {TIER_VALUES.map((value) => {
+            const c = cancellationTierCopy(value);
+            const selected = draft.cancellationTier === value;
+            return (
+              <Pressable
+                key={value}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                onPress={() => patch({ cancellationTier: value })}
+                style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
+              >
+                <View style={styles.optionText}>
+                  <Text variant="body" weight="semibold" color={selected ? 'accent' : 'text'}>
+                    {pickL(c.label, locale)}
+                  </Text>
+                  <Text variant="body-sm" color="textMuted">
+                    {pickL(c.window, locale)}
+                  </Text>
+                </View>
+                <View style={[styles.radio, selected && styles.radioSelected]}>
+                  {selected ? <Check size={15} color={theme.color.textOnPrimary} strokeWidth={3} /> : null}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
-      <ToggleRow
-        label={pick(COPY.instant, locale)}
-        hint={pick(COPY.instantHint, locale)}
-        value={draft.instantBook}
-        onValueChange={(v) => patch({ instantBook: v })}
-      />
+      <View style={styles.toggleRow}>
+        <View style={styles.toggleText}>
+          <Text variant="body" weight="semibold">
+            {pick(COPY.instant, locale)}
+          </Text>
+          <Text variant="body-sm" color="textMuted">
+            {pick(COPY.instantHint, locale)}
+          </Text>
+        </View>
+        <Switch
+          value={draft.instantBook}
+          onValueChange={(v) => patch({ instantBook: v })}
+          trackColor={{ true: theme.color.accent, false: theme.color.borderStrong }}
+          thumbColor={theme.color.surface}
+        />
+      </View>
 
-      <TextField
-        label={pick(COPY.minNights, locale)}
-        value={minNights}
-        onChangeText={setMinNights}
-        placeholder="1"
-        keyboardType="number-pad"
-      />
+      <View style={styles.section}>
+        <FieldLabel label={pick(COPY.minNights, locale)} />
+        <TextField
+          value={minNights}
+          onChangeText={setMinNights}
+          placeholder="1"
+          keyboardType="number-pad"
+        />
+      </View>
     </WizardChrome>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { gap: theme.space.md },
+  section: { gap: theme.space.md },
+  options: { gap: theme.space.lg },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.md,
+  },
+  optionPressed: { opacity: 0.7 },
+  optionText: { flex: 1, gap: 2 },
+  radio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: theme.color.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioSelected: {
+    backgroundColor: theme.color.accent,
+    borderColor: theme.color.accent,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.space.md,
+  },
+  toggleText: { flex: 1, gap: 2 },
 });

@@ -1,27 +1,41 @@
 /**
- * Host reservations (Phase 3 rework).
+ * Host reservations (Phase 3 rework; redesigned Phase 8 — Airbnb design language).
  *
  * Three segments:
  *   - Requests          — status='requested'; Accept / Decline (with reason) + message guest.
  *   - Awaiting payment   — status='awaiting_payment' (accepted, unpaid); shows the
  *                          payment deadline so these no longer vanish from view.
- *   - Upcoming           — confirmed / checked-in stays; message guest.
+ *   - Upcoming           — confirmed / checked-in stays; check-in / check-out /
+ *                          no-show front-desk actions + message guest.
  *
- * Built on @/ui (Screen/Header/Text/Card/Button/StatusPill/SegmentedControl/
- * ConfirmSheet/Toast/Skeleton/Empty/Error). Optimistic accept/decline reconciled
- * with a refetch. Decline captures a reason via a ConfirmSheet + reason field.
+ * Built on @/ui (Screen/Header/Text/Heading/Button/SegmentedControl/BottomSheet/
+ * TextField/Toast/SkeletonList/EmptyState/ErrorState). Rows are BORDERLESS — no
+ * surface box or shadow — separated by hairline dividers, with outline Lucide
+ * meta icons, the shared BookingStatusBadge, and a single terracotta primary
+ * action per row. Optimistic accept/decline reconciled with a refetch. Decline
+ * captures a reason via a BottomSheet + reason field.
  *
- * TODO(host-stay-lifecycle): the Upcoming tab will gain Check-in / Check-out /
- * No-show actions once the parent wires the host_check_in / host_check_out /
- * host_mark_no_show RPCs (migration 20260603130000 exists but the generated
- * Database types don't expose them yet, so calling them now wouldn't typecheck).
+ * All host_check_in / host_check_out / host_mark_no_show + reconcile logic is
+ * preserved exactly — this change is presentational only.
  */
 
 import { useCallback, useState } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { MessageCircle } from 'lucide-react-native';
+import {
+  MessageCircle,
+  CalendarRange,
+  Users,
+  Wallet,
+  Clock,
+  Check,
+  LogOut,
+  UserX,
+  CalendarClock,
+  type LucideProps,
+} from 'lucide-react-native';
+import type { ComponentType } from 'react';
 import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
 import {
   listBookingRequests,
@@ -40,10 +54,8 @@ import {
   Screen,
   Header,
   Text,
-  Card,
+  Heading,
   Button,
-  StatusPill,
-  statusTone,
   SegmentedControl,
   BottomSheet,
   TextField,
@@ -53,6 +65,7 @@ import {
   useToast,
   haptics,
 } from '@/ui';
+import { BookingStatusBadge } from '@/components/discovery';
 import { L, pick, type LMessage } from '@/lib/copy';
 import { formatRange, formatDateTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
@@ -65,8 +78,10 @@ const STATUS_LABEL: Record<string, LMessage> = {
   confirmed: L.st_confirmed,
   checked_in: L.st_checked_in,
   completed: L.st_completed,
+  no_show: L.st_no_show,
 };
 
+/** Plain status string for toasts (the visual badge uses BookingStatusBadge). */
 function statusLabel(status: string, locale: Locale): string {
   const m = STATUS_LABEL[status];
   return m ? pick(m, locale) : status;
@@ -129,23 +144,32 @@ export default function HostReservationsScreen() {
   function emptyFor(t: Tab) {
     if (t === 'requests')
       return (
-        <EmptyState
-          title={pick(L.hostRequestsEmptyTitle, locale)}
-          subtitle={pick(L.hostRequestsEmptyBody, locale)}
-        />
+        <View style={styles.centerFill}>
+          <EmptyState
+            icon={CalendarClock}
+            title={pick(L.hostRequestsEmptyTitle, locale)}
+            subtitle={pick(L.hostRequestsEmptyBody, locale)}
+          />
+        </View>
       );
     if (t === 'awaiting')
       return (
-        <EmptyState
-          title={pick(L.hostAwaitingEmptyTitle, locale)}
-          subtitle={pick(L.hostAwaitingEmptyBody, locale)}
-        />
+        <View style={styles.centerFill}>
+          <EmptyState
+            icon={Clock}
+            title={pick(L.hostAwaitingEmptyTitle, locale)}
+            subtitle={pick(L.hostAwaitingEmptyBody, locale)}
+          />
+        </View>
       );
     return (
-      <EmptyState
-        title={pick(L.hostUpcomingEmptyTitle, locale)}
-        subtitle={pick(L.hostUpcomingEmptyBody, locale)}
-      />
+      <View style={styles.centerFill}>
+        <EmptyState
+          icon={CalendarRange}
+          title={pick(L.hostUpcomingEmptyTitle, locale)}
+          subtitle={pick(L.hostUpcomingEmptyBody, locale)}
+        />
+      </View>
     );
   }
 
@@ -158,18 +182,23 @@ export default function HostReservationsScreen() {
       </View>
 
       {data === null ? (
-        <SkeletonList count={3} />
+        <View style={styles.skeletonWrap}>
+          <SkeletonList count={3} />
+        </View>
       ) : error && data.length === 0 ? (
-        <ErrorState
-          message={error}
-          onRetry={() => void load(tab)}
-          retryLabel={pick(L.search, locale)}
-        />
+        <View style={styles.centerFill}>
+          <ErrorState
+            message={error}
+            onRetry={() => void load(tab)}
+            retryLabel={pick(L.tryAgain, locale)}
+          />
+        </View>
       ) : (
         <FlatList
           data={data}
           keyExtractor={(b) => b.id}
           contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={() => <View style={styles.rowSep} />}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -180,7 +209,7 @@ export default function HostReservationsScreen() {
           }
           ListEmptyComponent={emptyFor(tab)}
           renderItem={({ item }) => (
-            <ReservationCard
+            <ReservationRow
               booking={item}
               locale={locale}
               tab={tab}
@@ -194,7 +223,25 @@ export default function HostReservationsScreen() {
   );
 }
 
-function ReservationCard({
+/** A single meta line: outline Lucide icon + label text. */
+function MetaRow({
+  icon: Icon,
+  children,
+}: {
+  icon: ComponentType<LucideProps>;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.metaRow}>
+      <Icon size={16} color={theme.color.textMuted} strokeWidth={2} />
+      <Text variant="body-sm" color="textMuted" style={styles.flex} numberOfLines={1}>
+        {children}
+      </Text>
+    </View>
+  );
+}
+
+function ReservationRow({
   booking,
   locale,
   tab,
@@ -324,58 +371,63 @@ function ReservationCard({
   }
 
   return (
-    <Card>
-      <View style={styles.cardHeader}>
-        <Text variant="title" weight="semibold" numberOfLines={1} style={styles.flex}>
+    <View style={styles.row}>
+      {/* Title + status */}
+      <View style={styles.rowHeader}>
+        <Text variant="title" weight="bold" numberOfLines={1} style={styles.flex}>
           {title}
         </Text>
-        <StatusPill label={statusLabel(booking.status, locale)} tone={statusTone(booking.status)} />
+        <BookingStatusBadge status={booking.status} locale={locale} />
       </View>
 
-      <Text variant="body" weight="medium">
-        {pick(L.hostGuest, locale)}: {booking.guestName || '—'}
+      {/* Guest */}
+      <Text variant="body" weight="semibold" numberOfLines={1} style={styles.guest}>
+        {booking.guestName || '—'}
       </Text>
-      {room ? (
-        <Text variant="body-sm" color="textMuted">
-          {room}
-        </Text>
-      ) : null}
-      <Text variant="body-sm" color="textMuted">
-        {range}
-      </Text>
-      <Text variant="body-sm" color="textMuted">
-        {pick(L.hostGuests, locale)}: {formatNumber(guestTotal, locale)}
-        {booking.nights
-          ? ` · ${formatNumber(booking.nights, locale)} ${pick(L.hostNights, locale)}`
-          : ''}
-      </Text>
+
+      {/* Meta */}
+      <View style={styles.meta}>
+        {room ? <MetaRow icon={Users}>{room}</MetaRow> : null}
+        <MetaRow icon={CalendarRange}>{range}</MetaRow>
+        <MetaRow icon={Users}>
+          {pick(L.hostGuests, locale)}: {formatNumber(guestTotal, locale)}
+          {booking.nights
+            ? ` · ${formatNumber(booking.nights, locale)} ${pick(L.hostNights, locale)}`
+            : ''}
+        </MetaRow>
+      </View>
 
       {/* Awaiting-payment deadline */}
       {tab === 'awaiting' && booking.payment_deadline ? (
         <View style={styles.deadlineRow}>
-          <Text variant="body-sm" color="warning" weight="semibold">
+          <Clock size={16} color={theme.color.warning} strokeWidth={2} />
+          <Text variant="body-sm" color="warning" weight="semibold" style={styles.flex}>
             {pick(L.hostPayBy, locale)}: {formatDateTime(booking.payment_deadline, locale)}
           </Text>
         </View>
       ) : null}
 
+      {/* Payout */}
       <View style={styles.payoutRow}>
-        <Text variant="body-sm" color="textMuted">
-          {pick(L.hostPayout, locale)}
-        </Text>
+        <View style={styles.payoutLabel}>
+          <Wallet size={16} color={theme.color.textMuted} strokeWidth={2} />
+          <Text variant="body-sm" color="textMuted">
+            {pick(L.hostPayout, locale)}
+          </Text>
+        </View>
         <Text variant="body" weight="bold" style={styles.ltr}>
           {formatDZD(booking.host_payout_dzd, locale)}
         </Text>
       </View>
 
       {booking.special_requests ? (
-        <Text variant="body-sm" color="textMuted" style={styles.italic} numberOfLines={3}>
+        <Text variant="body-sm" color="textMuted" style={styles.quote} numberOfLines={3}>
           “{booking.special_requests}”
         </Text>
       ) : null}
 
       {error ? (
-        <Text variant="body-sm" color="error">
+        <Text variant="body-sm" weight="medium" color="error">
           {error}
         </Text>
       ) : null}
@@ -394,6 +446,8 @@ function ReservationCard({
             <View style={styles.actionFlex}>
               <Button
                 label={pick(L.hostAccept, locale)}
+                variant="tertiary"
+                icon={Check}
                 onPress={() => void onAccept()}
                 loading={busy === 'accept'}
                 disabled={busy !== null}
@@ -431,6 +485,7 @@ function ReservationCard({
             <Button
               label={pick(L.hostNoShow, locale)}
               variant="danger"
+              icon={UserX}
               onPress={() => setNoShowSheet(true)}
               disabled={busy !== null}
             />
@@ -438,6 +493,8 @@ function ReservationCard({
           <View style={styles.actionFlex}>
             <Button
               label={pick(L.hostCheckIn, locale)}
+              variant="tertiary"
+              icon={Check}
               onPress={() => void onCheckIn()}
               loading={busy === 'checkin'}
               disabled={busy !== null}
@@ -449,6 +506,8 @@ function ReservationCard({
         <View style={styles.messageRow}>
           <Button
             label={pick(L.hostCheckOut, locale)}
+            variant="tertiary"
+            icon={LogOut}
             onPress={() => void onCheckOut()}
             loading={busy === 'checkout'}
             disabled={busy !== null}
@@ -459,9 +518,7 @@ function ReservationCard({
       {/* Decline-with-reason sheet */}
       <BottomSheet visible={declineSheet} onClose={() => setDeclineSheet(false)} dismissible={busy === null}>
         <View style={styles.sheetBody}>
-          <Text variant="title" weight="semibold">
-            {pick(L.hostDeclineTitle, locale)}
-          </Text>
+          <Heading level={3}>{pick(L.hostDeclineTitle, locale)}</Heading>
           <TextField
             label={pick(L.hostDecline, locale)}
             hint={pick(L.hostDeclineReasonHint, locale)}
@@ -490,10 +547,8 @@ function ReservationCard({
       {/* No-show confirm sheet */}
       <BottomSheet visible={noShowSheet} onClose={() => setNoShowSheet(false)} dismissible={busy === null}>
         <View style={styles.sheetBody}>
-          <Text variant="title" weight="semibold">
-            {pick(L.hostNoShowTitle, locale)}
-          </Text>
-          <Text variant="body-sm" color="textMuted">
+          <Heading level={3}>{pick(L.hostNoShowTitle, locale)}</Heading>
+          <Text variant="body" color="textMuted">
             {pick(L.hostNoShowBody, locale)}
           </Text>
           <View style={styles.sheetActions}>
@@ -512,28 +567,43 @@ function ReservationCard({
           </View>
         </View>
       </BottomSheet>
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   ltr: { writingDirection: 'ltr' },
-  italic: { fontStyle: 'italic', marginTop: theme.space.sm },
 
   segmentWrap: { paddingHorizontal: theme.space.xl, paddingVertical: theme.space.md },
-  listContent: { padding: theme.space.xl, gap: theme.space.md, flexGrow: 1 },
+  skeletonWrap: { padding: theme.space.xl, gap: theme.space.xl },
+  listContent: { padding: theme.space.xl, flexGrow: 1 },
+  centerFill: { flex: 1, justifyContent: 'center' },
 
-  cardHeader: {
+  // Borderless row — no surface box, no shadow.
+  row: { gap: theme.space.xs },
+  rowSep: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: theme.color.border,
+    marginVertical: theme.space.xl,
+  },
+  rowHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.sm,
-    marginBottom: theme.space.xs,
   },
+  guest: { marginTop: theme.space.xs },
+
+  meta: { gap: theme.space.xs, marginTop: theme.space.xs },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+
   deadlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.sm,
     marginTop: theme.space.sm,
-    padding: theme.space.sm,
+    padding: theme.space.md,
     borderRadius: theme.radius.md,
     backgroundColor: theme.color.warningBg,
   },
@@ -541,14 +611,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: theme.space.sm,
-    paddingTop: theme.space.sm,
-    borderTopWidth: 1,
-    borderTopColor: theme.color.border,
+    gap: theme.space.md,
+    marginTop: theme.space.md,
   },
+  payoutLabel: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+
+  quote: { fontStyle: 'italic', marginTop: theme.space.sm },
+
   actionsRow: { flexDirection: 'row', gap: theme.space.md, marginTop: theme.space.md },
   actionFlex: { flex: 1 },
   messageRow: { marginTop: theme.space.sm },
+
   sheetBody: { gap: theme.space.md, paddingTop: theme.space.sm },
-  sheetActions: { gap: theme.space.sm },
+  sheetActions: { gap: theme.space.sm, marginTop: theme.space.xs },
 });

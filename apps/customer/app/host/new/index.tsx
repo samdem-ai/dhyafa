@@ -5,10 +5,23 @@
  * existing draft into the wizard before letting the host continue.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useState, type ComponentType } from 'react';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import {
+  Building2,
+  Castle,
+  Home as HomeIcon,
+  DoorOpen,
+  Hotel,
+  Tent,
+  BedDouble,
+  Warehouse,
+  Mountain,
+  Check,
+  type LucideProps,
+} from 'lucide-react-native';
 import type { Locale } from '@dyafa/i18n';
 import {
   listPropertyTypes,
@@ -21,8 +34,8 @@ import {
 } from '@/lib/listings';
 import { useWizard, emptyRoom, type RoomTypeDraft } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
-import { SelectCard } from '@/components/fields';
-import { FieldLabel, SkeletonList, ErrorState } from '@/components/ui';
+import { Text, FieldLabel, Skeleton, ErrorState } from '@/ui';
+import { L, pick as pickL } from '@/lib/copy';
 import { theme } from '@/theme';
 
 const COPY = {
@@ -46,11 +59,70 @@ const COPY = {
     en: 'Several rooms with different prices and capacity.',
   },
   loadError: { ar: 'تعذّر التحميل.', fr: 'Échec du chargement.', en: 'Failed to load.' },
-  retry: { ar: 'إعادة المحاولة', fr: 'Réessayer', en: 'Retry' },
 } as const;
 
 function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
   return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
+}
+
+/** Property-type slug → outline lucide icon (no emoji). Falls back to Building2. */
+const TYPE_ICON: Record<string, ComponentType<LucideProps>> = {
+  apartment: Building2,
+  villa: Castle,
+  riad: HomeIcon,
+  studio: DoorOpen,
+  hotel: Hotel,
+  guesthouse: HomeIcon,
+  chalet: Mountain,
+  bungalow: Warehouse,
+  desert_camp: Tent,
+  hostel: BedDouble,
+};
+
+function typeIcon(slug: string): ComponentType<LucideProps> {
+  return TYPE_ICON[slug] ?? Building2;
+}
+
+/** A large tappable option row: outline icon + title (+ optional subtitle) + check. */
+function OptionCard({
+  icon: Icon,
+  title,
+  subtitle,
+  selected,
+  onPress,
+}: {
+  icon: ComponentType<LucideProps>;
+  title: string;
+  subtitle?: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const fg = selected ? theme.color.primary : theme.color.text;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.option,
+        selected && styles.optionActive,
+        pressed && styles.optionPressed,
+      ]}
+    >
+      <Icon size={24} color={fg} strokeWidth={2} />
+      <View style={styles.optionText}>
+        <Text variant="body-lg" weight="semibold" color={selected ? 'primary' : 'text'}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text variant="body-sm" color="textMuted">
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {selected ? <Check size={20} color={theme.color.primary} strokeWidth={2.5} /> : null}
+    </Pressable>
+  );
 }
 
 export default function StepType() {
@@ -152,15 +224,23 @@ export default function StepType() {
   if (types === null) {
     return (
       <View style={styles.fill}>
-        <SkeletonList count={5} />
+        <View style={styles.skeletonWrap}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} style={styles.skeletonOption} radius={theme.radius.lg} />
+          ))}
+        </View>
       </View>
     );
   }
 
   if (error && types.length === 0) {
     return (
-      <View style={styles.fill}>
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(COPY.retry, locale)} />
+      <View style={styles.centerFill}>
+        <ErrorState
+          message={error}
+          onRetry={() => void load()}
+          retryLabel={pickL(L.tryAgain, locale)}
+        />
       </View>
     );
   }
@@ -177,9 +257,9 @@ export default function StepType() {
     >
       <View style={styles.list}>
         {types.map((t) => (
-          <SelectCard
+          <OptionCard
             key={t.id}
-            icon={t.icon ?? '🏠'}
+            icon={typeIcon(t.slug)}
             title={localizedName(t, locale) || t.slug}
             selected={draft.propertyTypeId === t.id}
             onPress={() => patch({ propertyTypeId: t.id })}
@@ -187,22 +267,24 @@ export default function StepType() {
         ))}
       </View>
 
-      <FieldLabel label={pick(COPY.kindLabel, locale)} />
-      <View style={styles.list}>
-        <SelectCard
-          icon="🏡"
-          title={pick(COPY.single, locale)}
-          subtitle={pick(COPY.singleSub, locale)}
-          selected={draft.listingKind === 'single_unit'}
-          onPress={() => setKind('single_unit')}
-        />
-        <SelectCard
-          icon="🛏️"
-          title={pick(COPY.multi, locale)}
-          subtitle={pick(COPY.multiSub, locale)}
-          selected={draft.listingKind === 'multi_room'}
-          onPress={() => setKind('multi_room')}
-        />
+      <View style={styles.section}>
+        <FieldLabel label={pick(COPY.kindLabel, locale)} />
+        <View style={styles.list}>
+          <OptionCard
+            icon={HomeIcon}
+            title={pick(COPY.single, locale)}
+            subtitle={pick(COPY.singleSub, locale)}
+            selected={draft.listingKind === 'single_unit'}
+            onPress={() => setKind('single_unit')}
+          />
+          <OptionCard
+            icon={BedDouble}
+            title={pick(COPY.multi, locale)}
+            subtitle={pick(COPY.multiSub, locale)}
+            selected={draft.listingKind === 'multi_room'}
+            onPress={() => setKind('multi_room')}
+          />
+        </View>
       </View>
     </WizardChrome>
   );
@@ -210,5 +292,24 @@ export default function StepType() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: theme.color.bg },
+  centerFill: { flex: 1, justifyContent: 'center', backgroundColor: theme.color.bg },
   list: { gap: theme.space.md },
+  section: { gap: theme.space.md },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.md,
+    minHeight: 64,
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1.5,
+    borderColor: theme.color.border,
+    paddingHorizontal: theme.space.lg,
+    paddingVertical: theme.space.md,
+  },
+  optionActive: { borderColor: theme.color.primary, backgroundColor: theme.color.infoBg },
+  optionPressed: { backgroundColor: theme.color.surfaceSunken },
+  optionText: { flex: 1, gap: 2 },
+  skeletonWrap: { padding: theme.space.xl, gap: theme.space.md },
+  skeletonOption: { height: 64 },
 });

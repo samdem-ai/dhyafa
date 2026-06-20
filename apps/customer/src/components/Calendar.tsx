@@ -4,7 +4,9 @@
  * react-native-calendars is not a dependency of this app and we must not add
  * native/extra deps, so this renders a scrollable list of months built from
  * plain Date math. RTL-aware: the weekday header + day grid keep their natural
- * order but the whole block mirrors via the parent flex direction.
+ * order but the whole block mirrors via the parent flex direction. All copy
+ * renders through the @/ui <Text> primitive (locale-aware faces, never
+ * hand-rolled fontFamily).
  *
  * Range model: tap once → check-in; tap a later day → check-out; tap again →
  * restart. Past days (before `minDate`) are disabled.
@@ -13,16 +15,14 @@
 import { useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Pressable,
   ScrollView,
-  I18nManager,
   type DimensionValue,
 } from 'react-native';
 import type { Locale } from '@dyafa/i18n';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
+import { Text } from '@/ui';
 
 const MONTH_NAMES: Record<Locale, string[]> = {
   ar: [
@@ -159,15 +159,17 @@ export function DateRangePicker({
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
       <View style={styles.weekHeader}>
         {weekdays.map((w, i) => (
-          <Text key={i} style={styles.weekday}>
-            {w}
-          </Text>
+          <View key={i} style={styles.weekdayCell}>
+            <Text variant="caption" weight="medium" color="textMuted" center>
+              {w}
+            </Text>
+          </View>
         ))}
       </View>
 
       {months.map((m) => (
         <View key={`${m.year}-${m.month}`} style={styles.month}>
-          <Text style={styles.monthTitle}>
+          <Text variant="title" weight="bold" style={styles.monthTitle}>
             {MONTH_NAMES[locale][m.month]} {m.year}
           </Text>
           <View style={styles.grid}>
@@ -199,12 +201,19 @@ export function DateRangePicker({
                     ]}
                   >
                     <Text
-                      style={[
-                        styles.dayText,
-                        disabled && styles.dayTextDisabled,
-                        closed && styles.dayTextClosed,
-                        isEdge && styles.dayTextEdge,
-                      ]}
+                      variant="body-sm"
+                      weight={isEdge ? 'bold' : 'medium'}
+                      color={
+                        isEdge
+                          ? 'textOnPrimary'
+                          : disabled
+                            ? 'ink300'
+                            : closed
+                              ? 'ink300'
+                              : 'text'
+                      }
+                      center
+                      style={closed ? styles.dayTextClosed : undefined}
                     >
                       {day.getDate()}
                     </Text>
@@ -230,25 +239,12 @@ const styles = StyleSheet.create({
   weekHeader: {
     flexDirection: 'row',
     paddingVertical: theme.space.sm,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.color.border,
   },
-  weekday: {
-    width: CELL,
-    textAlign: 'center',
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-  },
-  month: { marginTop: theme.space.lg },
-  monthTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    marginBottom: theme.space.sm,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
+  weekdayCell: { width: CELL },
+  month: { marginTop: theme.space.xl },
+  monthTitle: { marginBottom: theme.space.sm },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: {
     width: CELL,
@@ -262,22 +258,15 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: theme.radius.sm,
+    borderRadius: theme.radius.pill,
   },
   dayInRange: { backgroundColor: theme.color.infoBg },
-  dayEdge: { backgroundColor: theme.color.primary, borderRadius: theme.radius.pill },
+  dayEdge: { backgroundColor: theme.color.primary },
   dayClosed: { backgroundColor: theme.color.surfaceSunken },
-  dayText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
-  },
-  dayTextDisabled: { color: theme.color.ink300 },
-  dayTextClosed: { color: theme.color.ink300, textDecorationLine: 'line-through' },
-  dayTextEdge: { color: theme.color.textOnPrimary, fontWeight: '700' },
+  dayTextClosed: { textDecorationLine: 'line-through' },
   overrideDot: {
     position: 'absolute',
-    bottom: 3,
+    bottom: 4,
     width: 5,
     height: 5,
     borderRadius: theme.radius.pill,
@@ -285,7 +274,7 @@ const styles = StyleSheet.create({
   },
   bookedDot: {
     position: 'absolute',
-    bottom: 3,
+    bottom: 4,
     width: 5,
     height: 5,
     borderRadius: theme.radius.pill,

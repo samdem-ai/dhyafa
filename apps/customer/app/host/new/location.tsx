@@ -22,9 +22,7 @@ import {
 } from '@/lib/listings';
 import { useWizard } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
-import { TextField, Card } from '@/components/fields';
-import { FieldLabel, SkeletonList, ErrorState } from '@/components/ui';
-import { Text, BottomSheet, SearchBar } from '@/ui';
+import { Text, TextField, FieldLabel, Skeleton, ErrorState, BottomSheet, SearchBar } from '@/ui';
 import { L, pick as pickL } from '@/lib/copy';
 import { theme } from '@/theme';
 
@@ -51,7 +49,6 @@ const COPY = {
   lat: { ar: 'خط العرض (Lat)', fr: 'Latitude', en: 'Latitude' },
   lng: { ar: 'خط الطول (Lng)', fr: 'Longitude', en: 'Longitude' },
   loadError: { ar: 'تعذّر تحميل الولايات.', fr: 'Échec du chargement des wilayas.', en: 'Failed to load wilayas.' },
-  retry: { ar: 'إعادة المحاولة', fr: 'Réessayer', en: 'Retry' },
   saveAuthError: {
     ar: 'تعذّر تجهيز حساب الاستضافة. حاول مجددًا.',
     fr: "Impossible de préparer le compte hôte. Réessayez.",
@@ -193,14 +190,26 @@ export default function StepLocation() {
   if (wilayas === null) {
     return (
       <View style={styles.fill}>
-        <SkeletonList count={5} />
+        <View style={styles.skeletonWrap}>
+          <Skeleton style={styles.skelLabel} radius={theme.radius.sm} />
+          <Skeleton style={styles.skelField} radius={theme.radius.md} />
+          <Skeleton style={styles.skelLabel} radius={theme.radius.sm} />
+          <Skeleton style={styles.skelField} radius={theme.radius.md} />
+          <Skeleton style={styles.skelLabel} radius={theme.radius.sm} />
+          <Skeleton style={styles.skelField} radius={theme.radius.md} />
+          <Skeleton style={styles.skelMap} radius={theme.radius.lg} />
+        </View>
       </View>
     );
   }
   if (error && wilayas.length === 0) {
     return (
-      <View style={styles.fill}>
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(COPY.retry, locale)} />
+      <View style={styles.centerFill}>
+        <ErrorState
+          message={error}
+          onRetry={() => void load()}
+          retryLabel={pickL(L.tryAgain, locale)}
+        />
       </View>
     );
   }
@@ -218,45 +227,49 @@ export default function StepLocation() {
       onNext={() => void onNext()}
     >
       {/* Wilaya picker — opens a searchable sheet */}
-      <FieldLabel label={pick(COPY.wilaya, locale)} />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={pick(COPY.pickWilaya, locale)}
-        onPress={() => {
-          setWilayaQuery('');
-          setWilayaSheet(true);
-        }}
-        style={({ pressed }) => [styles.trigger, pressed && styles.triggerPressed]}
-      >
-        <Text variant="body" color={selectedWilaya ? 'text' : 'textMuted'} style={styles.flex}>
-          {selectedWilaya
-            ? `${String(selectedWilaya.code).padStart(2, '0')} · ${localizedName(selectedWilaya, locale)}`
-            : pick(COPY.pickWilaya, locale)}
-        </Text>
-        <ChevronDown size={20} color={theme.color.ink300} />
-      </Pressable>
+      <View style={styles.field}>
+        <FieldLabel label={pick(COPY.wilaya, locale)} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={pick(COPY.pickWilaya, locale)}
+          onPress={() => {
+            setWilayaQuery('');
+            setWilayaSheet(true);
+          }}
+          style={({ pressed }) => [styles.trigger, pressed && styles.triggerPressed]}
+        >
+          <Text variant="body" color={selectedWilaya ? 'text' : 'textMuted'} style={styles.flex}>
+            {selectedWilaya
+              ? `${String(selectedWilaya.code).padStart(2, '0')} · ${localizedName(selectedWilaya, locale)}`
+              : pick(COPY.pickWilaya, locale)}
+          </Text>
+          <ChevronDown size={20} color={theme.color.ink300} />
+        </Pressable>
+      </View>
 
       {/* Commune picker (optional) */}
-      <FieldLabel label={pick(COPY.commune, locale)} hint={pick(COPY.communeHint, locale)} />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={pick(COPY.pickCommune, locale)}
-        disabled={draft.wilayaCode == null}
-        onPress={() => {
-          setCommuneQuery('');
-          setCommuneSheet(true);
-        }}
-        style={({ pressed }) => [
-          styles.trigger,
-          pressed && styles.triggerPressed,
-          draft.wilayaCode == null && styles.triggerDisabled,
-        ]}
-      >
-        <Text variant="body" color={selectedCommune ? 'text' : 'textMuted'} style={styles.flex}>
-          {selectedCommune ? localizedName(selectedCommune, locale) : pick(COPY.pickCommune, locale)}
-        </Text>
-        <ChevronDown size={20} color={theme.color.ink300} />
-      </Pressable>
+      <View style={styles.field}>
+        <FieldLabel label={pick(COPY.commune, locale)} hint={pick(COPY.communeHint, locale)} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={pick(COPY.pickCommune, locale)}
+          disabled={draft.wilayaCode == null}
+          onPress={() => {
+            setCommuneQuery('');
+            setCommuneSheet(true);
+          }}
+          style={({ pressed }) => [
+            styles.trigger,
+            pressed && styles.triggerPressed,
+            draft.wilayaCode == null && styles.triggerDisabled,
+          ]}
+        >
+          <Text variant="body" color={selectedCommune ? 'text' : 'textMuted'} style={styles.flex}>
+            {selectedCommune ? localizedName(selectedCommune, locale) : pick(COPY.pickCommune, locale)}
+          </Text>
+          <ChevronDown size={20} color={theme.color.ink300} />
+        </Pressable>
+      </View>
 
       <TextField
         label={pick(COPY.address, locale)}
@@ -265,11 +278,11 @@ export default function StepLocation() {
         placeholder={pick(COPY.addressPh, locale)}
       />
 
-      {/* Map stub + manual coordinates */}
-      <FieldLabel label={pick(COPY.map, locale)} />
-      <Card>
+      {/* Map stub + manual coordinates (borderless, photo-first surface) */}
+      <View style={styles.field}>
+        <FieldLabel label={pick(COPY.map, locale)} />
         <View style={styles.mapStub}>
-          <MapPin size={22} color={theme.color.textMuted} />
+          <MapPin size={24} color={theme.color.textMuted} strokeWidth={2} />
           <Text variant="body-sm" color="textMuted" center>
             {pick(COPY.mapStub, locale)}
           </Text>
@@ -294,7 +307,7 @@ export default function StepLocation() {
             />
           </View>
         </View>
-      </Card>
+      </View>
 
       {saveError ? (
         <View style={styles.errorBox}>
@@ -306,7 +319,7 @@ export default function StepLocation() {
 
       {/* Wilaya search sheet */}
       <BottomSheet visible={wilayaSheet} onClose={() => setWilayaSheet(false)} snapPoints={['80%']}>
-        <Text variant="title" weight="semibold" style={styles.sheetTitle}>
+        <Text variant="title" weight="bold" style={styles.sheetTitle}>
           {pick(COPY.pickWilaya, locale)}
         </Text>
         <SearchBar
@@ -336,7 +349,7 @@ export default function StepLocation() {
                   <Text variant="body-lg" color={active ? 'primary' : 'text'} style={styles.flex}>
                     {String(w.code).padStart(2, '0')} · {localizedName(w, locale)}
                   </Text>
-                  {active ? <Check size={20} color={theme.color.primary} /> : null}
+                  {active ? <Check size={20} color={theme.color.primary} strokeWidth={2.5} /> : null}
                 </Pressable>
               );
             })
@@ -346,7 +359,7 @@ export default function StepLocation() {
 
       {/* Commune search sheet */}
       <BottomSheet visible={communeSheet} onClose={() => setCommuneSheet(false)} snapPoints={['80%']}>
-        <Text variant="title" weight="semibold" style={styles.sheetTitle}>
+        <Text variant="title" weight="bold" style={styles.sheetTitle}>
           {pick(COPY.pickCommune, locale)}
         </Text>
         <SearchBar
@@ -371,7 +384,7 @@ export default function StepLocation() {
                 <Text variant="body-lg" color={active ? 'primary' : 'text'} style={styles.flex}>
                   {localizedName(c, locale)}
                 </Text>
-                {active ? <Check size={20} color={theme.color.primary} /> : null}
+                {active ? <Check size={20} color={theme.color.primary} strokeWidth={2.5} /> : null}
               </Pressable>
             );
           })}
@@ -383,7 +396,9 @@ export default function StepLocation() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: theme.color.bg },
+  centerFill: { flex: 1, justifyContent: 'center', backgroundColor: theme.color.bg },
   flex: { flex: 1 },
+  field: { gap: theme.space.xs },
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -398,15 +413,15 @@ const styles = StyleSheet.create({
   triggerPressed: { backgroundColor: theme.color.surfaceSunken },
   triggerDisabled: { opacity: 0.5 },
   mapStub: {
-    height: 120,
-    borderRadius: theme.radius.md,
+    height: 140,
+    borderRadius: theme.radius.lg,
     backgroundColor: theme.color.surfaceSunken,
     alignItems: 'center',
     justifyContent: 'center',
     gap: theme.space.sm,
     paddingHorizontal: theme.space.lg,
   },
-  coordRow: { flexDirection: 'row', gap: theme.space.md },
+  coordRow: { flexDirection: 'row', gap: theme.space.md, marginTop: theme.space.md },
   coordCol: { flex: 1 },
   errorBox: {
     backgroundColor: theme.color.errorBg,
@@ -424,4 +439,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.color.border,
   },
+  skeletonWrap: { padding: theme.space.xl, gap: theme.space.md },
+  skelLabel: { height: 16, width: '35%' },
+  skelField: { height: 48, marginBottom: theme.space.sm },
+  skelMap: { height: 140, marginTop: theme.space.sm },
 });

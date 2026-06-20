@@ -15,9 +15,10 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { View, Text, StyleSheet, I18nManager } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { PartyPopper } from 'lucide-react-native';
 import { formatDZD, type Locale } from '@dyafa/i18n';
 import {
   addRoomType,
@@ -30,12 +31,10 @@ import {
   type PropertyPhotoRow,
 } from '@/lib/listings';
 import { useWizard, type RoomTypeDraft } from '@/lib/wizard';
-import { haptics } from '@/ui';
+import { Text, Button, Skeleton, EmptyState, StatusPill, haptics } from '@/ui';
 import { cancellationTierCopy, pick as pickL } from '@/lib/copy';
 import { WizardChrome } from '@/components/WizardChrome';
-import { PrimaryButton, Skeleton, EmptyState } from '@/components/ui';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const COPY = {
   title: { ar: 'المراجعة والإرسال', fr: 'Vérifier et envoyer', en: 'Review & submit' },
@@ -256,12 +255,12 @@ export default function StepReview() {
     return (
       <View style={styles.successWrap}>
         <EmptyState
-          emoji="🎉"
+          icon={PartyPopper}
           title={pick(COPY.successTitle, locale)}
           subtitle={pick(COPY.successBody, locale)}
         />
         <View style={styles.successAction}>
-          <PrimaryButton
+          <Button
             label={pick(COPY.backToListings, locale)}
             onPress={() => void onFinish()}
           />
@@ -286,14 +285,14 @@ export default function StepReview() {
       nextLoading={submitting}
       onNext={() => void onSubmit()}
     >
-      <View>
+      <View style={styles.sections}>
         {/* Title */}
         <Section
           label={pick(COPY.sectionTitle, locale)}
           ok={hasTitle}
           okLabel={pick(hasTitle ? COPY.ok : COPY.missing, locale)}
         >
-          <Text style={styles.value}>{title || pick(COPY.untitled, locale)}</Text>
+          <Text variant="body">{title || pick(COPY.untitled, locale)}</Text>
         </Section>
 
         {/* Photos */}
@@ -305,7 +304,7 @@ export default function StepReview() {
           {photos === null ? (
             <Skeleton style={styles.lineSkeleton} />
           ) : (
-            <Text style={styles.value}>
+            <Text variant="body">
               {photoCount} {pick(COPY.photosCount, locale)}
             </Text>
           )}
@@ -322,9 +321,11 @@ export default function StepReview() {
             const name =
               r.nameAr || r.nameFr || r.nameEn || `${pick(COPY.sectionRooms, locale)} ${idx + 1}`;
             return (
-              <Text key={r.key} style={styles.value}>
+              <Text key={r.key} variant="body">
                 {draft.listingKind === 'multi_room' ? `${name} — ` : ''}
-                <Text style={styles.price}>{formatDZD(price, locale)}</Text>{' '}
+                <Text variant="body" weight="bold" color="accent">
+                  {formatDZD(price, locale)}
+                </Text>{' '}
                 {pick(COPY.perNight, locale)}
               </Text>
             );
@@ -333,32 +334,44 @@ export default function StepReview() {
 
         {/* Amenities */}
         <Section label={pick(COPY.sectionAmenities, locale)}>
-          <Text style={styles.value}>
+          <Text variant="body">
             {draft.amenityIds.length} {pick(COPY.amenitiesCount, locale)}
           </Text>
         </Section>
 
         {/* Policy */}
         <Section label={pick(COPY.sectionPolicy, locale)}>
-          <Text style={styles.value}>
+          <Text variant="body">
             {pick(COPY.cancellation, locale)}:{' '}
             {pickL(cancellationTierCopy(draft.cancellationTier).label, locale)} ·{' '}
             {draft.instantBook ? pick(COPY.instantOn, locale) : pick(COPY.instantOff, locale)} ·{' '}
             {pick(COPY.minNights, locale)} {Math.max(1, toInt(draft.minNights))}{' '}
             {pick(COPY.nights, locale)}
           </Text>
-          <Text style={styles.muted}>
+          <Text variant="body-sm" color="textMuted">
             {pickL(cancellationTierCopy(draft.cancellationTier).window, locale)}
           </Text>
           {cheapest ? (
-            <Text style={styles.fromPrice}>{formatDZD(cheapest, locale)} {pick(COPY.perNight, locale)}</Text>
+            <Text variant="title" weight="bold" color="accent" style={styles.fromPrice}>
+              {formatDZD(cheapest, locale)} {pick(COPY.perNight, locale)}
+            </Text>
           ) : null}
         </Section>
 
         {!canSubmit ? (
-          <Text style={styles.checklist}>{pick(COPY.checklist, locale)}</Text>
+          <View style={styles.checklist}>
+            <Text variant="body-sm" color="textMuted">
+              {pick(COPY.checklist, locale)}
+            </Text>
+          </View>
         ) : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? (
+          <View style={styles.notice}>
+            <Text variant="body-sm" weight="medium" color="error" center>
+              {error}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </WizardChrome>
   );
@@ -378,19 +391,10 @@ function Section({
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionLabel}>{label}</Text>
-        {okLabel ? (
-          <View
-            style={[
-              styles.statusPill,
-              { backgroundColor: ok ? theme.color.successBg : theme.color.warningBg },
-            ]}
-          >
-            <Text style={[styles.statusPillText, { color: ok ? theme.color.success : theme.color.warning }]}>
-              {okLabel}
-            </Text>
-          </View>
-        ) : null}
+        <Text variant="title" weight="bold" style={styles.flex}>
+          {label}
+        </Text>
+        {okLabel ? <StatusPill label={okLabel} tone={ok ? 'success' : 'warning'} /> : null}
       </View>
       <View style={styles.sectionBody}>{children}</View>
     </View>
@@ -398,79 +402,32 @@ function Section({
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  sections: { gap: theme.space.xl },
   section: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    borderWidth: 1,
-    borderColor: theme.color.border,
-    padding: theme.space.lg,
-    marginBottom: theme.space.md,
+    gap: theme.space.sm,
+    paddingBottom: theme.space.xl,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.color.border,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.space.sm,
-  },
-  sectionLabel: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
+    gap: theme.space.sm,
   },
   sectionBody: { gap: theme.space.xs },
-  value: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-    lineHeight: theme.lineHeight.body,
-  },
-  price: { fontFamily: RN_FONTS.bodyBold, color: theme.color.accent, fontWeight: '700' },
-  muted: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-    lineHeight: theme.lineHeight['body-sm'],
-  },
-  fromPrice: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize.title,
-    color: theme.color.accent,
-    fontWeight: '700',
-    marginTop: theme.space.xs,
-  },
-  statusPill: {
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: 2,
-  },
-  statusPillText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    fontWeight: '600',
-  },
-  lineSkeleton: { height: 16, width: '40%' },
+  fromPrice: { marginTop: theme.space.xs },
+  lineSkeleton: { height: 16, width: '40%', borderRadius: theme.radius.sm },
   checklist: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
     backgroundColor: theme.color.surfaceSunken,
-    padding: theme.space.md,
-    borderRadius: theme.radius.md,
-    lineHeight: theme.lineHeight['body-sm'],
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    padding: theme.space.lg,
+    borderRadius: theme.radius.card,
   },
-  error: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
+  notice: {
     backgroundColor: theme.color.errorBg,
-    padding: theme.space.md,
-    borderRadius: theme.radius.md,
-    textAlign: 'center',
-    marginTop: theme.space.sm,
+    padding: theme.space.lg,
+    borderRadius: theme.radius.card,
   },
   successWrap: { flex: 1, backgroundColor: theme.color.bg, justifyContent: 'center' },
   successAction: {

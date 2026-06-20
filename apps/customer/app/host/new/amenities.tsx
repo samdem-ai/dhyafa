@@ -3,10 +3,46 @@
  * held in the wizard draft and synced to property_amenities on Next.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import {
+  Wifi,
+  Snowflake,
+  Flame,
+  Tv,
+  Briefcase,
+  SquareParking,
+  WavesLadder,
+  Sun,
+  Trees,
+  Droplets,
+  FlameKindling,
+  Utensils,
+  Refrigerator,
+  Microwave,
+  Coffee,
+  Soup,
+  WashingMachine,
+  Droplet,
+  Bath,
+  Wind,
+  Sparkles,
+  ShieldAlert,
+  Cross,
+  ShieldCheck,
+  Video,
+  Zap,
+  DoorOpen,
+  Accessibility,
+  ArrowUpDown,
+  Croissant,
+  Plane,
+  PawPrint,
+  Tag,
+  type LucideProps,
+} from 'lucide-react-native';
 import type { Locale } from '@dyafa/i18n';
 import {
   listAmenities,
@@ -16,9 +52,7 @@ import {
 } from '@/lib/listings';
 import { useWizard } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
-import { Chip } from '@/components/fields';
-import { SkeletonList, ErrorState } from '@/components/ui';
-import { Text } from '@/ui';
+import { Text, Chip, Skeleton, ErrorState } from '@/ui';
 import { L, pick as pickL, type LMessage } from '@/lib/copy';
 import { theme } from '@/theme';
 
@@ -30,12 +64,51 @@ const COPY = {
     en: 'Select everything your place offers.',
   },
   loadError: { ar: 'تعذّر تحميل المرافق.', fr: 'Échec du chargement.', en: 'Failed to load amenities.' },
-  retry: { ar: 'إعادة المحاولة', fr: 'Réessayer', en: 'Retry' },
   saveError: { ar: 'تعذّر الحفظ.', fr: "Échec de l'enregistrement.", en: 'Could not save.' },
 } as const;
 
 function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
   return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
+}
+
+/** Amenity slug → outline lucide icon (no emoji). Falls back to Tag. */
+const AMENITY_ICON: Record<string, ComponentType<LucideProps>> = {
+  wifi: Wifi,
+  air_conditioning: Snowflake,
+  heating: Flame,
+  tv: Tv,
+  workspace: Briefcase,
+  parking: SquareParking,
+  pool: WavesLadder,
+  terrace: Sun,
+  garden: Trees,
+  sea_view: Droplets,
+  bbq: FlameKindling,
+  kitchen: Utensils,
+  fridge: Refrigerator,
+  microwave: Microwave,
+  coffee_maker: Coffee,
+  dishwasher: Soup,
+  washer: WashingMachine,
+  hot_water: Droplet,
+  hammam: Bath,
+  hair_dryer: Wind,
+  toiletries: Sparkles,
+  smoke_alarm: ShieldAlert,
+  first_aid: Cross,
+  fire_extinguisher: ShieldCheck,
+  security_cameras: Video,
+  generator: Zap,
+  step_free_access: DoorOpen,
+  wheelchair: Accessibility,
+  elevator: ArrowUpDown,
+  breakfast: Croissant,
+  airport_shuttle: Plane,
+  pets_allowed: PawPrint,
+};
+
+function amenityIcon(slug: string): ComponentType<LucideProps> {
+  return AMENITY_ICON[slug] ?? Tag;
 }
 
 /** Map a DB amenity category slug → a localized heading (fallback: humanized slug). */
@@ -119,14 +192,29 @@ export default function StepAmenities() {
   if (amenities === null) {
     return (
       <View style={styles.fill}>
-        <SkeletonList count={4} />
+        <View style={styles.skeletonWrap}>
+          {[0, 1, 2].map((g) => (
+            <View key={g} style={styles.skelGroup}>
+              <Skeleton style={styles.skelHeading} radius={theme.radius.sm} />
+              <View style={styles.chips}>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} style={styles.skelChip} radius={theme.radius.pill} />
+                ))}
+              </View>
+            </View>
+          ))}
+        </View>
       </View>
     );
   }
   if (error && amenities.length === 0) {
     return (
-      <View style={styles.fill}>
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(COPY.retry, locale)} />
+      <View style={styles.centerFill}>
+        <ErrorState
+          message={error}
+          onRetry={() => void load()}
+          retryLabel={pickL(L.tryAgain, locale)}
+        />
       </View>
     );
   }
@@ -142,7 +230,7 @@ export default function StepAmenities() {
     >
       {grouped.map(([category, items]) => (
         <View key={category} style={styles.group}>
-          <Text variant="title" weight="semibold">
+          <Text variant="title" weight="bold">
             {categoryHeading(category, locale)}
           </Text>
           <View style={styles.chips}>
@@ -150,7 +238,7 @@ export default function StepAmenities() {
               <Chip
                 key={a.id}
                 label={localizedName(a, locale) || a.slug}
-                icon={a.icon ?? undefined}
+                icon={amenityIcon(a.slug)}
                 selected={draft.amenityIds.includes(a.id)}
                 onPress={() => toggle(a.id)}
               />
@@ -171,11 +259,16 @@ export default function StepAmenities() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: theme.color.bg },
-  group: { gap: theme.space.sm },
+  centerFill: { flex: 1, justifyContent: 'center', backgroundColor: theme.color.bg },
+  group: { gap: theme.space.md },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
   errorBox: {
     backgroundColor: theme.color.errorBg,
     padding: theme.space.md,
     borderRadius: theme.radius.md,
   },
+  skeletonWrap: { padding: theme.space.xl, gap: theme.space.xl },
+  skelGroup: { gap: theme.space.md },
+  skelHeading: { height: 18, width: '40%' },
+  skelChip: { height: 36, width: 96 },
 });

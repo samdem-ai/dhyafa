@@ -15,13 +15,19 @@ import { useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Plus, Trash2 } from 'lucide-react-native';
 import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
 import { useWizard, emptyRoom, type RoomTypeDraft } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
-import { TextField, LocaleTabs, Card } from '@/components/fields';
-import { FieldLabel } from '@/components/ui';
-import { Text } from '@/ui';
+import { TextField, FieldLabel, SegmentedControl, Text } from '@/ui';
 import { theme } from '@/theme';
+
+/** ar/fr/en locale options for the shared room-name tabs. */
+const LOCALE_OPTIONS: { value: Locale; label: string }[] = [
+  { value: 'ar', label: 'العربية' },
+  { value: 'fr', label: 'Français' },
+  { value: 'en', label: 'English' },
+];
 
 const COPY = {
   titleSingle: { ar: 'التسعير', fr: 'Tarification', en: 'Pricing' },
@@ -43,7 +49,7 @@ const COPY = {
   weekend: { ar: 'سعر نهاية الأسبوع (اختياري)', fr: 'Prix week-end (option.)', en: 'Weekend price (optional)' },
   cleaning: { ar: 'رسوم التنظيف (دج)', fr: 'Frais de ménage (DZD)', en: 'Cleaning fee (DZD)' },
   inventory: { ar: 'عدد الوحدات', fr: 'Nombre d’unités', en: 'Number of units' },
-  addRoom: { ar: '＋ إضافة نوع غرفة', fr: '＋ Ajouter une chambre', en: '＋ Add room type' },
+  addRoom: { ar: 'إضافة نوع غرفة', fr: 'Ajouter une chambre', en: 'Add room type' },
   remove: { ar: 'حذف', fr: 'Supprimer', en: 'Remove' },
   roomN: { ar: 'غرفة', fr: 'Chambre', en: 'Room' },
   needPrice: {
@@ -138,15 +144,22 @@ export default function StepPricing() {
       {rooms.map((room, idx) => {
         const price = toInt(room.basePriceDzd);
         return (
-          <Card key={room.key}>
+          <View key={room.key} style={styles.room}>
             {!isSingle && (
               <View style={styles.roomHeader}>
-                <Text variant="title" weight="semibold">
+                <Text variant="title" weight="bold">
                   {pick(COPY.roomN, locale)} {formatNumber(idx + 1, locale)}
                 </Text>
                 {rooms.length > 1 ? (
-                  <Pressable onPress={() => removeRoom(idx)} hitSlop={6}>
-                    <Text variant="body-sm" weight="medium" color="error">
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={pick(COPY.remove, locale)}
+                    onPress={() => removeRoom(idx)}
+                    hitSlop={6}
+                    style={styles.removeBtn}
+                  >
+                    <Trash2 size={15} color={theme.color.error} strokeWidth={2} />
+                    <Text variant="body-sm" weight="semibold" color="error">
                       {pick(COPY.remove, locale)}
                     </Text>
                   </Pressable>
@@ -155,15 +168,19 @@ export default function StepPricing() {
             )}
 
             {!isSingle && (
-              <>
+              <View style={styles.nameField}>
                 <FieldLabel label={pick(COPY.roomName, locale)} />
-                <LocaleTabs active={nameTab} onChange={setNameTab} />
+                <SegmentedControl
+                  options={LOCALE_OPTIONS}
+                  value={nameTab}
+                  onChange={setNameTab}
+                />
                 <TextField
                   value={roomNameFor(room, nameTab)}
                   onChangeText={(t) => setRoomName(idx, nameTab, t)}
                   placeholder={pick(COPY.roomNamePh, locale)}
                 />
-              </>
+              </View>
             )}
 
             <View style={styles.row}>
@@ -228,21 +245,27 @@ export default function StepPricing() {
                 {pick(COPY.perNight, locale)}
               </Text>
             ) : null}
-          </Card>
+          </View>
         );
       })}
 
       {!isSingle ? (
-        <Pressable accessibilityRole="button" onPress={addRoom} style={styles.addBtn}>
-          <Text variant="body" weight="semibold" color="primary">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={pick(COPY.addRoom, locale)}
+          onPress={addRoom}
+          style={({ pressed }) => [styles.addBtn, pressed && styles.addBtnPressed]}
+        >
+          <Plus size={18} color={theme.color.accent} strokeWidth={2} />
+          <Text variant="body" weight="semibold" color="accent">
             {pick(COPY.addRoom, locale)}
           </Text>
         </Pressable>
       ) : null}
 
       {touched && !allValid ? (
-        <View style={styles.errorBox}>
-          <Text variant="body-sm" color="error" center>
+        <View style={styles.notice}>
+          <Text variant="body-sm" weight="medium" color="error" center>
             {pick(COPY.needPrice, locale)}
           </Text>
         </View>
@@ -252,24 +275,29 @@ export default function StepPricing() {
 }
 
 const styles = StyleSheet.create({
+  room: { gap: theme.space.md },
   roomHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  removeBtn: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
+  nameField: { gap: theme.space.sm },
   row: { flexDirection: 'row', gap: theme.space.md },
   col: { flex: 1 },
   addBtn: {
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: theme.color.borderStrong,
-    borderRadius: theme.radius.card,
-    paddingVertical: theme.space.lg,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.space.sm,
+    backgroundColor: theme.color.surfaceSunken,
+    borderRadius: theme.radius.pill,
+    paddingVertical: theme.space.md,
   },
-  errorBox: {
+  addBtnPressed: { opacity: 0.85 },
+  notice: {
     backgroundColor: theme.color.errorBg,
-    padding: theme.space.md,
-    borderRadius: theme.radius.md,
+    padding: theme.space.lg,
+    borderRadius: theme.radius.card,
   },
 });

@@ -2,14 +2,16 @@
  * StarRating — a tappable 1-5 star segmented control (M3 reviews).
  *
  * Interactive when `onChange` is provided (review form); otherwise a static
- * display of a score. Terracotta star to match the brand (never yellow), in
- * line with the rating row in src/components/discovery.tsx. RTL-aware: the row
- * follows the ambient writing direction so star 1 sits on the leading edge.
+ * display of a score. Outline Lucide stars (never a ★/☆ glyph): filled
+ * terracotta for selected, muted outline for the rest — matching the rating row
+ * in src/components/discovery.tsx and the @/ui RatingStars primitive. RTL-aware:
+ * the row follows the ambient writing direction so star 1 sits on the leading
+ * edge.
  */
 
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Pressable, StyleSheet } from 'react-native';
+import { Star } from 'lucide-react-native';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const STARS = [1, 2, 3, 4, 5] as const;
 
@@ -27,6 +29,8 @@ export function StarRating({
   accessibilityLabel?: string;
 }) {
   const interactive = typeof onChange === 'function';
+  const fill = theme.color.ratingStar;
+  const empty = theme.color.borderStrong;
 
   return (
     <View
@@ -38,9 +42,12 @@ export function StarRating({
       {STARS.map((n) => {
         const filled = n <= value;
         const glyph = (
-          <Text style={[styles.star, { fontSize: size }, filled ? styles.filled : styles.empty]}>
-            {filled ? '★' : '☆'}
-          </Text>
+          <Star
+            size={size}
+            color={filled ? fill : empty}
+            fill={filled ? fill : 'transparent'}
+            strokeWidth={filled ? 0 : 2}
+          />
         );
         if (!interactive) {
           return (
@@ -69,7 +76,4 @@ export function StarRating({
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   starWrap: { paddingHorizontal: 1 },
-  star: { lineHeight: undefined },
-  filled: { color: theme.color.ratingStar },
-  empty: { color: theme.color.borderStrong },
 });

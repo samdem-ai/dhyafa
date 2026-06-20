@@ -1,5 +1,5 @@
 /**
- * Host calendar & pricing (M4).
+ * Host calendar & pricing (M4; redesigned Phase 8).
  *
  * Flow: pick one of the host's listings → pick a room type → month grid
  * (reuses Calendar's DateRangePicker, decorated with per-day closed / price-
@@ -8,13 +8,16 @@
  * minimum stay. Applying calls set_availability_range (one RPC per range) and
  * re-reads availability so the grid reflects the change.
  *
- * Designed skeleton + empty + error states; pull-to-refresh on the grid; full
- * RTL. formatDZD is used for any money the host sees.
+ * Borderless, photo-first design language: pills, plain section headers, a
+ * borderless edit panel and a tokenized availability grid. Designed skeleton +
+ * empty + error states; pull-to-refresh on the grid; full RTL. formatDZD is
+ * used for any money the host sees.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, StyleSheet, Pressable, ScrollView, Switch } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { X } from 'lucide-react-native';
 import { formatDZD, type Locale } from '@dyafa/i18n';
 import { DateRangePicker, type DayMeta } from '@/components/Calendar';
 import {
@@ -28,16 +31,21 @@ import {
 } from '@/lib/host';
 import { listMyProperties, localizedName, type PropertyRow } from '@/lib/listings';
 import { toDateParam, nightsBetween } from '@/lib/bookings';
-import { TextField, ToggleRow } from '@/components/fields';
-import { Skeleton, SkeletonList, ErrorState, EmptyState } from '@/components/ui';
-import { Screen, Header, Text, Button, haptics } from '@/ui';
+import {
+  Screen,
+  Header,
+  Text,
+  Button,
+  TextField,
+  Skeleton,
+  SkeletonList,
+  ErrorState,
+  EmptyState,
+  haptics,
+} from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { formatRange } from '@/lib/dateFormat';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
-import { I18nManager } from 'react-native';
-
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
 /** How many days forward to fetch availability for the decorated grid. */
 const WINDOW_DAYS = 180;
@@ -264,11 +272,13 @@ export default function HostCalendarScreen() {
     return (
       <Screen>
         <Header title={pick(L.hostCalendarTitle, locale)} />
-        <ErrorState
-          message={loadError}
-          onRetry={() => void loadProperties()}
-          retryLabel={pick(L.search, locale)}
-        />
+        <View style={styles.centerFill}>
+          <ErrorState
+            message={loadError}
+            onRetry={() => void loadProperties()}
+            retryLabel={pick(L.tryAgain, locale)}
+          />
+        </View>
       </Screen>
     );
   }
@@ -276,10 +286,12 @@ export default function HostCalendarScreen() {
     return (
       <Screen>
         <Header title={pick(L.hostCalendarTitle, locale)} />
-        <EmptyState
-          title={pick(L.hostNoListingsTitle, locale)}
-          subtitle={pick(L.hostNoListingsBody, locale)}
-        />
+        <View style={styles.centerFill}>
+          <EmptyState
+            title={pick(L.hostNoListingsTitle, locale)}
+            subtitle={pick(L.hostNoListingsBody, locale)}
+          />
+        </View>
       </Screen>
     );
   }
@@ -291,7 +303,9 @@ export default function HostCalendarScreen() {
       <Header title={pick(L.hostCalendarTitle, locale)} />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Listing picker */}
-        <Text style={styles.sectionLabel}>{pick(L.hostPickListing, locale)}</Text>
+        <Text variant="title" weight="bold" style={styles.sectionLabel}>
+          {pick(L.hostPickListing, locale)}
+        </Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -307,7 +321,12 @@ export default function HostCalendarScreen() {
                 onPress={() => setPropertyId(p.id)}
                 style={[styles.pill, active && styles.pillActive]}
               >
-                <Text style={[styles.pillText, active && styles.pillTextActive]} numberOfLines={1}>
+                <Text
+                  variant="body-sm"
+                  weight={active ? 'semibold' : 'medium'}
+                  color={active ? 'primary' : 'text'}
+                  numberOfLines={1}
+                >
                   {propTitle(p, locale) || pick(L.notFoundTitle, locale)}
                 </Text>
               </Pressable>
@@ -316,11 +335,15 @@ export default function HostCalendarScreen() {
         </ScrollView>
 
         {/* Room-type picker */}
-        <Text style={styles.sectionLabel}>{pick(L.hostPickRoomType, locale)}</Text>
+        <Text variant="title" weight="bold" style={styles.sectionLabel}>
+          {pick(L.hostPickRoomType, locale)}
+        </Text>
         {roomTypes === null ? (
           <Skeleton style={styles.roomSkeleton} />
         ) : roomTypes.length === 0 ? (
-          <Text style={styles.muted}>{pick(L.hostNoRoomTypes, locale)}</Text>
+          <Text variant="body-sm" color="textMuted" style={styles.muted}>
+            {pick(L.hostNoRoomTypes, locale)}
+          </Text>
         ) : (
           <ScrollView
             horizontal
@@ -340,7 +363,12 @@ export default function HostCalendarScreen() {
                   }}
                   style={[styles.pill, active && styles.pillActive]}
                 >
-                  <Text style={[styles.pillText, active && styles.pillTextActive]} numberOfLines={1}>
+                  <Text
+                    variant="body-sm"
+                    weight={active ? 'semibold' : 'medium'}
+                    color={active ? 'primary' : 'text'}
+                    numberOfLines={1}
+                  >
                     {roomLabel(rt, locale) || pick(L.chooseRoom, locale)}
                   </Text>
                 </Pressable>
@@ -363,20 +391,28 @@ export default function HostCalendarScreen() {
             {/* Legend */}
             <View style={styles.legend}>
               <View style={styles.legendItem}>
-                <View style={[styles.legendSwatch, { backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.border }]} />
-                <Text style={styles.legendText}>{pick(L.hostLegendAvailable, locale)}</Text>
+                <View style={[styles.legendSwatch, styles.legendSwatchAvailable]} />
+                <Text variant="caption" color="textMuted">
+                  {pick(L.hostLegendAvailable, locale)}
+                </Text>
               </View>
               <View style={styles.legendItem}>
-                <View style={[styles.legendSwatch, { backgroundColor: theme.color.surfaceSunken }]} />
-                <Text style={styles.legendText}>{pick(L.hostLegendClosed, locale)}</Text>
+                <View style={[styles.legendSwatch, styles.legendSwatchClosed]} />
+                <Text variant="caption" color="textMuted">
+                  {pick(L.hostLegendClosed, locale)}
+                </Text>
               </View>
               <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: theme.color.primary }]} />
-                <Text style={styles.legendText}>{pick(L.hostLegendBooked, locale)}</Text>
+                <View style={[styles.legendDot, styles.legendDotBooked]} />
+                <Text variant="caption" color="textMuted">
+                  {pick(L.hostLegendBooked, locale)}
+                </Text>
               </View>
               <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: theme.color.accent }]} />
-                <Text style={styles.legendText}>{pick(L.hostLegendOverride, locale)}</Text>
+                <View style={[styles.legendDot, styles.legendDotOverride]} />
+                <Text variant="caption" color="textMuted">
+                  {pick(L.hostLegendOverride, locale)}
+                </Text>
               </View>
             </View>
             <Text variant="caption" color="textMuted" style={styles.bookingsNote}>
@@ -403,27 +439,49 @@ export default function HostCalendarScreen() {
               )}
             </View>
 
-            {/* Edit panel */}
+            {/* Edit panel — borderless */}
             {hasRange ? (
               <View style={styles.panel}>
                 <View style={styles.panelHeader}>
-                  <Text style={styles.panelTitle}>{pick(L.hostRangeSelected, locale)}</Text>
-                  <Pressable accessibilityRole="button" onPress={clearSelection} hitSlop={8}>
-                    <Text style={styles.clearText}>{pick(L.hostClearRange, locale)}</Text>
+                  <Text variant="title" weight="bold" style={styles.flex}>
+                    {pick(L.hostRangeSelected, locale)}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={pick(L.hostClearRange, locale)}
+                    onPress={clearSelection}
+                    hitSlop={8}
+                    style={styles.clearBtn}
+                  >
+                    <X size={16} color={theme.color.accent} strokeWidth={2.5} />
+                    <Text variant="body-sm" weight="medium" color="accent">
+                      {pick(L.hostClearRange, locale)}
+                    </Text>
                   </Pressable>
                 </View>
-                <Text style={styles.panelRange}>
+                <Text variant="body" weight="semibold" style={styles.panelRange}>
                   {rangeEnd
                     ? formatRange(toDateParam(checkIn), toDateParam(rangeEnd), locale)
                     : ''}
                 </Text>
 
-                <ToggleRow
-                  label={pick(L.hostBlock, locale)}
-                  hint={pick(closed ? L.hostBlock : L.hostUnblock, locale)}
-                  value={closed}
-                  onValueChange={setClosed}
-                />
+                {/* Block / unblock toggle */}
+                <View style={styles.toggleRow}>
+                  <View style={styles.flex}>
+                    <Text variant="body" weight="semibold">
+                      {pick(L.hostBlock, locale)}
+                    </Text>
+                    <Text variant="caption" color="textMuted">
+                      {pick(closed ? L.hostBlock : L.hostUnblock, locale)}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={closed}
+                    onValueChange={setClosed}
+                    trackColor={{ true: theme.color.primary, false: theme.color.border }}
+                    thumbColor={theme.color.surface}
+                  />
+                </View>
 
                 <TextField
                   label={pick(L.hostPriceOverride, locale)}
@@ -434,7 +492,7 @@ export default function HostCalendarScreen() {
                   keyboardType="number-pad"
                 />
                 {priceText.trim() && Number(priceText.trim()) > 0 ? (
-                  <Text style={styles.pricePreview}>
+                  <Text variant="body" weight="bold" color="primary" style={styles.pricePreview}>
                     {formatDZD(Math.round(Number(priceText.trim())), locale)}
                   </Text>
                 ) : null}
@@ -466,14 +524,12 @@ export default function HostCalendarScreen() {
                     disabled={applying || rangeNights === 0}
                   />
                 </View>
-                <View style={styles.clearOverrideRow}>
-                  <Button
-                    label={pick(L.hostClearOverride, locale)}
-                    variant="ghost"
-                    onPress={() => void onClearOverride()}
-                    disabled={applying || rangeNights === 0}
-                  />
-                </View>
+                <Button
+                  label={pick(L.hostClearOverride, locale)}
+                  variant="ghost"
+                  onPress={() => void onClearOverride()}
+                  disabled={applying || rangeNights === 0}
+                />
               </View>
             ) : (
               <Text variant="body-sm" color="textMuted" center style={styles.hint}>
@@ -488,43 +544,17 @@ export default function HostCalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
+  flex: { flex: 1 },
+  centerFill: { flex: 1, justifyContent: 'center' },
 
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.md,
-    gap: theme.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.color.border,
-    backgroundColor: theme.color.surface,
-  },
-  topBack: { fontFamily: RN_FONTS.bodyBold, fontSize: theme.fontSize['heading-3'], color: theme.color.text },
-  topTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: 'center',
-  },
-  topSpacer: { width: 24 },
+  scroll: { padding: theme.space.xl, paddingBottom: theme.space['3xl'], gap: theme.space.md },
 
-  scroll: { padding: theme.space.xl, paddingBottom: theme.space['3xl'], gap: theme.space.sm },
-
-  sectionLabel: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    marginTop: theme.space.md,
-    marginBottom: theme.space.xs,
-    textAlign,
-  },
+  sectionLabel: { marginTop: theme.space.lg, marginBottom: theme.space.xs },
   pillRow: { gap: theme.space.sm, paddingVertical: theme.space.xs },
   pill: {
     maxWidth: 220,
+    minHeight: 36,
+    justifyContent: 'center',
     borderRadius: theme.radius.pill,
     borderWidth: 1.5,
     borderColor: theme.color.border,
@@ -533,21 +563,9 @@ const styles = StyleSheet.create({
     paddingVertical: theme.space.sm,
   },
   pillActive: { borderColor: theme.color.primary, backgroundColor: theme.color.infoBg },
-  pillText: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.text,
-  },
-  pillTextActive: { color: theme.color.primary, fontWeight: '600' },
 
   roomSkeleton: { height: 40, borderRadius: theme.radius.pill },
-  muted: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign,
-    paddingVertical: theme.space.sm,
-  },
+  muted: { paddingVertical: theme.space.sm },
 
   noteBox: {
     backgroundColor: theme.color.warningBg,
@@ -556,7 +574,7 @@ const styles = StyleSheet.create({
     marginTop: theme.space.sm,
   },
   bookingsNote: { marginTop: theme.space.xs },
-  clearOverrideRow: { marginTop: -theme.space.xs },
+
   legend: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -566,32 +584,28 @@ const styles = StyleSheet.create({
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
   legendSwatch: { width: 16, height: 16, borderRadius: theme.radius.sm },
-  legendDot: { width: 8, height: 8, borderRadius: theme.radius.pill },
-  legendText: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
+  legendSwatchAvailable: {
+    backgroundColor: theme.color.surface,
+    borderWidth: 1,
+    borderColor: theme.color.border,
   },
+  legendSwatchClosed: { backgroundColor: theme.color.surfaceSunken },
+  legendDot: { width: 8, height: 8, borderRadius: theme.radius.pill },
+  legendDotBooked: { backgroundColor: theme.color.primary },
+  legendDotOverride: { backgroundColor: theme.color.accent },
 
   calendarWrap: { minHeight: 320 },
-  calSkeleton: { height: 320, borderRadius: theme.radius.card },
+  calSkeleton: { height: 320, borderRadius: theme.radius.lg },
 
-  hint: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    textAlign: 'center',
-    marginTop: theme.space.md,
-    lineHeight: theme.lineHeight['body-sm'],
-  },
+  hint: { marginTop: theme.space.md },
 
+  // Borderless edit panel (no surface box / shadow).
   panel: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
-    marginTop: theme.space.md,
+    marginTop: theme.space.lg,
+    paddingTop: theme.space.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.color.border,
     gap: theme.space.md,
-    ...theme.shadow.card,
   },
   panelHeader: {
     flexDirection: 'row',
@@ -599,44 +613,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: theme.space.sm,
   },
-  panelTitle: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
+  clearBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.space.xs,
   },
-  clearText: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.accent,
+  panelRange: { writingDirection: 'ltr' },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.space.md,
   },
-  panelRange: {
-    fontFamily: RN_FONTS.bodySemiBold,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-    textAlign,
-    writingDirection: 'ltr',
-  },
-  pricePreview: {
-    fontFamily: RN_FONTS.bodyBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '700',
-    color: theme.color.primary,
-    textAlign,
-    marginTop: -theme.space.sm,
-  },
+  pricePreview: { marginTop: -theme.space.sm },
   applyRow: { marginTop: theme.space.xs },
-  okText: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.success,
-    textAlign,
-  },
-  errText: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
-    textAlign,
-  },
 });

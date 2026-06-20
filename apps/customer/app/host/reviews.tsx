@@ -1,18 +1,19 @@
 /**
- * Host reviews (Phase 3 rework).
+ * Host reviews (redesigned — Airbnb-style design language).
  *
  * Aggregate header (average score + total reviews), a filter (All / Unreplied),
- * and a list of reviews on the host's properties (newest first). Reviews without
- * a reply get a composer that calls host_reply_review; once posted the reply
- * renders inline and the row drops out of the Unreplied filter.
+ * and a list of borderless review rows on the host's properties (newest first).
+ * Reviews without a reply get a composer that calls host_reply_review; once
+ * posted the reply renders inline and the row drops out of the Unreplied filter.
  *
- * Built on @/ui (Screen/Header/Text/Card/Button/SegmentedControl/RatingStars/
- * Skeleton/Empty/Error), full RTL, pull-to-refresh. localizedName is imported
- * from the single canonical source (@/lib/listings).
+ * Built on @/ui (Screen/Header/Text/Button/TextField/SegmentedControl/
+ * RatingStars/Skeleton/Empty/Error) — borderless photo-less rows, outline Lucide
+ * star (terracotta), full RTL, pull-to-refresh. localizedName is imported from
+ * the single canonical source (@/lib/listings).
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { View, StyleSheet, FlatList, TextInput, RefreshControl, I18nManager } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, I18nManager } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Star } from 'lucide-react-native';
@@ -29,8 +30,8 @@ import {
   Screen,
   Header,
   Text,
-  Card,
   Button,
+  TextField,
   RatingStars,
   SegmentedControl,
   SkeletonList,
@@ -41,9 +42,6 @@ import {
 import { L, pick } from '@/lib/copy';
 import { formatDateTime } from '@/lib/dateFormat';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
-
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
 type Filter = 'all' | 'unreplied';
 
@@ -114,56 +112,55 @@ export default function HostReviewsScreen() {
       {data === null ? (
         <SkeletonList count={4} />
       ) : error && all.length === 0 ? (
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.search, locale)} />
+        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.tryAgain, locale)} />
       ) : (
         <FlatList
           data={visible}
           keyExtractor={(r) => r.id}
           contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={() => <View style={styles.divider} />}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.color.primary} colors={[theme.color.primary]} />
           }
           ListHeaderComponent={
             all.length > 0 ? (
               <View style={styles.headerWrap}>
-                <Card>
-                  <View style={styles.aggregateRow}>
-                    <View style={styles.aggregateCol}>
-                      <View style={styles.avgRow}>
-                        <Star size={18} color={theme.color.ratingStar} fill={theme.color.ratingStar} />
-                        <Text variant="title" weight="bold" style={styles.ltr}>
-                          {average.toFixed(1)}
-                        </Text>
-                      </View>
-                      <Text variant="caption" color="textMuted">
-                        {pick(L.hostReviewsAverage, locale)}
+                <View style={styles.aggregateRow}>
+                  <View style={styles.aggregateCol}>
+                    <View style={styles.avgRow}>
+                      <Star size={18} color={theme.color.ratingStar} fill={theme.color.ratingStar} strokeWidth={0} />
+                      <Text variant="title" weight="bold" style={styles.ltr}>
+                        {average.toFixed(1)}
                       </Text>
                     </View>
-                    <View style={styles.aggregateDivider} />
-                    <View style={styles.aggregateCol}>
-                      <Text variant="title" weight="bold">
-                        {formatNumber(all.length, locale)}
-                      </Text>
-                      <Text variant="caption" color="textMuted">
-                        {pick(L.hostReviewsTotal, locale)}
-                      </Text>
-                    </View>
+                    <Text variant="caption" color="textMuted">
+                      {pick(L.hostReviewsAverage, locale)}
+                    </Text>
                   </View>
-                </Card>
-                <View style={styles.filterWrap}>
-                  <SegmentedControl options={FILTERS} value={filter} onChange={setFilter} />
+                  <View style={styles.aggregateDivider} />
+                  <View style={styles.aggregateCol}>
+                    <Text variant="title" weight="bold">
+                      {formatNumber(all.length, locale)}
+                    </Text>
+                    <Text variant="caption" color="textMuted">
+                      {pick(L.hostReviewsTotal, locale)}
+                    </Text>
+                  </View>
                 </View>
+                <SegmentedControl options={FILTERS} value={filter} onChange={setFilter} />
               </View>
             ) : null
           }
           ListEmptyComponent={
             filter === 'unreplied' ? (
               <EmptyState
+                icon={Star}
                 title={pick(L.hostReviewsUnrepliedEmptyTitle, locale)}
                 subtitle={pick(L.hostReviewsUnrepliedEmptyBody, locale)}
               />
             ) : (
               <EmptyState
+                icon={Star}
                 title={pick(L.hostReviewsEmptyTitle, locale)}
                 subtitle={pick(L.hostReviewsEmptyBody, locale)}
               />
@@ -220,10 +217,10 @@ function HostReviewCard({
   }
 
   return (
-    <Card>
+    <View style={styles.reviewRow}>
       <View style={styles.cardHeader}>
         <View style={styles.scoreWrap}>
-          <Star size={16} color={theme.color.ratingStar} fill={theme.color.ratingStar} />
+          <Star size={16} color={theme.color.ratingStar} fill={theme.color.ratingStar} strokeWidth={0} />
           <Text variant="title" weight="bold">
             {formatNumber(review.overall, locale)}
           </Text>
@@ -271,42 +268,38 @@ function HostReviewCard({
         </View>
       ) : composing ? (
         <View style={styles.composer}>
-          <TextInput
-            style={[styles.input, { textAlign }]}
+          <TextField
             value={body}
             onChangeText={setBody}
             placeholder={pick(L.replyPlaceholder, locale)}
-            placeholderTextColor={theme.color.textMuted}
             multiline
-            accessibilityLabel={pick(L.reply, locale)}
+            error={error ?? undefined}
           />
-          {error ? (
-            <Text variant="body-sm" color="error">
-              {error}
-            </Text>
-          ) : null}
           <Button label={pick(L.replySubmit, locale)} onPress={() => void onPost()} loading={busy} disabled={busy || body.trim().length === 0} />
         </View>
       ) : (
         <View style={styles.replyCta}>
-          <Button label={pick(L.reply, locale)} variant="secondary" onPress={() => setComposing(true)} />
+          <Button label={pick(L.reply, locale)} variant="secondary" onPress={() => setComposing(true)} fullWidth={false} />
         </View>
       )}
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   ltr: { writingDirection: 'ltr' },
-  listContent: { padding: theme.space.xl, gap: theme.space.md, flexGrow: 1 },
-  headerWrap: { gap: theme.space.md, marginBottom: theme.space.md },
+  listContent: { padding: theme.space.xl, flexGrow: 1 },
+  headerWrap: { gap: theme.space.xl, marginBottom: theme.space.lg },
+  divider: { height: 1, backgroundColor: theme.color.border, marginVertical: theme.space.lg },
 
+  // Aggregate — borderless summary on the canvas.
   aggregateRow: { flexDirection: 'row', alignItems: 'center' },
   aggregateCol: { flex: 1, alignItems: 'center', gap: 2 },
   aggregateDivider: { width: 1, alignSelf: 'stretch', backgroundColor: theme.color.border },
   avgRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
-  filterWrap: {},
 
+  // Review row — borderless.
+  reviewRow: { gap: theme.space.xs },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -334,17 +327,4 @@ const styles = StyleSheet.create({
   },
   replyCta: { marginTop: theme.space.sm },
   composer: { marginTop: theme.space.sm, gap: theme.space.sm },
-  input: {
-    backgroundColor: theme.color.surfaceSunken,
-    borderRadius: theme.radius.md,
-    borderWidth: 1.5,
-    borderColor: theme.color.border,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.md,
-    minHeight: 90,
-    textAlignVertical: 'top',
-    fontFamily: I18nManager.isRTL ? RN_FONTS.arabicRegular : RN_FONTS.bodyRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-  },
 });

@@ -7,21 +7,18 @@
 import { useState, type ReactNode } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   Pressable,
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  I18nManager,
 } from 'react-native';
 import { router } from 'expo-router';
+import { X } from 'lucide-react-native';
 import type { Locale } from '@dyafa/i18n';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
-import { PrimaryButton } from './ui';
-import { BottomSheet } from '@/ui';
+import { Heading, Text, Button, BottomSheet } from '@/ui';
 import { useWizard } from '@/lib/wizard';
 import { L, pick as pickL } from '@/lib/copy';
 
@@ -32,6 +29,7 @@ const COPY = {
   of: { ar: 'من', fr: 'sur', en: 'of' },
   back: { ar: 'رجوع', fr: 'Retour', en: 'Back' },
   next: { ar: 'التالي', fr: 'Suivant', en: 'Next' },
+  close: { ar: 'إغلاق', fr: 'Fermer', en: 'Close' },
 } as const;
 
 function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
@@ -87,20 +85,20 @@ export function WizardChrome({
     <SafeAreaView style={styles.safe}>
       <View style={styles.progressHeader}>
         <View style={styles.progressRow}>
-          <Text style={styles.stepText}>
+          <Text variant="caption" weight="medium" color="textMuted">
             {pick(COPY.step, locale)} {step} {pick(COPY.of, locale)} {WIZARD_TOTAL_STEPS}
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Close"
+            accessibilityLabel={pick(COPY.close, locale)}
             onPress={() => setExitSheet(true)}
-            hitSlop={8}
+            hitSlop={10}
           >
-            <Text style={styles.backInline}>✕</Text>
+            <X size={22} color={theme.color.textMuted} strokeWidth={2} />
           </Pressable>
         </View>
         <View style={styles.track}>
-          <View style={[styles.fill, { width: `${Math.round(progress * 100)}%` }]} />
+          <View style={[styles.trackFill, { width: `${Math.round(progress * 100)}%` }]} />
         </View>
       </View>
 
@@ -115,21 +113,27 @@ export function WizardChrome({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>{title}</Text>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+          <Heading level={1} color="primary">
+            {title}
+          </Heading>
+          {subtitle ? (
+            <Text variant="body" color="textMuted" style={styles.subtitle}>
+              {subtitle}
+            </Text>
+          ) : null}
           <View style={styles.bodyInner}>{children}</View>
         </ScrollView>
 
         <View style={styles.footer}>
           <View style={styles.backBtn}>
-            <PrimaryButton
+            <Button
               label={pick(COPY.back, locale)}
               variant="secondary"
               onPress={() => (onBack ? onBack() : router.back())}
             />
           </View>
           <View style={styles.nextBtn}>
-            <PrimaryButton
+            <Button
               label={nextLabel ?? pick(COPY.next, locale)}
               onPress={onNext}
               disabled={nextDisabled}
@@ -141,16 +145,18 @@ export function WizardChrome({
 
       <BottomSheet visible={exitSheet} onClose={() => setExitSheet(false)}>
         <View style={styles.exitBody}>
-          <Text style={styles.exitTitle}>{pickL(L.wizardDiscardTitle, locale)}</Text>
-          <Text style={styles.exitMsg}>{pickL(L.wizardDiscardBody, locale)}</Text>
+          <Heading level={3}>{pickL(L.wizardDiscardTitle, locale)}</Heading>
+          <Text variant="body" color="textMuted" style={styles.exitMsg}>
+            {pickL(L.wizardDiscardBody, locale)}
+          </Text>
           <View style={styles.exitActions}>
-            <PrimaryButton label={pickL(L.wizardSaveExit, locale)} onPress={onSaveExit} />
-            <PrimaryButton
+            <Button label={pickL(L.wizardSaveExit, locale)} onPress={onSaveExit} />
+            <Button
               label={pickL(L.wizardDiscard, locale)}
               variant="danger"
               onPress={() => void onDiscard()}
             />
-            <PrimaryButton
+            <Button
               label={pickL(L.wizardKeepEditing, locale)}
               variant="secondary"
               onPress={() => setExitSheet(false)}
@@ -174,17 +180,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.space.sm,
-  },
-  stepText: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.caption,
-    color: theme.color.textMuted,
-  },
-  backInline: {
-    fontFamily: RN_FONTS.bodyMedium,
-    fontSize: theme.fontSize.title,
-    color: theme.color.textMuted,
+    marginBottom: theme.space.md,
   },
   track: {
     height: 6,
@@ -192,7 +188,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.surfaceSunken,
     overflow: 'hidden',
   },
-  fill: {
+  trackFill: {
     height: 6,
     borderRadius: theme.radius.pill,
     backgroundColor: theme.color.accent,
@@ -201,45 +197,20 @@ const styles = StyleSheet.create({
     padding: theme.space.xl,
     paddingBottom: theme.space['2xl'],
   },
-  bodyInner: { marginTop: theme.space.lg, gap: theme.space.lg },
-  title: {
-    fontFamily: RN_FONTS.displaySemiBold,
-    fontSize: theme.fontSize['heading-1'],
-    color: theme.color.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
-  subtitle: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.textMuted,
-    marginTop: theme.space.xs,
-    lineHeight: theme.lineHeight.body,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
+  subtitle: { marginTop: theme.space.xs },
+  bodyInner: { marginTop: theme.space.xl, gap: theme.space.xl },
   footer: {
     flexDirection: 'row',
     gap: theme.space.md,
-    padding: theme.space.xl,
+    paddingHorizontal: theme.space.xl,
     paddingTop: theme.space.md,
-    borderTopWidth: 1,
-    borderTopColor: theme.color.border,
+    paddingBottom: theme.space.lg,
     backgroundColor: theme.color.surface,
+    ...theme.shadow.xs,
   },
   backBtn: { flex: 1 },
   nextBtn: { flex: 2 },
   exitBody: { gap: theme.space.sm, paddingTop: theme.space.sm },
-  exitTitle: {
-    fontFamily: I18nManager.isRTL ? RN_FONTS.arabicBold : RN_FONTS.displaySemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    color: theme.color.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
-  exitMsg: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.textMuted,
-    lineHeight: theme.lineHeight.body,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
+  exitMsg: { lineHeight: theme.lineHeight.body },
   exitActions: { gap: theme.space.sm, marginTop: theme.space.md },
 });

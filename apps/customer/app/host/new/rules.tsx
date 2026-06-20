@@ -10,10 +10,15 @@ import { useTranslation } from 'react-i18next';
 import type { Locale } from '@dyafa/i18n';
 import { useWizard } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
-import { TextField, LocaleTabs, Card } from '@/components/fields';
-import { FieldLabel } from '@/components/ui';
-import { Text, TimePicker } from '@/ui';
+import { TextField, SegmentedControl, Text, TimePicker } from '@/ui';
 import { theme } from '@/theme';
+
+/** ar/fr/en locale options for the house-rules language tabs. */
+const LOCALE_OPTIONS: { value: Locale; label: string }[] = [
+  { value: 'ar', label: 'العربية' },
+  { value: 'fr', label: 'Français' },
+  { value: 'en', label: 'English' },
+];
 
 const COPY = {
   title: { ar: 'القواعد والأوقات', fr: 'Règles et horaires', en: 'Rules & times' },
@@ -86,17 +91,23 @@ export default function StepRules() {
       nextLoading={saving}
       onNext={() => void onNext()}
     >
-      <FieldLabel label={pick(COPY.rules, locale)} />
-      <LocaleTabs active={tab} onChange={setTab} />
-      <TextField
-        value={rulesByTab[tab]}
-        onChangeText={setRules}
-        placeholder={pick(COPY.rulesPh, locale)}
-        multiline
-      />
+      <View style={styles.section}>
+        <Text variant="title" weight="bold">
+          {pick(COPY.rules, locale)}
+        </Text>
+        <SegmentedControl options={LOCALE_OPTIONS} value={tab} onChange={setTab} />
+        <TextField
+          value={rulesByTab[tab]}
+          onChangeText={setRules}
+          placeholder={pick(COPY.rulesPh, locale)}
+          multiline
+        />
+      </View>
 
-      <FieldLabel label={pick(COPY.times, locale)} />
-      <Card>
+      <View style={styles.section}>
+        <Text variant="title" weight="bold">
+          {pick(COPY.times, locale)}
+        </Text>
         <View style={styles.row}>
           <View style={styles.col}>
             <TimePicker
@@ -115,11 +126,11 @@ export default function StepRules() {
             />
           </View>
         </View>
-      </Card>
+      </View>
 
       {saveError ? (
-        <View style={styles.errorBox}>
-          <Text variant="body-sm" color="error" center>
+        <View style={styles.notice}>
+          <Text variant="body-sm" weight="medium" color="error" center>
             {saveError}
           </Text>
         </View>
@@ -129,11 +140,12 @@ export default function StepRules() {
 }
 
 const styles = StyleSheet.create({
+  section: { gap: theme.space.md },
   row: { flexDirection: 'row', gap: theme.space.md },
   col: { flex: 1 },
-  errorBox: {
+  notice: {
     backgroundColor: theme.color.errorBg,
-    padding: theme.space.md,
-    borderRadius: theme.radius.md,
+    padding: theme.space.lg,
+    borderRadius: theme.radius.card,
   },
 });

@@ -1,5 +1,5 @@
 /**
- * Host earnings (Phase 3 rework).
+ * Host earnings (Phase 3 rework; redesigned Phase 8).
  *
  * Two segments:
  *   - Payouts     — rows from `payouts` (gross → commission → net), with two
@@ -8,14 +8,23 @@
  *     with total → commission → host payout. Confirmed/checked-in bookings get a
  *     host-side "Cancel booking" action with a refund preview (quote_refund).
  *
- * Built on @/ui (Screen/Header/Text/Card/SegmentedControl/Button/ConfirmSheet/
- * Toast/Skeleton/Empty/Error). All amounts use formatDZD (server-finalized).
+ * Built on @/ui (Screen/Header/Text/SegmentedControl/Button/StatusPill/
+ * BottomSheet/Toast/Skeleton/Empty/Error). Borderless photo-first design:
+ * summary tiles + list cards are plain (no surface box / shadow), separated by
+ * whitespace + hairline dividers. All amounts use formatDZD (server-finalized).
  */
 
+import type { ComponentType } from 'react';
 import { useCallback, useState } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import {
+  Hourglass,
+  CheckCircle2,
+  CalendarRange,
+  type LucideProps,
+} from 'lucide-react-native';
 import { formatDZD, type Locale } from '@dyafa/i18n';
 import {
   listPayouts,
@@ -31,7 +40,6 @@ import {
   Screen,
   Header,
   Text,
-  Card,
   Button,
   StatusPill,
   BottomSheet,
@@ -125,15 +133,17 @@ export default function HostEarningsScreen() {
       <Header title={pick(L.hostEarningsTitle, locale)} />
 
       <View style={styles.summaryRow}>
-        <SummaryCard
+        <SummaryTile
+          icon={Hourglass}
           label={pick(L.hostEarnUpcoming, locale)}
           value={loading ? '—' : formatDZD(upcomingTotal, locale)}
-          tone="info"
+          accent
         />
-        <SummaryCard
+        <View style={styles.summaryDivider} />
+        <SummaryTile
+          icon={CheckCircle2}
           label={pick(L.hostEarnPaid, locale)}
           value={loading ? '—' : formatDZD(paidTotal, locale)}
-          tone="success"
         />
       </View>
 
@@ -144,21 +154,27 @@ export default function HostEarningsScreen() {
       {loading ? (
         <SkeletonList count={3} />
       ) : error ? (
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.search, locale)} />
+        <View style={styles.centerFill}>
+          <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.tryAgain, locale)} />
+        </View>
       ) : tab === 'payouts' ? (
         <FlatList
           data={payouts ?? []}
           keyExtractor={(p) => p.id}
           contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={Separator}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.color.primary} colors={[theme.color.primary]} />
           }
           ListFooterComponent={<Text variant="caption" color="textMuted" center style={styles.note}>{pick(L.hostEarningsNote, locale)}</Text>}
           ListEmptyComponent={
-            <EmptyState
-              title={pick(L.hostPayoutsEmptyTitle, locale)}
-              subtitle={pick(L.hostPayoutsEmptyBody, locale)}
-            />
+            <View style={styles.centerFill}>
+              <EmptyState
+                icon={CalendarRange}
+                title={pick(L.hostPayoutsEmptyTitle, locale)}
+                subtitle={pick(L.hostPayoutsEmptyBody, locale)}
+              />
+            </View>
           }
           renderItem={({ item }) => <PayoutCard payout={item} locale={locale} />}
         />
@@ -167,15 +183,19 @@ export default function HostEarningsScreen() {
           data={bookings ?? []}
           keyExtractor={(b) => b.id}
           contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={Separator}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={theme.color.primary} colors={[theme.color.primary]} />
           }
           ListFooterComponent={<Text variant="caption" color="textMuted" center style={styles.note}>{pick(L.hostEarningsNote, locale)}</Text>}
           ListEmptyComponent={
-            <EmptyState
-              title={pick(L.hostEarnBookingsEmptyTitle, locale)}
-              subtitle={pick(L.hostEarnBookingsEmptyBody, locale)}
-            />
+            <View style={styles.centerFill}>
+              <EmptyState
+                icon={CalendarRange}
+                title={pick(L.hostEarnBookingsEmptyTitle, locale)}
+                subtitle={pick(L.hostEarnBookingsEmptyBody, locale)}
+              />
+            </View>
           }
           renderItem={({ item }) => (
             <EarningBookingCard
@@ -191,14 +211,29 @@ export default function HostEarningsScreen() {
   );
 }
 
-function SummaryCard({ label, value, tone }: { label: string; value: string; tone: 'info' | 'success' }) {
+function Separator() {
+  return <View style={styles.cardSeparator} />;
+}
+
+function SummaryTile({
+  icon: Icon,
+  label,
+  value,
+  accent = false,
+}: {
+  icon: ComponentType<LucideProps>;
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
   return (
-    <View style={[styles.summaryCard, tone === 'success' && styles.summaryCardSuccess]}>
-      <Text variant="body-sm" color="textMuted">
-        {label}
-      </Text>
-      <Text variant="title" weight="bold" style={styles.ltr}>
+    <View style={styles.summaryTile}>
+      <Icon size={20} color={accent ? theme.color.accent : theme.color.primary} strokeWidth={2} />
+      <Text variant="title" weight="bold" color={accent ? 'accent' : 'primary'} style={styles.ltr} numberOfLines={1} adjustsFontSizeToFit>
         {value}
+      </Text>
+      <Text variant="body-sm" weight="medium" color="textMuted">
+        {label}
       </Text>
     </View>
   );
@@ -219,18 +254,20 @@ function MoneyRow({ label, value, strong = false }: { label: string; value: stri
 
 function PayoutCard({ payout, locale }: { payout: PayoutRow; locale: Locale }) {
   return (
-    <Card>
+    <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text variant="body" weight="semibold" style={[styles.flex, styles.ltr]}>
           {formatRange(payout.period_start, payout.period_end, locale)}
         </Text>
         <StatusPill label={pick(PAYOUT_STATUS_LABEL[payout.status], locale)} tone={PAYOUT_STATUS_TONE[payout.status]} />
       </View>
-      <MoneyRow label={pick(L.hostGross, locale)} value={formatDZD(payout.gross_dzd, locale)} />
-      <MoneyRow label={pick(L.hostCommission, locale)} value={`− ${formatDZD(payout.commission_amount_dzd, locale)}`} />
-      <View style={styles.divider} />
-      <MoneyRow label={pick(L.hostNet, locale)} value={formatDZD(payout.net_dzd, locale)} strong />
-    </Card>
+      <View style={styles.moneyGroup}>
+        <MoneyRow label={pick(L.hostGross, locale)} value={formatDZD(payout.gross_dzd, locale)} />
+        <MoneyRow label={pick(L.hostCommission, locale)} value={`− ${formatDZD(payout.commission_amount_dzd, locale)}`} />
+        <View style={styles.divider} />
+        <MoneyRow label={pick(L.hostNet, locale)} value={formatDZD(payout.net_dzd, locale)} strong />
+      </View>
+    </View>
   );
 }
 
@@ -298,7 +335,7 @@ function EarningBookingCard({
   }
 
   return (
-    <Card>
+    <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text variant="title" weight="semibold" numberOfLines={1} style={styles.flex}>
           {title || booking.code}
@@ -307,13 +344,15 @@ function EarningBookingCard({
           {booking.code}
         </Text>
       </View>
-      <Text variant="body-sm" color="textMuted">
+      <Text variant="body-sm" color="textMuted" style={styles.ltr}>
         {formatRange(booking.check_in, booking.check_out, locale)}
       </Text>
-      <View style={styles.divider} />
-      <MoneyRow label={pick(L.total, locale)} value={formatDZD(booking.total_dzd, locale)} />
-      <MoneyRow label={pick(L.hostCommission, locale)} value={`− ${formatDZD(booking.commission_amount_dzd, locale)}`} />
-      <MoneyRow label={pick(L.hostPayout, locale)} value={formatDZD(booking.host_payout_dzd, locale)} strong />
+      <View style={styles.moneyGroup}>
+        <MoneyRow label={pick(L.total, locale)} value={formatDZD(booking.total_dzd, locale)} />
+        <MoneyRow label={pick(L.hostCommission, locale)} value={`− ${formatDZD(booking.commission_amount_dzd, locale)}`} />
+        <View style={styles.divider} />
+        <MoneyRow label={pick(L.hostPayout, locale)} value={formatDZD(booking.host_payout_dzd, locale)} strong />
+      </View>
 
       {cancellable ? (
         <View style={styles.cancelRow}>
@@ -329,7 +368,7 @@ function EarningBookingCard({
 
       <BottomSheet visible={sheet} onClose={() => setSheet(false)} dismissible={!cancelling}>
         <View style={styles.sheetBody}>
-          <Text variant="title" weight="semibold">
+          <Text variant="title" weight="bold">
             {pick(L.hostCancelTitle, locale)}
           </Text>
 
@@ -373,40 +412,40 @@ function EarningBookingCard({
           </View>
         </View>
       </BottomSheet>
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   ltr: { writingDirection: 'ltr' },
+  centerFill: { flex: 1, justifyContent: 'center' },
 
+  // Summary tiles — borderless, icon + value + label, split by a hairline.
   summaryRow: {
     flexDirection: 'row',
-    gap: theme.space.md,
+    alignItems: 'center',
+    gap: theme.space.lg,
     paddingHorizontal: theme.space.xl,
     paddingTop: theme.space.lg,
   },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: theme.color.infoBg,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
-    gap: theme.space.xs,
-  },
-  summaryCardSuccess: { backgroundColor: theme.color.successBg },
+  summaryTile: { flex: 1, gap: theme.space.xs },
+  summaryDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', backgroundColor: theme.color.border },
 
-  segmentWrap: { paddingHorizontal: theme.space.xl, paddingVertical: theme.space.md },
-  listContent: { padding: theme.space.xl, gap: theme.space.md, flexGrow: 1 },
+  segmentWrap: { paddingHorizontal: theme.space.xl, paddingVertical: theme.space.lg },
+  listContent: { padding: theme.space.xl, flexGrow: 1 },
+  cardSeparator: { height: theme.space.xl, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.color.border, marginBottom: theme.space.xl },
 
+  // Borderless list card (no surface box / shadow).
+  card: { gap: theme.space.xs },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.sm,
-    marginBottom: theme.space.xs,
   },
-  divider: { height: 1, backgroundColor: theme.color.border, marginVertical: theme.space.xs },
+  moneyGroup: { gap: theme.space.xs, marginTop: theme.space.sm },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.color.border, marginVertical: theme.space.xs },
   moneyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -414,7 +453,7 @@ const styles = StyleSheet.create({
     gap: theme.space.md,
   },
   cancelRow: { marginTop: theme.space.md, alignItems: 'flex-start' },
-  note: { marginTop: theme.space.sm },
+  note: { marginTop: theme.space.xl },
 
   sheetBody: { gap: theme.space.md, paddingTop: theme.space.sm },
   refundRow: {

@@ -1,22 +1,24 @@
 /**
- * Host dashboard (Phase 3 rework).
+ * Host dashboard (redesigned — Airbnb-style design language).
  *
  * Header with a persistent "Switch to Travelling" affordance + a localized
- * title. Headline stats, a grid of real Lucide entry tiles, the host's own
- * listings, and a SINGLE consolidated "Create listing" CTA (sticky footer).
+ * title. Borderless headline stats, a list of borderless nav rows (outline
+ * Lucide icon + label + chevron), the host's own listings as borderless rows
+ * separated by hairline dividers, and a SINGLE consolidated "Create listing"
+ * CTA (sticky footer).
  *
  * States are distinguished:
  *  - hydrating/claim-refreshing: skeleton + "setting up your host account…"
  *  - genuinely empty (host with zero listings): a welcoming first-listing CTA
- *  - populated: stats + tiles + listings
+ *  - populated: stats + nav rows + listings
  *
- * Built on @/ui (Screen/Header/Text/Heading/Card/Button/StatusPill/EmptyState/
- * ErrorState/Skeleton), Lucide icons, haptics, pull-to-refresh, full RTL.
+ * Built on @/ui (Screen/Header/Text/Heading/Button/StatusPill/EmptyState/
+ * ErrorState/Skeleton), outline Lucide icons, haptics, pull-to-refresh, full RTL.
  */
 
 import type { ComponentType } from 'react';
 import { useCallback, useState } from 'react';
-import { View, StyleSheet, FlatList, Pressable, RefreshControl } from 'react-native';
+import { View, StyleSheet, FlatList, Pressable, RefreshControl, I18nManager } from 'react-native';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, type Locale } from '@dyafa/i18n';
@@ -28,6 +30,7 @@ import {
   Star,
   Plane,
   Plus,
+  ChevronRight,
   type LucideProps,
 } from 'lucide-react-native';
 import { listMyProperties, getMyHostProfileId, localizedName, type PropertyRow } from '@/lib/listings';
@@ -38,7 +41,6 @@ import {
   Header,
   Text,
   Heading,
-  Card,
   Button,
   StatusPill,
   statusTone,
@@ -150,7 +152,7 @@ export default function HostHomeScreen() {
           hitSlop={8}
           style={({ pressed }) => [styles.switchBtn, pressed && styles.pressed]}
         >
-          <Plane size={16} color={theme.color.primary} />
+          <Plane size={16} color={theme.color.primary} strokeWidth={2} />
           <Text variant="caption" weight="semibold" color="primary">
             {pick(L.switchToTravelling, locale)}
           </Text>
@@ -184,7 +186,7 @@ export default function HostHomeScreen() {
         <ErrorState
           message={error}
           onRetry={() => void load()}
-          retryLabel={pick(L.search, locale)}
+          retryLabel={pick(L.tryAgain, locale)}
         />
       </Screen>
     );
@@ -211,6 +213,7 @@ export default function HostHomeScreen() {
         data={properties}
         keyExtractor={(p) => p.id}
         contentContainerStyle={styles.listContent}
+        ItemSeparatorComponent={() => <View style={styles.divider} />}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -222,11 +225,12 @@ export default function HostHomeScreen() {
         ListHeaderComponent={
           <View style={styles.headerWrap}>
             <View style={styles.statsRow}>
-              <StatCard
+              <StatBlock
                 label={pick(L.hostStatActiveListings, locale)}
                 value={activeListings === null ? '—' : formatNumber(activeListings, locale)}
               />
-              <StatCard
+              <View style={styles.statDivider} />
+              <StatBlock
                 label={pick(L.hostStatPendingRequests, locale)}
                 value={pendingRequests === null ? '—' : formatNumber(pendingRequests, locale)}
                 badge={pendingRequests !== null && pendingRequests > 0}
@@ -234,7 +238,7 @@ export default function HostHomeScreen() {
               />
             </View>
 
-            <View style={styles.tiles}>
+            <View style={styles.navList}>
               {TILES.map((tile) => {
                 const Icon = tile.icon;
                 return (
@@ -246,22 +250,28 @@ export default function HostHomeScreen() {
                       haptics.tap();
                       router.push(tile.href);
                     }}
-                    style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
+                    style={({ pressed }) => [styles.navRow, pressed && styles.pressed]}
                   >
-                    <View style={styles.tileIcon}>
-                      <Icon size={22} color={theme.color.primary} strokeWidth={1.9} />
+                    <View style={styles.navIcon}>
+                      <Icon size={20} color={theme.color.primary} strokeWidth={2} />
                     </View>
-                    <Text variant="body-sm" weight="semibold" center numberOfLines={2}>
+                    <Text variant="body" weight="semibold" numberOfLines={1} style={styles.flex}>
                       {pick(tile.label, locale)}
                     </Text>
+                    <ChevronRight
+                      size={20}
+                      color={theme.color.textMuted}
+                      strokeWidth={2}
+                      style={styles.chevron}
+                    />
                   </Pressable>
                 );
               })}
             </View>
 
-            <Heading level={3} style={styles.sectionTitle}>
+            <Text variant="title" weight="bold" style={styles.sectionTitle}>
               {pick(COPY.myListings, locale)}
-            </Heading>
+            </Text>
           </View>
         }
         renderItem={({ item }) => {
@@ -273,26 +283,24 @@ export default function HostHomeScreen() {
                 haptics.tap();
                 router.push({ pathname: '/host/new', params: { propertyId: item.id } });
               }}
-              style={({ pressed }) => [pressed && styles.pressed]}
+              style={({ pressed }) => [styles.listingRow, pressed && styles.pressed]}
             >
-              <Card>
-                <View style={styles.cardHeader}>
-                  <Text variant="title" weight="semibold" numberOfLines={1} style={styles.flex}>
-                    {title}
-                  </Text>
-                  <StatusPill label={listingLabel(item.status, locale)} tone={statusTone(item.status)} />
-                </View>
-                <Text variant="body-sm" color="textMuted">
-                  {item.instant_book ? `${pick(COPY.instant, locale)}  ·  ` : ''}
-                  {pick(COPY.minNights, locale)} {formatNumber(item.min_nights, locale)}{' '}
-                  {pick(COPY.nights, locale)}
+              <View style={styles.cardHeader}>
+                <Text variant="body" weight="semibold" numberOfLines={1} style={styles.flex}>
+                  {title}
                 </Text>
-                {item.status === 'rejected' && item.rejection_note ? (
-                  <Text variant="caption" color="error">
-                    {pick(COPY.rejected, locale)} {item.rejection_note}
-                  </Text>
-                ) : null}
-              </Card>
+                <StatusPill label={listingLabel(item.status, locale)} tone={statusTone(item.status)} />
+              </View>
+              <Text variant="body-sm" color="textMuted">
+                {item.instant_book ? `${pick(COPY.instant, locale)}  ·  ` : ''}
+                {pick(COPY.minNights, locale)} {formatNumber(item.min_nights, locale)}{' '}
+                {pick(COPY.nights, locale)}
+              </Text>
+              {item.status === 'rejected' && item.rejection_note ? (
+                <Text variant="caption" color="error">
+                  {pick(COPY.rejected, locale)} {item.rejection_note}
+                </Text>
+              ) : null}
             </Pressable>
           );
         }}
@@ -313,7 +321,7 @@ function listingLabel(status: string, locale: Locale): string {
   return pick(m, locale);
 }
 
-function StatCard({
+function StatBlock({
   label,
   value,
   badge = false,
@@ -326,9 +334,12 @@ function StatCard({
 }) {
   const content = (
     <>
-      <Heading level={1} color={badge ? 'accentHover' : 'primary'}>
-        {value}
-      </Heading>
+      <View style={styles.statValueRow}>
+        <Heading level={1} color={badge ? 'accent' : 'primary'}>
+          {value}
+        </Heading>
+        {badge ? <View style={styles.badgeDot} /> : null}
+      </View>
       <Text variant="body-sm" color="textMuted">
         {label}
       </Text>
@@ -339,23 +350,20 @@ function StatCard({
       <Pressable
         accessibilityRole="button"
         onPress={onPress}
-        style={({ pressed }) => [
-          styles.statCard,
-          badge && styles.statCardAccent,
-          pressed && styles.pressed,
-        ]}
+        style={({ pressed }) => [styles.statBlock, pressed && styles.pressed]}
       >
         {content}
       </Pressable>
     );
   }
-  return <View style={styles.statCard}>{content}</View>;
+  return <View style={styles.statBlock}>{content}</View>;
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  pressed: { opacity: 0.9 },
+  pressed: { opacity: 0.7 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: theme.space.xl },
+  chevron: { transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] },
 
   switchBtn: {
     flexDirection: 'row',
@@ -367,33 +375,30 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.infoBg,
   },
 
-  listContent: { padding: theme.space.xl, gap: theme.space.md, paddingBottom: theme.space['3xl'] },
-  headerWrap: { gap: theme.space.lg },
+  listContent: { padding: theme.space.xl, paddingBottom: theme.space['3xl'] },
+  headerWrap: { gap: theme.space['2xl'] },
 
-  statsRow: { flexDirection: 'row', gap: theme.space.md },
-  statCard: {
-    flex: 1,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
-    gap: theme.space.xs,
-    ...theme.shadow.card,
+  // Stats — borderless, plain numbers on the canvas.
+  statsRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xl },
+  statBlock: { flex: 1, gap: theme.space.xs },
+  statDivider: { width: 1, alignSelf: 'stretch', backgroundColor: theme.color.border },
+  statValueRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
+  badgeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.color.accent,
   },
-  statCardAccent: { backgroundColor: theme.color.terracotta100 },
 
-  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.md },
-  tile: {
-    flexGrow: 1,
-    flexBasis: '30%',
-    minWidth: 100,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
+  // Nav rows — borderless (icon circle + label + chevron).
+  navList: {},
+  navRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.space.sm,
-    ...theme.shadow.card,
+    gap: theme.space.md,
+    paddingVertical: theme.space.md,
   },
-  tileIcon: {
+  navIcon: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -402,13 +407,15 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.infoBg,
   },
 
-  sectionTitle: { marginTop: theme.space.xs },
+  sectionTitle: {},
 
+  // Listing rows — borderless, hairline-separated.
+  listingRow: { gap: theme.space.xs, paddingVertical: theme.space.md },
+  divider: { height: 1, backgroundColor: theme.color.border },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.sm,
-    marginBottom: theme.space.xs,
   },
 });

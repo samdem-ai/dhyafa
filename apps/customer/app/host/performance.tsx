@@ -1,18 +1,30 @@
 /**
- * Host performance (Phase 3 rework).
+ * Host performance (Phase 3 rework; redesigned Phase 8).
  *
  * Metric cards computed from the host's bookings + room types: listings, total
  * bookings, confirmed, completed, a 30-day occupancy estimate, and realized
  * revenue. No view-tracking table → "Views" renders an em-dash with a note.
  *
  * Built on @/ui (Screen/Header/Heading/Text/Skeleton/Empty/Error), full RTL,
- * pull-to-refresh.
+ * pull-to-refresh. Borderless photo-first design language: metric tiles are
+ * plain (no surface box / shadow), a lucide outline icon + big serif value.
  */
 
+import type { ComponentType } from 'react';
 import { useCallback, useState } from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import {
+  Home,
+  CalendarCheck,
+  CheckCircle2,
+  Flag,
+  PieChart,
+  Wallet,
+  Eye,
+  type LucideProps,
+} from 'lucide-react-native';
 import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
 import { getHostPerformance, type HostPerformance } from '@/lib/host';
 import { Screen, Header, Heading, Text, Skeleton, ErrorState, EmptyState } from '@/ui';
@@ -58,9 +70,11 @@ export default function HostPerformanceScreen() {
       <Header title={pick(L.hostPerformanceTitle, locale)} />
 
       {stats === null && error ? (
-        <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.search, locale)} />
+        <View style={styles.centerFill}>
+          <ErrorState message={error} onRetry={() => void load()} retryLabel={pick(L.tryAgain, locale)} />
+        </View>
       ) : stats === null ? (
-        <View style={styles.gridPad}>
+        <View style={styles.scroll}>
           <View style={styles.grid}>
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} style={styles.metricSkeleton} />
@@ -68,10 +82,13 @@ export default function HostPerformanceScreen() {
           </View>
         </View>
       ) : stats.listingCount === 0 && stats.totalBookings === 0 ? (
-        <EmptyState
-          title={pick(L.hostPerfEmptyTitle, locale)}
-          subtitle={pick(L.hostPerfEmptyBody, locale)}
-        />
+        <View style={styles.centerFill}>
+          <EmptyState
+            icon={Home}
+            title={pick(L.hostPerfEmptyTitle, locale)}
+            subtitle={pick(L.hostPerfEmptyBody, locale)}
+          />
+        </View>
       ) : (
         <ScrollView
           contentContainerStyle={styles.scroll}
@@ -81,17 +98,18 @@ export default function HostPerformanceScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.grid}>
-            <MetricCard label={pick(L.hostMetricListings, locale)} value={formatNumber(stats.listingCount, locale)} />
-            <MetricCard label={pick(L.hostMetricBookings, locale)} value={formatNumber(stats.totalBookings, locale)} />
-            <MetricCard label={pick(L.hostMetricConfirmed, locale)} value={formatNumber(stats.confirmedBookings, locale)} />
-            <MetricCard label={pick(L.hostMetricCompleted, locale)} value={formatNumber(stats.completedBookings, locale)} />
+            <MetricCard icon={Home} label={pick(L.hostMetricListings, locale)} value={formatNumber(stats.listingCount, locale)} />
+            <MetricCard icon={CalendarCheck} label={pick(L.hostMetricBookings, locale)} value={formatNumber(stats.totalBookings, locale)} />
+            <MetricCard icon={CheckCircle2} label={pick(L.hostMetricConfirmed, locale)} value={formatNumber(stats.confirmedBookings, locale)} />
+            <MetricCard icon={Flag} label={pick(L.hostMetricCompleted, locale)} value={formatNumber(stats.completedBookings, locale)} />
             <MetricCard
+              icon={PieChart}
               label={pick(L.hostMetricOccupancy, locale)}
               value={formatPercent(stats.occupancy, locale)}
               note={pick(L.hostOccupancyNote, locale)}
             />
-            <MetricCard label={pick(L.hostMetricRevenue, locale)} value={formatDZD(stats.revenueDzd, locale)} money />
-            <MetricCard label={pick(L.hostMetricViews, locale)} value="—" note={pick(L.hostViewsNote, locale)} muted />
+            <MetricCard icon={Wallet} label={pick(L.hostMetricRevenue, locale)} value={formatDZD(stats.revenueDzd, locale)} money />
+            <MetricCard icon={Eye} label={pick(L.hostMetricViews, locale)} value="—" note={pick(L.hostViewsNote, locale)} muted />
           </View>
         </ScrollView>
       )}
@@ -100,23 +118,24 @@ export default function HostPerformanceScreen() {
 }
 
 function MetricCard({
+  icon: Icon,
   label,
   value,
   note,
   money = false,
   muted = false,
 }: {
+  icon: ComponentType<LucideProps>;
   label: string;
   value: string;
   note?: string;
   money?: boolean;
   muted?: boolean;
 }) {
+  const accentColor = muted ? theme.color.ink300 : theme.color.primary;
   return (
-    <View style={[styles.metricCard, muted && styles.metricCardMuted]}>
-      <Text variant="body-sm" color="textMuted">
-        {label}
-      </Text>
+    <View style={styles.metricCard}>
+      <Icon size={22} color={accentColor} strokeWidth={2} />
       {money ? (
         <Text variant="title" weight="bold" color={muted ? 'ink300' : 'primary'} style={styles.ltr} numberOfLines={1} adjustsFontSizeToFit>
           {value}
@@ -126,6 +145,9 @@ function MetricCard({
           {value}
         </Heading>
       )}
+      <Text variant="body-sm" weight="medium" color="textMuted">
+        {label}
+      </Text>
       {note ? (
         <Text variant="caption" color="textMuted">
           {note}
@@ -137,25 +159,20 @@ function MetricCard({
 
 const styles = StyleSheet.create({
   ltr: { writingDirection: 'ltr' },
+  centerFill: { flex: 1, justifyContent: 'center' },
   scroll: { padding: theme.space.xl, paddingBottom: theme.space['3xl'] },
-  gridPad: { padding: theme.space.xl },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.md },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: theme.space.lg, rowGap: theme.space['2xl'] },
   metricCard: {
     flexGrow: 1,
-    flexBasis: '47%',
-    minWidth: 150,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.lg,
+    flexBasis: '42%',
+    minWidth: 140,
     gap: theme.space.xs,
-    ...theme.shadow.card,
   },
-  metricCardMuted: { backgroundColor: theme.color.surfaceSunken, ...theme.shadow.xs },
   metricSkeleton: {
     flexGrow: 1,
-    flexBasis: '47%',
-    minWidth: 150,
+    flexBasis: '42%',
+    minWidth: 140,
     height: 96,
-    borderRadius: theme.radius.card,
+    borderRadius: theme.radius.lg,
   },
 });

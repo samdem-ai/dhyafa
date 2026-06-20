@@ -5,15 +5,14 @@
  */
 
 import { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import type { Locale } from '@dyafa/i18n';
 import { useWizard } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
-import { TextField, LocaleTabs } from '@/components/fields';
+import { Text, TextField, SegmentedControl } from '@/ui';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
 
 const COPY = {
   title: { ar: 'العنوان والوصف', fr: 'Titre et description', en: 'Title & description' },
@@ -41,6 +40,12 @@ const COPY = {
   },
   saveError: { ar: 'تعذّر الحفظ.', fr: "Échec de l'enregistrement.", en: 'Could not save.' },
 } as const;
+
+const LOCALE_OPTIONS: { value: Locale; label: string }[] = [
+  { value: 'ar', label: 'العربية' },
+  { value: 'fr', label: 'Français' },
+  { value: 'en', label: 'English' },
+];
 
 function pick(m: { ar: string; fr: string; en: string }, l: Locale): string {
   return l === 'fr' ? m.fr : l === 'en' ? m.en : m.ar;
@@ -112,7 +117,7 @@ export default function StepDetails() {
       nextLoading={saving}
       onNext={() => void onNext()}
     >
-      <LocaleTabs active={tab} onChange={setTab} />
+      <SegmentedControl options={LOCALE_OPTIONS} value={tab} onChange={setTab} />
 
       <TextField
         label={pick(COPY.titleField, locale)}
@@ -128,25 +133,26 @@ export default function StepDetails() {
         multiline
       />
 
-      {!hasTitle ? <Text style={styles.hint}>{pick(COPY.needTitle, locale)}</Text> : null}
-      {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
+      {!hasTitle ? (
+        <Text variant="body-sm" color="textMuted">
+          {pick(COPY.needTitle, locale)}
+        </Text>
+      ) : null}
+      {saveError ? (
+        <View style={styles.errorBox}>
+          <Text variant="body-sm" color="error" center>
+            {saveError}
+          </Text>
+        </View>
+      ) : null}
     </WizardChrome>
   );
 }
 
 const styles = StyleSheet.create({
-  hint: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-  },
-  error: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
+  errorBox: {
     backgroundColor: theme.color.errorBg,
     padding: theme.space.md,
     borderRadius: theme.radius.md,
-    textAlign: 'center',
   },
 });
