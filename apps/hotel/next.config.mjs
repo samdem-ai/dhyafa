@@ -7,7 +7,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   // Standalone server output for slim Docker images. outputFileTracingRoot points
   // at the monorepo root so the trace includes the @dyafa/* workspace packages.
-  output: 'standalone',
+  // The standalone trace-copy uses symlinks (elevated privileges on Windows); set
+  // DYAFA_DISABLE_STANDALONE=1 to skip it for local Windows builds.
+  output: process.env.DYAFA_DISABLE_STANDALONE ? undefined : 'standalone',
   outputFileTracingRoot: join(__dirname, '../../'),
   transpilePackages: [
     '@dyafa/design-tokens',
