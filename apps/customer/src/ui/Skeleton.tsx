@@ -63,7 +63,7 @@ export function SkeletonList({ count = 3 }: { count?: number }) {
 export function PropertyCardSkeleton() {
   return (
     <View style={styles.card}>
-      <Skeleton style={styles.thumb} />
+      <Skeleton style={styles.thumb} radius={theme.radius.lg} />
       <View style={styles.lines}>
         <Skeleton style={styles.lineWide} />
         <Skeleton style={styles.lineNarrow} />
@@ -115,17 +115,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.surfaceSunken,
     borderRadius: theme.radius.sm,
   },
-  list: { gap: theme.space.md, padding: theme.space.xl },
-  card: {
-    flexDirection: 'row',
-    gap: theme.space.md,
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    padding: theme.space.md,
-    ...theme.shadow.card,
-  },
-  thumb: { width: 84, height: 84, borderRadius: theme.radius.md },
-  lines: { flex: 1, justifyContent: 'center', gap: theme.space.sm },
+  list: { gap: theme.space.xl, padding: theme.space.xl },
+  // Borderless, photo-first — mirrors ResultCard (rounded image, then text lines).
+  card: { gap: theme.space.sm },
+  thumb: { width: '100%', aspectRatio: 4 / 3 },
+  lines: { gap: theme.space.sm },
   lineWide: { height: 16, width: '80%' },
   lineNarrow: { height: 12, width: '50%' },
   linePrice: { height: 14, width: '35%' },

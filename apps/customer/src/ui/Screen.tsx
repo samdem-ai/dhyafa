@@ -102,6 +102,6 @@ const styles = StyleSheet.create({
     borderTopColor: theme.color.border,
     paddingTop: theme.space.md,
     paddingHorizontal: theme.space.xl,
-    ...theme.shadow.raised,
+    ...theme.shadow.xs,
   },
 });

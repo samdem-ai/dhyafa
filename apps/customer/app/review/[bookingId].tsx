@@ -1,5 +1,5 @@
 /**
- * Leave-a-review screen (M3).
+ * Leave-a-review screen (M3; redesigned Phase 8).
  *
  * Entry from Trips (completed bucket) + booking detail when a stay is
  * `completed` and not yet reviewed. Six category 1-5 star pickers (cleanliness,
@@ -8,34 +8,37 @@
  *
  * Guards: the booking must belong to the caller and be `completed`, and not
  * already reviewed. On success we show a thank-you state with a "view trip" CTA.
+ *
+ * Redesign (Airbnb-style): built on @/ui primitives — Screen + Header + Button +
+ * Text/Heading/TextField. Borderless category rows separated by hairlines, the
+ * already-redesigned StarRating (outline lucide stars), every state centered
+ * (Skeleton / ErrorState / EmptyState), and a sticky submit footer (shadow.xs
+ * via Screen).
  */
 
 import { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  Pressable,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  I18nManager,
-} from 'react-native';
+import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Star, PartyPopper } from 'lucide-react-native';
 import type { Locale } from '@dyafa/i18n';
 import { getBookingDetail, type BookingWithProperty } from '@/lib/bookings';
 import { localizedName } from '@/lib/discovery';
 import { submitReview, hasReviewedBooking, REVIEW_CATEGORIES, type ReviewCategory } from '@/lib/reviews';
-import { Skeleton, ErrorState, EmptyState, PrimaryButton } from '@/components/ui';
 import { StarRating } from '@/components/StarRating';
+import {
+  Screen,
+  Header,
+  Heading,
+  Text,
+  Button,
+  TextField,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+} from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
-
-const textAlign = I18nManager.isRTL ? 'right' : 'left';
 
 const CATEGORY_LABEL: Record<ReviewCategory, keyof typeof L> = {
   cleanliness: 'reviewCleanliness',
@@ -139,69 +142,107 @@ export default function LeaveReviewScreen() {
   // ── States ────────────────────────────────────────────────────────────────
   if (phase === 'loading') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <TopBar title={pick(L.leaveReview, locale)} />
-        <View style={styles.body}>
+      <Screen edges={['top']}>
+        <Header title={pick(L.leaveReview, locale)} />
+        <View style={styles.skeletonWrap}>
+          <Skeleton style={styles.skLineTitle} />
+          <Skeleton style={styles.skLine} />
           <Skeleton style={styles.skBlock} />
           <Skeleton style={styles.skBlock} />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
   if (phase === 'error') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <TopBar title={pick(L.leaveReview, locale)} />
-        <ErrorState message={pick(L.loadError, locale)} onRetry={() => void load()} retryLabel={pick(L.goBack, locale)} />
-      </SafeAreaView>
+      <Screen edges={['top']}>
+        <Header title={pick(L.leaveReview, locale)} />
+        <View style={styles.centerFill}>
+          <ErrorState
+            message={pick(L.loadError, locale)}
+            onRetry={() => void load()}
+            retryLabel={pick(L.tryAgain, locale)}
+          />
+        </View>
+      </Screen>
     );
   }
   if (phase === 'ineligible') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <TopBar title={pick(L.leaveReview, locale)} />
-        <EmptyState
-          emoji="⭐"
-          title={pick(L.reviewNotEligibleTitle, locale)}
-          subtitle={pick(L.reviewNotEligibleBody, locale)}
-        />
-        <View style={styles.footer}>
-          <PrimaryButton label={pick(L.viewTrip, locale)} variant="secondary" onPress={() => router.back()} />
+      <Screen edges={['top']}>
+        <Header title={pick(L.leaveReview, locale)} />
+        <View style={styles.centerFill}>
+          <EmptyState
+            icon={Star}
+            title={pick(L.reviewNotEligibleTitle, locale)}
+            subtitle={pick(L.reviewNotEligibleBody, locale)}
+            action={{ label: pick(L.viewTrip, locale), onPress: () => router.back() }}
+          />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
   if (phase === 'done') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <TopBar title={pick(L.leaveReview, locale)} />
-        <EmptyState emoji="🎉" title={pick(L.reviewThanksTitle, locale)} subtitle={pick(L.reviewThanksBody, locale)} />
-        <View style={styles.footer}>
-          <PrimaryButton label={pick(L.viewTrip, locale)} onPress={() => router.back()} />
+      <Screen edges={['top']}>
+        <Header title={pick(L.leaveReview, locale)} />
+        <View style={styles.centerFill}>
+          <EmptyState
+            icon={PartyPopper}
+            title={pick(L.reviewThanksTitle, locale)}
+            subtitle={pick(L.reviewThanksBody, locale)}
+            action={{ label: pick(L.viewTrip, locale), onPress: () => router.back() }}
+          />
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   // ── Form ──────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.safe}>
-      <TopBar title={pick(L.leaveReview, locale)} />
+    <Screen
+      edges={['top']}
+      footer={
+        <Button
+          label={pick(L.submitReview, locale)}
+          variant="tertiary"
+          onPress={() => void onSubmit()}
+          loading={submitting}
+          disabled={submitting}
+        />
+      }
+    >
+      <Header title={pick(L.leaveReview, locale)} />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={80}
       >
-        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Intro */}
           <View style={styles.intro}>
-            <Text style={styles.heading}>{pick(L.rateYourStay, locale)}</Text>
-            {title ? <Text style={styles.subhead}>{title}</Text> : null}
-            <Text style={styles.introNote}>{pick(L.reviewIntro, locale)}</Text>
+            <Heading level={1}>{pick(L.rateYourStay, locale)}</Heading>
+            {title ? (
+              <Text variant="title" weight="semibold">
+                {title}
+              </Text>
+            ) : null}
+            <Text variant="body-sm" color="textMuted">
+              {pick(L.reviewIntro, locale)}
+            </Text>
           </View>
 
-          <View style={styles.card}>
+          {/* Category star pickers — borderless rows, hairline separators */}
+          <View style={styles.categories}>
             {REVIEW_CATEGORIES.map((cat, i) => (
               <View key={cat} style={[styles.catRow, i > 0 && styles.catRowBorder]}>
-                <Text style={styles.catLabel}>{pick(L[CATEGORY_LABEL[cat]], locale)}</Text>
+                <Text variant="body" weight="semibold" style={styles.flex}>
+                  {pick(L[CATEGORY_LABEL[cat]], locale)}
+                </Text>
                 <StarRating
                   value={scores[cat]}
                   onChange={(v) => setCategory(cat, v)}
@@ -211,153 +252,48 @@ export default function LeaveReviewScreen() {
             ))}
           </View>
 
-          <View style={styles.commentWrap}>
-            <Text style={styles.commentLabel}>{pick(L.reviewComment, locale)}</Text>
-            <TextInput
-              style={[styles.input, { textAlign }]}
-              value={comment}
-              onChangeText={setComment}
-              placeholder={pick(L.reviewCommentHint, locale)}
-              placeholderTextColor={theme.color.textMuted}
-              multiline
-              accessibilityLabel={pick(L.reviewComment, locale)}
-            />
-          </View>
-
-          {formError ? <Text style={styles.error}>{formError}</Text> : null}
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <PrimaryButton
-            label={pick(L.submitReview, locale)}
-            onPress={() => void onSubmit()}
-            loading={submitting}
-            disabled={submitting}
+          {/* Optional comment */}
+          <TextField
+            label={pick(L.reviewComment, locale)}
+            value={comment}
+            onChangeText={setComment}
+            placeholder={pick(L.reviewCommentHint, locale)}
+            multiline
           />
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
-}
 
-function TopBar({ title }: { title: string }) {
-  return (
-    <View style={styles.topBar}>
-      <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={8}>
-        <Text style={styles.topBack}>{I18nManager.isRTL ? '→' : '←'}</Text>
-      </Pressable>
-      <Text style={styles.topTitle}>{title}</Text>
-      <View style={styles.topSpacer} />
-    </View>
+          {formError ? (
+            <Text variant="body-sm" weight="medium" color="error" center>
+              {formError}
+            </Text>
+          ) : null}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.color.bg },
   flex: { flex: 1 },
+  centerFill: { flex: 1, justifyContent: 'center' },
 
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.md,
-    gap: theme.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.color.border,
-  },
-  topBack: { fontFamily: RN_FONTS.bodyBold, fontSize: theme.fontSize['heading-3'], color: theme.color.text },
-  topTitle: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize['heading-3'],
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign: 'center',
-  },
-  topSpacer: { width: 24 },
-
-  body: { padding: theme.space.xl, gap: theme.space.lg, paddingBottom: theme.space['2xl'] },
+  body: { padding: theme.space.xl, gap: theme.space['2xl'], paddingBottom: theme.space['3xl'] },
 
   intro: { gap: theme.space.xs },
-  heading: {
-    fontFamily: RN_FONTS.displaySemiBold,
-    fontSize: theme.fontSize['heading-1'],
-    color: theme.color.text,
-    textAlign,
-  },
-  subhead: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  introNote: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.textMuted,
-    lineHeight: theme.lineHeight['body-sm'],
-    textAlign,
-  },
 
-  card: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.card,
-    paddingHorizontal: theme.space.lg,
-    ...theme.shadow.card,
-  },
+  // Category pickers — borderless, separated by hairlines
+  categories: { gap: 0 },
   catRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.space.md,
-    paddingVertical: theme.space.lg,
-  },
-  catRowBorder: { borderTopWidth: 1, borderTopColor: theme.color.border },
-  catLabel: {
-    flex: 1,
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-
-  commentWrap: { gap: theme.space.sm },
-  commentLabel: {
-    fontFamily: RN_FONTS.arabicSemiBold,
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-    color: theme.color.text,
-    textAlign,
-  },
-  input: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.md,
-    borderWidth: 1.5,
-    borderColor: theme.color.border,
-    paddingHorizontal: theme.space.md,
     paddingVertical: theme.space.md,
-    minHeight: 110,
-    textAlignVertical: 'top',
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
   },
-  error: {
-    fontFamily: RN_FONTS.arabicMedium,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
-    textAlign,
-  },
+  catRowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.color.border },
 
-  footer: {
-    padding: theme.space.xl,
-    paddingTop: theme.space.md,
-    borderTopWidth: 1,
-    borderTopColor: theme.color.border,
-    backgroundColor: theme.color.surface,
-  },
-
-  skBlock: { height: 120, width: '100%', borderRadius: theme.radius.card },
+  // Skeleton (mirrors the form layout)
+  skeletonWrap: { padding: theme.space.xl, gap: theme.space.lg },
+  skLineTitle: { height: 28, width: '60%', borderRadius: theme.radius.sm },
+  skLine: { height: 14, width: '40%', borderRadius: theme.radius.sm },
+  skBlock: { height: 120, width: '100%', borderRadius: theme.radius.lg },
 });
