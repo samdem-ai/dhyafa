@@ -21,8 +21,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Linking, AppState, Pressable } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { type Locale } from '@dyafa/i18n';
-import { CreditCard } from 'lucide-react-native';
+import { formatDZD, type Locale } from '@dyafa/i18n';
+import { CreditCard, Check, QrCode } from 'lucide-react-native';
 import { supabaseClient } from '@/lib/supabase';
 import { useSession } from '@/lib/auth';
 import {
@@ -35,8 +35,11 @@ import {
   Screen,
   Header,
   Text,
+  Heading,
   Button,
   Chip,
+  TextField,
+  BottomSheet,
   PriceText,
   StatusPill,
   statusTone,
@@ -50,8 +53,6 @@ import { L, pick } from '@/lib/copy';
 import { formatDateTime } from '@/lib/dateFormat';
 import { buildNextPath } from '@/lib/searchParams';
 import { theme } from '@/theme';
-
-const IS_DEV = typeof __DEV__ !== 'undefined' && __DEV__;
 
 type PayMethod = 'edahabia' | 'cib' | 'baridi_qr';
 const METHODS: { value: PayMethod; key: keyof typeof L }[] = [
@@ -83,10 +84,19 @@ export default function PaymentScreen() {
 
   const [booking, setBooking] = useState<BookingWithProperty | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | 'real' | 'dev' | 'refresh'>(null);
+  const [busy, setBusy] = useState<null | 'refresh'>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [method, setMethod] = useState<PayMethod>('edahabia');
   const [now, setNow] = useState(Date.now());
+
+  // Demo checkout sheet (believable Edahabia/CIB card flow).
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [phase, setPhase] = useState<'form' | 'processing' | 'done'>('form');
+  const [demoError, setDemoError] = useState<string | null>(null);
+  const [cardNumber, setCardNumber] = useState('6280 5500 1234 5678');
+  const [cardExpiry, setCardExpiry] = useState('12/27');
+  const [cardCvv, setCardCvv] = useState('123');
+  const [cardName, setCardName] = useState('');
 
   // Tick once a second so the countdown stays live (only matters while awaiting).
   useEffect(() => {
@@ -124,54 +134,61 @@ export default function PaymentScreen() {
     return () => sub.remove();
   }, [load]);
 
-  const payReal = useCallback(async () => {
+  const openCheckout = useCallback(() => {
+    setDemoError(null);
+    setPhase('form');
+    setCheckoutOpen(true);
+  }, []);
+
+  const finishConfirmed = useCallback(() => {
+    setCheckoutOpen(false);
+    setPhase('form');
+    haptics.success();
+    toast.show({ message: pick(L.payApproved, locale), tone: 'success' });
+    if (id) router.replace(`/booking/${id}`);
+  }, [id, locale, toast]);
+
+  // Confirm payment: try real Chargily first (if configured), otherwise run the
+  // believable demo flow (short processing → dev_simulate_payment confirms the
+  // booking server-side). Either way the user "pays with Edahabia/CIB".
+  const onConfirmPay = useCallback(async () => {
     if (!id) return;
-    setBusy('real');
-    setNotice(null);
+    setDemoError(null);
+    setPhase('processing');
     try {
       const { data, error: fnErr } = await supabaseClient.functions.invoke<{
         checkout_url?: string;
         error?: string;
       }>('payments-create-checkout', { body: { booking_id: id, method } });
-      if (fnErr || !data?.checkout_url) {
-        setNotice(paymentErrorMessage('CHECKOUT_UNAVAILABLE', locale));
+      if (!fnErr && data?.checkout_url) {
+        setCheckoutOpen(false);
+        setPhase('form');
+        await Linking.openURL(data.checkout_url);
+        setNotice(pick(L.payOpenCheckout, locale));
         return;
       }
-      await Linking.openURL(data.checkout_url);
-      setNotice(pick(L.payOpenCheckout, locale));
     } catch {
-      setNotice(paymentErrorMessage('CHECKOUT_UNAVAILABLE', locale));
-    } finally {
-      setBusy(null);
+      // Chargily unavailable (demo) — fall through to the simulated flow.
     }
-  }, [id, method, locale]);
-
-  const payDev = useCallback(async () => {
-    if (!id) return;
-    setBusy('dev');
-    setNotice(null);
+    await new Promise((resolve) => setTimeout(resolve, 1700));
     try {
       const { data, error: rpcErr } = await supabaseClient.rpc('dev_simulate_payment', {
         p_booking_id: id,
       });
-      if (rpcErr) {
-        setNotice(paymentErrorMessage(classifyPaymentError(rpcErr.message), locale));
+      if (rpcErr || data !== 'applied') {
+        setPhase('form');
+        setDemoError(
+          paymentErrorMessage(rpcErr ? classifyPaymentError(rpcErr.message) : 'NOT_APPLIED', locale),
+        );
         return;
       }
-      // Verify the server actually applied the payment before routing.
-      if (data !== 'applied') {
-        setNotice(paymentErrorMessage('NOT_APPLIED', locale));
-        return;
-      }
-      haptics.success();
-      router.replace(`/booking/${id}`);
+      setPhase('done');
+      setTimeout(finishConfirmed, 1000);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '';
-      setNotice(paymentErrorMessage(classifyPaymentError(msg), locale));
-    } finally {
-      setBusy(null);
+      setPhase('form');
+      setDemoError(paymentErrorMessage(classifyPaymentError(e instanceof Error ? e.message : ''), locale));
     }
-  }, [id, locale]);
+  }, [id, method, locale, finishConfirmed]);
 
   const refresh = useCallback(async () => {
     setBusy('refresh');
@@ -326,36 +343,19 @@ export default function PaymentScreen() {
         </View>
       </View>
 
-      {/* Real Chargily payment */}
+      {/* Pay with Edahabia / CIB (opens the checkout) */}
       <View style={styles.payWrap}>
         <Button
           label={pick(L.payWith, locale)}
           variant="tertiary"
           icon={CreditCard}
-          onPress={() => void payReal()}
-          loading={busy === 'real'}
+          onPress={openCheckout}
           disabled={busy !== null}
         />
         <Text variant="caption" color="textMuted" center>
           {pick(L.payProviderNote, locale)}
         </Text>
       </View>
-
-      {/* Dev simulation (local only) */}
-      {IS_DEV ? (
-        <View style={styles.devWrap}>
-          <Button
-            label={pick(L.paySimulateDev, locale)}
-            variant="secondary"
-            onPress={() => void payDev()}
-            loading={busy === 'dev'}
-            disabled={busy !== null}
-          />
-          <Text variant="caption" color="textMuted" center>
-            {pick(L.paySimulateDevNote, locale)}
-          </Text>
-        </View>
-      ) : null}
 
       {/* Manual refresh fallback (poll-on-focus is primary). */}
       <View style={styles.secondary}>
@@ -372,6 +372,107 @@ export default function PaymentScreen() {
           </Text>
         </Pressable>
       </View>
+
+      {/* Demo checkout — believable Edahabia / CIB card flow */}
+      <BottomSheet
+        visible={checkoutOpen}
+        onClose={() => {
+          if (phase !== 'processing') setCheckoutOpen(false);
+        }}
+        dismissible={phase !== 'processing'}
+        snapPoints={['80%']}
+      >
+        {phase === 'done' ? (
+          <View style={styles.checkoutDone}>
+            <View style={styles.doneCircle}>
+              <Check size={44} color={theme.color.success} strokeWidth={3} />
+            </View>
+            <Heading level={3} center>
+              {pick(L.payApproved, locale)}
+            </Heading>
+            <PriceText amount={booking.total_dzd} variant="total" locale={locale} />
+          </View>
+        ) : (
+          <View style={styles.checkoutBody}>
+            <Heading level={3}>
+              {pick(L.payWith, locale)} · {pick(L[METHODS.find((m) => m.value === method)!.key], locale)}
+            </Heading>
+            <View style={styles.checkoutAmount}>
+              <Text variant="body-sm" color="textMuted">
+                {pick(L.amountDue, locale)}
+              </Text>
+              <PriceText amount={booking.total_dzd} variant="total" locale={locale} />
+            </View>
+
+            {method === 'baridi_qr' ? (
+              <View style={styles.qrBox}>
+                <QrCode size={132} color={theme.color.text} strokeWidth={1} />
+                <Text variant="body-sm" color="textMuted" center>
+                  {pick(L.payBaridiScan, locale)}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.cardForm}>
+                <TextField
+                  label={pick(L.payCardNumber, locale)}
+                  value={cardNumber}
+                  onChangeText={setCardNumber}
+                  keyboardType="number-pad"
+                  editable={phase === 'form'}
+                />
+                <View style={styles.cardRow}>
+                  <View style={styles.flex}>
+                    <TextField
+                      label={pick(L.payExpiry, locale)}
+                      value={cardExpiry}
+                      onChangeText={setCardExpiry}
+                      editable={phase === 'form'}
+                    />
+                  </View>
+                  <View style={styles.flex}>
+                    <TextField
+                      label={pick(L.payCvv, locale)}
+                      value={cardCvv}
+                      onChangeText={setCardCvv}
+                      keyboardType="number-pad"
+                      editable={phase === 'form'}
+                    />
+                  </View>
+                </View>
+                <TextField
+                  label={pick(L.payCardholder, locale)}
+                  value={cardName}
+                  onChangeText={setCardName}
+                  autoCapitalize="words"
+                  editable={phase === 'form'}
+                />
+              </View>
+            )}
+
+            {demoError ? (
+              <Text variant="body-sm" weight="medium" color="error">
+                {demoError}
+              </Text>
+            ) : null}
+
+            <Button
+              label={
+                phase === 'processing'
+                  ? pick(L.payProcessing, locale)
+                  : `${pick(L.payNow, locale)} ${formatDZD(booking.total_dzd, locale)}`
+              }
+              variant="tertiary"
+              icon={CreditCard}
+              onPress={() => void onConfirmPay()}
+              loading={phase === 'processing'}
+              disabled={phase === 'processing'}
+            />
+            <Text variant="caption" color="textMuted" center>
+              {pick(L.payDemoBadge, locale)}
+            </Text>
+          </View>
+        )}
+      </BottomSheet>
     </Screen>
   );
 }
@@ -398,11 +499,35 @@ const styles = StyleSheet.create({
   methodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.space.sm },
 
   payWrap: { gap: theme.space.sm },
-  devWrap: {
-    gap: theme.space.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: theme.color.border,
-    paddingTop: theme.space.lg,
-  },
   secondary: { alignItems: 'center', marginTop: theme.space.sm },
+
+  // Demo checkout sheet
+  flex: { flex: 1 },
+  checkoutBody: { gap: theme.space.md, paddingBottom: theme.space.md },
+  checkoutAmount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: theme.space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.color.border,
+  },
+  cardForm: { gap: theme.space.sm },
+  cardRow: { flexDirection: 'row', gap: theme.space.md },
+  qrBox: {
+    alignItems: 'center',
+    gap: theme.space.md,
+    paddingVertical: theme.space.xl,
+    backgroundColor: theme.color.surfaceSunken,
+    borderRadius: theme.radius.lg,
+  },
+  checkoutDone: { alignItems: 'center', gap: theme.space.md, paddingVertical: theme.space['2xl'] },
+  doneCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.color.successBg,
+  },
 });

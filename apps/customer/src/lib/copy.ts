@@ -783,6 +783,20 @@ export const L = {
   },
   // Pay
   payChoosePaymentMethod: { ar: 'اختر طريقة الدفع', fr: 'Choisir le mode de paiement', en: 'Choose payment method' },
+  // Demo checkout
+  payCardNumber: { ar: 'رقم البطاقة', fr: 'Numéro de carte', en: 'Card number' },
+  payExpiry: { ar: 'تاريخ الانتهاء', fr: 'Expiration', en: 'Expiry' },
+  payCvv: { ar: 'CVV', fr: 'CVV', en: 'CVV' },
+  payCardholder: { ar: 'اسم حامل البطاقة', fr: 'Titulaire de la carte', en: 'Cardholder name' },
+  payProcessing: { ar: 'جارٍ معالجة الدفع…', fr: 'Traitement du paiement…', en: 'Processing payment…' },
+  payApproved: { ar: 'تمت الموافقة على الدفع', fr: 'Paiement approuvé', en: 'Payment approved' },
+  payDemoBadge: { ar: 'وضع تجريبي — لا يوجد خصم فعلي', fr: 'Démo — aucun débit réel', en: 'Demo — no real charge' },
+  payBaridiScan: {
+    ar: 'افتح تطبيق بريدي موب وامسح الرمز للدفع',
+    fr: 'Ouvrez BaridiMob et scannez le code pour payer',
+    en: 'Open BaridiMob and scan the code to pay',
+  },
+  payNow: { ar: 'ادفع', fr: 'Payer', en: 'Pay' },
   payMethodEdahabia: { ar: 'الذهبية', fr: 'Edahabia', en: 'Edahabia' },
   payMethodCib: { ar: 'CIB', fr: 'CIB', en: 'CIB' },
   payMethodBaridiQr: { ar: 'بريدي موب (QR)', fr: 'BaridiMob (QR)', en: 'BaridiMob (QR)' },
