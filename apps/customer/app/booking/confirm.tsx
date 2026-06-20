@@ -220,7 +220,23 @@ export default function BookingConfirmScreen() {
       router.push({ pathname: '/(auth)/sign-in', params: { next } });
       return;
     }
-    if (occupancyExceeded || belowMinNights) return;
+    // Don't silently no-op: explain why the booking can't proceed.
+    if (occupancyExceeded) {
+      toast.show({
+        message: `${pick(L.maxGuests, locale)}: ${formatNumber(room!.max_occupancy * units, locale)}`,
+        tone: 'error',
+      });
+      return;
+    }
+    if (belowMinNights) {
+      toast.show({
+        message: `${pick(L.minNightsError, locale)}: ${formatNumber(detail!.min_nights, locale)} ${
+          detail!.min_nights === 1 ? pick(L.night, locale) : pick(L.nights, locale)
+        }`,
+        tone: 'error',
+      });
+      return;
+    }
 
     // Validate phone (E.164 +213) when provided.
     const trimmedPhone = phone.trim();
@@ -255,7 +271,12 @@ export default function BookingConfirmScreen() {
         specialRequests: specialRequests.trim() || null,
       });
 
-      haptics.success();
+      // Haptics are cosmetic — never let them block the post-success navigation.
+      try {
+        haptics.success();
+      } catch {
+        /* ignore */
+      }
 
       // Re-read just the status to choose the route. A FAILED re-read must NOT
       // surface "could not create booking" — the booking already exists.
@@ -265,14 +286,40 @@ export default function BookingConfirmScreen() {
       } catch {
         toast.show({ message: pick(L.bookingCreatedReadFailed, locale), tone: 'info' });
       }
+      setSubmitting(false);
       if (status === 'awaiting_payment') {
         router.replace(`/booking/${bookingId}/pay`);
       } else {
         router.replace(`/booking/${bookingId}`);
       }
+      return;
     } catch (err) {
-      haptics.error();
-      setSubmitError(bookingErrorMessage(err, locale));
+      try {
+        haptics.error();
+      } catch {
+        /* ignore */
+      }
+      const msg = bookingErrorMessage(err, locale);
+      // A stale/expired session makes create_booking throw NOT_AUTHENTICATED even
+      // though the CTA still showed "Confirm and book" — recover by re-authing.
+      const raw = err instanceof Error ? err.message : String(err);
+      if (/NOT_AUTHENTICATED|AUTH_REQUIRED|JWT|401/i.test(raw)) {
+        const next = buildNextPath('/booking/confirm', {
+          propertyId: detail!.id,
+          roomTypeId: room!.id,
+          checkIn: params.checkIn,
+          checkOut: params.checkOut,
+          adults: String(adults),
+          children: String(children),
+          units: String(units),
+        });
+        router.push({ pathname: '/(auth)/sign-in', params: { next } });
+        return;
+      }
+      // Surface the failure where the user can actually see it (the inline error
+      // sits below the footer and is easy to miss).
+      setSubmitError(msg);
+      toast.show({ message: msg, tone: 'error' });
     } finally {
       setSubmitting(false);
     }
@@ -301,7 +348,6 @@ export default function BookingConfirmScreen() {
               variant="tertiary"
               onPress={() => void onSubmit()}
               loading={submitting}
-              disabled={!!user && (occupancyExceeded || belowMinNights)}
             />
           </View>
         </View>
