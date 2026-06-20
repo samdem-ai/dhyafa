@@ -144,7 +144,7 @@ export default function StepPhotos() {
         const newPhoto = await uploadPhoto({
           hostProfileId,
           propertyId,
-          base64: image.base64,
+          uri: image.uri,
           ext: image.ext,
           contentType: image.mimeType,
           isCover: current.length === 0,

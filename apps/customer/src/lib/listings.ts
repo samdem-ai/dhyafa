@@ -396,8 +396,10 @@ export interface UploadPhotoInput {
    */
   hostProfileId: string;
   propertyId: string;
-  /** base64-encoded image bytes (from expo-image-picker with base64:true). */
-  base64: string;
+  /** Local file URI from the picker (preferred — read lazily, low memory). */
+  uri?: string;
+  /** base64 fallback (legacy callers). One of `uri` / `base64` must be set. */
+  base64?: string;
   /** File extension without the dot, e.g. 'jpg'. */
   ext?: string;
   contentType?: string;
@@ -416,15 +418,26 @@ export async function uploadPhoto(input: UploadPhotoInput): Promise<PropertyPhot
   const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const path = `${input.hostProfileId}/${input.propertyId}/${filename}`;
 
-  const bytes = base64ToBytes(input.base64);
+  // Build the upload body. Prefer the file URI: fetch it into a Blob backed by
+  // the file so only ONE image is in memory at a time (avoids the all-at-once
+  // base64 spike that made the picker crash/reload the app on hot devices). Stamp
+  // the right content-type via slice (no data copy). Fall back to base64 →
+  // ArrayBuffer for legacy callers (Hermes fetch can't send a bare Uint8Array).
+  let body: Blob | ArrayBuffer;
+  if (input.uri) {
+    const res = await fetch(input.uri);
+    let blob = await res.blob();
+    if (contentType && blob.type !== contentType) blob = blob.slice(0, blob.size, contentType);
+    body = blob;
+  } else if (input.base64) {
+    body = base64ToBytes(input.base64).buffer as ArrayBuffer;
+  } else {
+    throw new Error('uploadPhoto: no uri or base64 provided');
+  }
 
-  // Upload the underlying ArrayBuffer, NOT the Uint8Array view. This is the
-  // Expo/supabase-documented binary-upload body; React Native (Hermes) fetch can
-  // serialize a bare typed-array view to an empty/corrupt request body, which
-  // surfaces to the host as "upload failed / can't add images".
   const { error: uploadError } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(path, bytes.buffer as ArrayBuffer, { contentType, upsert: false });
+    .upload(path, body, { contentType, upsert: false });
   if (uploadError) throw uploadError;
 
   const { data, error } = await supabase

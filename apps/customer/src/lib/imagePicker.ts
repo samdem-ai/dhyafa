@@ -6,11 +6,14 @@
  * but installs are run separately). At runtime, if the native module is absent
  * we surface a typed PickResult with `error: 'unavailable'` instead of throwing.
  *
- * Returns base64 image bytes so the data layer can upload without expo-file-system.
+ * Returns the picked image's local URI (NOT base64). Requesting base64 for every
+ * selected asset holds all of them decoded in memory at once, which on a hot /
+ * low-memory device can make Android recreate the host activity mid-pick (the app
+ * "reloads to home" while the picker is still up). The data layer reads each file
+ * lazily from its URI at upload time instead.
  */
 
 export interface PickedImage {
-  base64: string;
   uri: string;
   /** lowercase extension without dot, best-effort ('jpg' | 'png' | …). */
   ext: string;
@@ -75,18 +78,17 @@ export async function pickListingImage(): Promise<PickResult> {
       // New SDKs accept a string array; older ones use MediaTypeOptions.Images.
       mediaTypes: mod.MediaTypeOptions?.Images ?? ['images'],
       quality: 0.8,
-      base64: true,
       allowsMultipleSelection: false,
     });
 
     if (result.canceled) return { ok: false, reason: 'canceled' };
     const asset = result.assets?.[0];
-    if (!asset?.base64) return { ok: false, reason: 'error' };
+    if (!asset?.uri) return { ok: false, reason: 'error' };
 
     const { ext, mime } = extFromUri(asset.uri, asset.mimeType);
     return {
       ok: true,
-      image: { base64: asset.base64, uri: asset.uri, ext, mimeType: mime },
+      image: { uri: asset.uri, ext, mimeType: mime },
     };
   } catch {
     return { ok: false, reason: 'error' };
@@ -109,18 +111,17 @@ export async function pickListingImages(selectionLimit = 10): Promise<MultiPickR
     const result = await mod.launchImageLibraryAsync({
       mediaTypes: mod.MediaTypeOptions?.Images ?? ['images'],
       quality: 0.8,
-      base64: true,
       allowsMultipleSelection: true,
       selectionLimit,
     });
 
     if (result.canceled) return { ok: false, reason: 'canceled' };
-    const assets = (result.assets ?? []).filter((a) => !!a.base64);
+    const assets = (result.assets ?? []).filter((a) => !!a.uri);
     if (assets.length === 0) return { ok: false, reason: 'error' };
 
     const images: PickedImage[] = assets.map((asset) => {
       const { ext, mime } = extFromUri(asset.uri, asset.mimeType);
-      return { base64: asset.base64 as string, uri: asset.uri, ext, mimeType: mime };
+      return { uri: asset.uri, ext, mimeType: mime };
     });
     return { ok: true, images };
   } catch {
