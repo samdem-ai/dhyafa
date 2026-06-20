@@ -84,7 +84,7 @@ export function NotificationBell({ locale }: { locale: Locale }) {
       <Bell size={22} color={theme.color.text} strokeWidth={2} />
       {showBadge ? (
         <View style={styles.badge}>
-          <Text variant="overline" weight="bold" color="white" center style={styles.badgeText}>
+          <Text variant="overline" weight="bold" color="textOnPrimary" center style={styles.badgeText}>
             {badgeText}
           </Text>
         </View>

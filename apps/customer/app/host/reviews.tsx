@@ -269,6 +269,7 @@ function HostReviewCard({
       ) : composing ? (
         <View style={styles.composer}>
           <TextField
+            label={pick(L.reply, locale)}
             value={body}
             onChangeText={setBody}
             placeholder={pick(L.replyPlaceholder, locale)}

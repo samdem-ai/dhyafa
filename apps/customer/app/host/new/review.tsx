@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { PartyPopper } from 'lucide-react-native';
@@ -253,7 +254,7 @@ export default function StepReview() {
 
   if (done) {
     return (
-      <View style={styles.successWrap}>
+      <SafeAreaView style={styles.successWrap}>
         <EmptyState
           icon={PartyPopper}
           title={pick(COPY.successTitle, locale)}
@@ -265,7 +266,7 @@ export default function StepReview() {
             onPress={() => void onFinish()}
           />
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 

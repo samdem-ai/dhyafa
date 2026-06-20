@@ -45,6 +45,7 @@ import {
 import {
   Screen,
   Header,
+  Text,
   ListItem,
   Badge,
   List,
@@ -202,7 +203,7 @@ function NotificationRowItem({
   return (
     <ListItem
       title={title}
-      subtitle={[body, time].filter(Boolean).join('\n')}
+      subtitle={body}
       onPress={onPress}
       chevron={false}
       style={[styles.row, unread && styles.rowUnread]}
@@ -216,7 +217,14 @@ function NotificationRowItem({
         </View>
       }
       trailing={
-        unread ? <Badge label={pick(L.unreadBadge, locale)} tone="info" /> : undefined
+        <View style={styles.meta}>
+          {time ? (
+            <Text variant="overline" color="textMuted">
+              {time}
+            </Text>
+          ) : null}
+          {unread ? <Badge label={pick(L.unreadBadge, locale)} tone="info" /> : null}
+        </View>
       }
     />
   );
@@ -236,6 +244,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   glyphWrapUnread: { backgroundColor: theme.color.surface },
+  meta: { alignItems: 'flex-end', gap: theme.space.xs },
   centerFill: { flex: 1, justifyContent: 'center' },
   emptyWrap: { flex: 1, justifyContent: 'center' },
 });

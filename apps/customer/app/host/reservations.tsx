@@ -27,6 +27,7 @@ import {
   MessageCircle,
   CalendarRange,
   Users,
+  BedDouble,
   Wallet,
   Clock,
   Check,
@@ -387,7 +388,7 @@ function ReservationRow({
 
       {/* Meta */}
       <View style={styles.meta}>
-        {room ? <MetaRow icon={Users}>{room}</MetaRow> : null}
+        {room ? <MetaRow icon={BedDouble}>{room}</MetaRow> : null}
         <MetaRow icon={CalendarRange}>{range}</MetaRow>
         <MetaRow icon={Users}>
           {pick(L.hostGuests, locale)}: {formatNumber(guestTotal, locale)}

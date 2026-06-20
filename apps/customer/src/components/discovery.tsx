@@ -29,8 +29,7 @@ import {
   localizedName,
 } from '@/lib/discovery';
 import type { BookingStatus } from '@/lib/bookings';
-import { WishlistHeart } from '@/ui';
-import { RemoteImage } from './RemoteImage';
+import { WishlistHeart, RemoteImage } from '@/ui';
 
 // ---------------------------------------------------------------------------
 // Rating row (small filled star — terracotta, per brand; never yellow)

@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, ActivityIndicator, I18nManager } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -44,6 +44,9 @@ const COPY = {
   add: { ar: 'إضافة صور', fr: 'Ajouter', en: 'Add photos' },
   cover: { ar: 'الغلاف', fr: 'Couverture', en: 'Cover' },
   makeCover: { ar: 'اجعلها الغلاف', fr: 'Définir couverture', en: 'Set as cover' },
+  remove: { ar: 'إزالة الصورة', fr: 'Supprimer la photo', en: 'Remove photo' },
+  moveEarlier: { ar: 'نقل إلى الأمام', fr: 'Déplacer avant', en: 'Move earlier' },
+  moveLater: { ar: 'نقل إلى الخلف', fr: 'Déplacer après', en: 'Move later' },
   permission: {
     ar: 'نحتاج إذن الوصول إلى الصور. فعّله من إعدادات النظام.',
     fr: "Autorisation d'accès aux photos requise. Activez-la dans les réglages.",
@@ -262,7 +265,7 @@ export default function StepPhotos() {
                   accessibilityLabel={pick(COPY.makeCover, locale)}
                   onPress={() => makeCover(p)}
                   style={styles.makeCoverBtn}
-                  hitSlop={6}
+                  hitSlop={8}
                 >
                   <Star size={14} color={theme.color.white} />
                 </Pressable>
@@ -270,9 +273,10 @@ export default function StepPhotos() {
 
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={pick(COPY.remove, locale)}
                 onPress={() => void onRemove(p)}
                 style={styles.removeBtn}
-                hitSlop={6}
+                hitSlop={8}
               >
                 <X size={14} color={theme.color.white} />
               </Pressable>
@@ -281,21 +285,33 @@ export default function StepPhotos() {
               <View style={styles.reorderRow}>
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel={pick(COPY.moveEarlier, locale)}
+                  accessibilityState={{ disabled: idx === 0 }}
                   disabled={idx === 0}
                   onPress={() => move(idx, -1)}
                   style={[styles.reorderBtn, idx === 0 && styles.reorderBtnDisabled]}
-                  hitSlop={4}
+                  hitSlop={10}
                 >
-                  <ChevronLeft size={16} color={theme.color.white} />
+                  <ChevronLeft
+                    size={16}
+                    color={theme.color.white}
+                    style={{ transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] }}
+                  />
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel={pick(COPY.moveLater, locale)}
+                  accessibilityState={{ disabled: idx === photos.length - 1 }}
                   disabled={idx === photos.length - 1}
                   onPress={() => move(idx, 1)}
                   style={[styles.reorderBtn, idx === photos.length - 1 && styles.reorderBtnDisabled]}
-                  hitSlop={4}
+                  hitSlop={10}
                 >
-                  <ChevronRight size={16} color={theme.color.white} />
+                  <ChevronRight
+                    size={16}
+                    color={theme.color.white}
+                    style={{ transform: [{ scaleX: I18nManager.isRTL ? -1 : 1 }] }}
+                  />
                 </Pressable>
               </View>
             </View>

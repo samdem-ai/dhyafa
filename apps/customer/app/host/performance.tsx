@@ -27,7 +27,7 @@ import {
 } from 'lucide-react-native';
 import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
 import { getHostPerformance, type HostPerformance } from '@/lib/host';
-import { Screen, Header, Heading, Text, Skeleton, ErrorState, EmptyState } from '@/ui';
+import { Screen, Header, Heading, Text, Skeleton, ErrorState, EmptyState, useToast } from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { theme } from '@/theme';
 
@@ -40,6 +40,8 @@ export default function HostPerformanceScreen() {
   const { i18n } = useTranslation('common');
   const locale = (i18n.language ?? 'en') as Locale;
 
+  const toast = useToast();
+
   const [stats, setStats] = useState<HostPerformance | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,9 +51,12 @@ export default function HostPerformanceScreen() {
     try {
       setStats(await getHostPerformance());
     } catch {
+      // Keep prior stats intact on a refresh failure; surface feedback via toast
+      // (the inline error only renders while stats === null).
       setError(pick(L.loadError, locale));
+      toast.show({ message: pick(L.loadError, locale), tone: 'error' });
     }
-  }, [locale]);
+  }, [locale, toast]);
 
   useFocusEffect(
     useCallback(() => {

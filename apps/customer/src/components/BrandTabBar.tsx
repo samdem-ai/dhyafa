@@ -105,7 +105,7 @@ export function BrandTabBar({ state, descriptors, navigation, locale }: BottomTa
               />
               {showBadge ? (
                 <View style={styles.badge}>
-                  <Text variant="overline" weight="bold" color="white" center style={styles.badgeText}>
+                  <Text variant="overline" weight="bold" color="textOnPrimary" center style={styles.badgeText}>
                     {badgeText}
                   </Text>
                 </View>

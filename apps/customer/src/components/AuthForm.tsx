@@ -1,24 +1,20 @@
 /**
  * Shared email + password form used by sign-in and sign-up.
  * Trilingual inline labels (ar/fr/en) since the shared @dyafa/i18n auth
- * namespace isn't extended here. RTL-aware text alignment.
+ * namespace isn't extended here. Built on the locale-aware @/ui primitives.
  */
 
 import { useState, type ReactNode } from 'react';
 import {
   View,
-  Text,
-  TextInput,
   StyleSheet,
-  I18nManager,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
 } from 'react-native';
 import type { Locale } from '@dyafa/i18n';
 import { theme } from '@/theme';
-import { RN_FONTS } from '@/lib/fonts';
-import { PrimaryButton, FieldLabel } from './ui';
+import { Button, TextField, Text } from '@/ui';
 
 const COPY = {
   email: { ar: 'البريد الإلكتروني', fr: 'E-mail', en: 'Email' },
@@ -54,7 +50,6 @@ export function AuthForm({
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
 
-  const textAlign = I18nManager.isRTL ? 'right' : 'left';
   const canSubmit =
     email.trim().length > 3 &&
     password.length >= 6 &&
@@ -70,55 +65,44 @@ export function AuthForm({
         keyboardShouldPersistTaps="handled"
       >
         {mode === 'sign-up' && (
-          <View style={styles.field}>
-            <FieldLabel label={pick(COPY.name, locale)} />
-            <TextInput
-              style={[styles.input, { textAlign }]}
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder={pick(COPY.name, locale)}
-              placeholderTextColor={theme.color.textMuted}
-              autoCapitalize="words"
-              accessibilityLabel={pick(COPY.name, locale)}
-            />
-          </View>
+          <TextField
+            label={pick(COPY.name, locale)}
+            value={displayName}
+            onChangeText={setDisplayName}
+            placeholder={pick(COPY.name, locale)}
+            autoCapitalize="words"
+          />
         )}
 
-        <View style={styles.field}>
-          <FieldLabel label={pick(COPY.email, locale)} />
-          <TextInput
-            style={[styles.input, { textAlign }]}
-            value={email}
-            onChangeText={setEmail}
-            placeholder={pick(COPY.emailPlaceholder, locale)}
-            placeholderTextColor={theme.color.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            accessibilityLabel={pick(COPY.email, locale)}
-          />
-        </View>
+        <TextField
+          label={pick(COPY.email, locale)}
+          value={email}
+          onChangeText={setEmail}
+          placeholder={pick(COPY.emailPlaceholder, locale)}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          autoComplete="email"
+          textContentType="emailAddress"
+        />
 
-        <View style={styles.field}>
-          <FieldLabel label={pick(COPY.password, locale)} />
-          <TextInput
-            style={[styles.input, { textAlign }]}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••"
-            placeholderTextColor={theme.color.textMuted}
-            secureTextEntry
-            autoCapitalize="none"
-            textContentType={mode === 'sign-up' ? 'newPassword' : 'password'}
-            accessibilityLabel={pick(COPY.password, locale)}
-          />
-        </View>
+        <TextField
+          label={pick(COPY.password, locale)}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="••••••••"
+          secureTextEntry
+          autoCapitalize="none"
+          textContentType={mode === 'sign-up' ? 'newPassword' : 'password'}
+        />
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? (
+          <Text variant="body-sm" color="error" style={styles.error}>
+            {error}
+          </Text>
+        ) : null}
 
         <View style={styles.submit}>
-          <PrimaryButton
+          <Button
             label={submitLabel}
             loading={loading}
             disabled={!canSubmit}
@@ -144,22 +128,7 @@ const styles = StyleSheet.create({
     padding: theme.space.xl,
     gap: theme.space.lg,
   },
-  field: { gap: theme.space.xs },
-  input: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.md,
-    borderWidth: 1.5,
-    borderColor: theme.color.border,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.md,
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize.body,
-    color: theme.color.text,
-  },
   error: {
-    fontFamily: RN_FONTS.arabicRegular,
-    fontSize: theme.fontSize['body-sm'],
-    color: theme.color.error,
     backgroundColor: theme.color.errorBg,
     padding: theme.space.md,
     borderRadius: theme.radius.md,

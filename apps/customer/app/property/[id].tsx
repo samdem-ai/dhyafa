@@ -22,6 +22,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, useWindowDimensions, I18nManager } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, type Locale } from '@dyafa/i18n';
 import {
@@ -467,6 +468,7 @@ export default function PropertyDetailScreen() {
             {pick(L.messageHostSheetBody, locale)}
           </Text>
           <TextField
+            label={pick(L.messageHostSheetTitle, locale)}
             value={inquiryBody}
             onChangeText={setInquiryBody}
             placeholder={pick(L.inquiryPlaceholder, locale)}
@@ -581,8 +583,9 @@ function BookingWidget({
   onGuests: () => void;
   onReserve: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.widget}>
+    <View style={[styles.widget, { paddingBottom: Math.max(theme.space.xl, insets.bottom + theme.space.md) }]}>
       <View style={styles.widgetInfo}>
         <View style={styles.widgetPriceRow}>
           <PriceText amount={nightly} variant="large" locale={locale} />

@@ -23,6 +23,7 @@ import {
 import type { Locale } from '@dyafa/i18n';
 import { theme } from '@/theme';
 import { Text } from '@/ui';
+import { L, pick } from '@/lib/copy';
 
 const MONTH_NAMES: Record<Locale, string[]> = {
   ar: [
@@ -44,6 +45,17 @@ const WEEKDAY_LABELS: Record<Locale, string[]> = {
   ar: ['أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت'],
   fr: ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'],
   en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+};
+
+/**
+ * Screen-reader status suffixes for day cells. Booked/unavailable have no clean
+ * copy.ts key, so they live here locally (closed reuses copy via L.hostClosed,
+ * check-in/check-out via L.checkIn/L.checkOut).
+ */
+const A11Y_STATUS: Record<Locale, { booked: string; unavailable: string }> = {
+  ar: { booked: 'محجوز', unavailable: 'غير متاح' },
+  fr: { booked: 'Réservé', unavailable: 'Indisponible' },
+  en: { booked: 'Booked', unavailable: 'Unavailable' },
 };
 
 function startOfDay(d: Date): Date {
@@ -183,10 +195,21 @@ export function DateRangePicker({
               const meta = dayMeta ? dayMeta[dayKey(day)] : undefined;
               const closed = meta?.closed === true && !isEdge;
 
+              const dateLabel = `${day.getDate()} ${MONTH_NAMES[locale][day.getMonth()]} ${day.getFullYear()}`;
+              const statusParts: string[] = [];
+              if (isStart) statusParts.push(pick(L.checkIn, locale));
+              else if (isEnd) statusParts.push(pick(L.checkOut, locale));
+              if (disabled) statusParts.push(A11Y_STATUS[locale].unavailable);
+              if (closed) statusParts.push(pick(L.hostClosed, locale));
+              if (meta?.booked && !isEdge) statusParts.push(A11Y_STATUS[locale].booked);
+              const a11yLabel =
+                statusParts.length > 0 ? `${dateLabel} — ${statusParts.join(', ')}` : dateLabel;
+
               return (
                 <Pressable
                   key={idx}
                   accessibilityRole="button"
+                  accessibilityLabel={a11yLabel}
                   accessibilityState={{ disabled, selected: isEdge }}
                   disabled={disabled}
                   onPress={() => onDayPress(day)}

@@ -240,7 +240,7 @@ export default function BookingDetailScreen() {
         {/* Price breakdown (authoritative) */}
         <View style={styles.priceSection}>
           <Text variant="title" weight="bold">
-            {pick(L.total, locale)}
+            {pick(L.estTotal, locale)}
           </Text>
           <PriceBreakdown lines={lines} totalLabel={pick(L.total, locale)} totalDzd={booking.total_dzd} locale={locale} />
         </View>

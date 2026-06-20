@@ -89,7 +89,7 @@ export default function SignInScreen() {
 
   return (
     <Screen>
-      <Header />
+      <Header showBack={router.canGoBack()} />
       <View style={styles.intro}>
         <Heading level="display-lg" color="primary">
           {pickC(COPY.title, locale)}

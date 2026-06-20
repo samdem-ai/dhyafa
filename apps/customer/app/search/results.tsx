@@ -434,7 +434,7 @@ const styles = StyleSheet.create({
   toggleItemActive: { backgroundColor: theme.color.surface, ...theme.shadow.xs },
 
   skeletonWrap: { paddingHorizontal: theme.space.xl, paddingVertical: theme.space.lg, gap: theme.space['2xl'] },
-  listContent: { paddingHorizontal: theme.space.xl, paddingVertical: theme.space.lg },
+  listContent: { paddingHorizontal: theme.space.xl, paddingVertical: theme.space.lg, flexGrow: 1 },
   sep: { height: theme.space.xl },
   centerFill: { flex: 1, justifyContent: 'center' },
 

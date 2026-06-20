@@ -101,11 +101,6 @@ export default function ProfileScreen() {
           <ListItem
             title={pick(L.wishlists, locale)}
             leading={<RowIcon icon={Heart} />}
-            trailing={
-              <Text variant="body-sm" color="textMuted">
-                {pick(L.wishlistsSoon, locale)}
-              </Text>
-            }
             onPress={() => router.navigate('/(tabs)/wishlists')}
           />
           <ListItem

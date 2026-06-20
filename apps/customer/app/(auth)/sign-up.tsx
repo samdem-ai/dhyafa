@@ -120,7 +120,7 @@ export default function SignUpScreen() {
   if (confirmEmail) {
     return (
       <Screen>
-        <Header />
+        <Header showBack={router.canGoBack()} />
         <EmptyState
           icon={MailCheck}
           title={pickC(COPY.checkEmailTitle, locale)}
@@ -148,7 +148,7 @@ export default function SignUpScreen() {
 
   return (
     <Screen>
-      <Header />
+      <Header showBack={router.canGoBack()} />
       <View style={styles.intro}>
         <Heading level="display-lg" color="primary">
           {pickC(COPY.title, locale)}
