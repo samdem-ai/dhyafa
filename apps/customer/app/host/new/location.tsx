@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, Check, MapPin } from 'lucide-react-native';
+import { ChevronDown, Check } from 'lucide-react-native';
 import type { Locale } from '@dyafa/i18n';
 import {
   listWilayas,
@@ -22,7 +22,7 @@ import {
 } from '@/lib/listings';
 import { useWizard } from '@/lib/wizard';
 import { WizardChrome } from '@/components/WizardChrome';
-import { Text, TextField, FieldLabel, Skeleton, ErrorState, BottomSheet, SearchBar } from '@/ui';
+import { Text, TextField, FieldLabel, Skeleton, ErrorState, BottomSheet, SearchBar, Map } from '@/ui';
 import { L, pick as pickL } from '@/lib/copy';
 import { theme } from '@/theme';
 
@@ -41,10 +41,10 @@ const COPY = {
   address: { ar: 'العنوان', fr: 'Adresse', en: 'Address' },
   addressPh: { ar: 'الحي، الشارع…', fr: 'Quartier, rue…', en: 'Neighborhood, street…' },
   map: { ar: 'الخريطة', fr: 'Carte', en: 'Map' },
-  mapStub: {
-    ar: 'الخريطة التفاعلية تأتي لاحقًا — أدخل الإحداثيات يدويًا',
-    fr: 'Carte interactive à venir — saisissez les coordonnées',
-    en: 'Interactive map coming later — enter coordinates manually',
+  mapHint: {
+    ar: 'انقر على الخريطة لتحديد موقع مكانك',
+    fr: "Touchez la carte pour placer l'emplacement",
+    en: 'Tap the map to set your location',
   },
   lat: { ar: 'خط العرض (Lat)', fr: 'Latitude', en: 'Latitude' },
   lng: { ar: 'خط الطول (Lng)', fr: 'Longitude', en: 'Longitude' },
@@ -278,14 +278,23 @@ export default function StepLocation() {
         placeholder={pick(COPY.addressPh, locale)}
       />
 
-      {/* Map stub + manual coordinates (borderless, photo-first surface) */}
+      {/* Interactive map (OpenStreetMap) — tap to drop the pin; coords below stay editable */}
       <View style={styles.field}>
-        <FieldLabel label={pick(COPY.map, locale)} />
-        <View style={styles.mapStub}>
-          <MapPin size={24} color={theme.color.textMuted} strokeWidth={2} />
-          <Text variant="body-sm" color="textMuted" center>
-            {pick(COPY.mapStub, locale)}
-          </Text>
+        <FieldLabel label={pick(COPY.map, locale)} hint={pick(COPY.mapHint, locale)} />
+        <View style={styles.mapBox}>
+          <Map
+            markers={
+              draft.lat.trim() !== '' &&
+              draft.lng.trim() !== '' &&
+              Number.isFinite(Number(draft.lat)) &&
+              Number.isFinite(Number(draft.lng))
+                ? [{ id: 'me', latitude: Number(draft.lat), longitude: Number(draft.lng) }]
+                : []
+            }
+            onPress={(lat, lng) =>
+              patch({ lat: lat.toFixed(6), lng: lng.toFixed(6) })
+            }
+          />
         </View>
         <View style={styles.coordRow}>
           <View style={styles.coordCol}>
@@ -412,14 +421,12 @@ const styles = StyleSheet.create({
   },
   triggerPressed: { backgroundColor: theme.color.surfaceSunken },
   triggerDisabled: { opacity: 0.5 },
-  mapStub: {
-    height: 140,
+  mapBox: {
+    height: 240,
     borderRadius: theme.radius.lg,
+    overflow: 'hidden',
     backgroundColor: theme.color.surfaceSunken,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.space.sm,
-    paddingHorizontal: theme.space.lg,
+    marginTop: theme.space.sm,
   },
   coordRow: { flexDirection: 'row', gap: theme.space.md, marginTop: theme.space.md },
   coordCol: { flex: 1 },
