@@ -1,11 +1,13 @@
 /**
- * Admin overview — KPI dashboard backed by the analytics materialized views.
+ * Admin overview — KPI dashboard backed by LIVE base tables.
  *
- * Server Component, gated by `requireAdmin()`. Reads `mv_daily_metrics` and
- * `mv_conversion_funnel` over the selected time range (URL `?range=`), plus live
- * counts from base tables (active listings, pending queue). Renders KPI tiles +
- * dependency-free SVG charts. MVs refresh on a schedule, so we force-dynamic to
- * always reflect the latest refresh + range.
+ * Server Component, gated by `requireAdmin()`. Reads the cash-truth `transactions`
+ * table (same realized-status set as the Payments page, so the two reconcile) plus
+ * `bookings` and `properties` directly via the service-role client — NO materialized
+ * views, so there is no refresh lag and revenue is always current. KPIs and the
+ * daily series are aggregated in JS from the rows fetched within the selected
+ * `?range=` window. Renders KPI tiles, dependency-free SVG charts and a recent
+ * bookings table. force-dynamic so the range + latest rows always apply.
  */
 
 import { requireAdmin } from '../lib/auth';
@@ -13,15 +15,32 @@ import { resolveLocale } from '../lib/i18n';
 import { adminSupabase } from '../lib/supabase/server';
 import { formatDZD, dir } from '@dyafa/i18n';
 import type { Locale } from '@dyafa/i18n';
-import { C, formatInt, formatPct, tl } from '../lib/admin-i18n';
+import {
+  C,
+  formatInt,
+  formatPct,
+  formatDate,
+  localized,
+  statusOf,
+  BOOKING_STATUS,
+  tl,
+} from '../lib/admin-i18n';
 import { AdminAppShell } from '../components/AdminAppShell';
-import { Card, StatCard, LinkButton, ErrorState, ArrowRightIcon, type TrendDir } from '../components/ui';
+import {
+  Card,
+  StatCard,
+  StatusPill,
+  TableShell,
+  Th,
+  EmptyState,
+  ErrorState,
+  type TrendDir,
+} from '../components/ui';
 import { BarChart, LineChart } from '../components/MiniChart';
 import {
   BookingIcon,
   PaymentIcon,
   ListingIcon,
-  UsersIcon,
   ReviewIcon,
   TrendUpIcon,
 } from '../components/icons';
@@ -30,6 +49,13 @@ import { rangeDays, isRangeKey, type RangeKey } from './range';
 
 export const dynamic = 'force-dynamic';
 
+// Realized buckets — kept identical to apps/admin/app/payments/page.tsx so the
+// two pages reconcile on the same cash-truth.
+const REALIZED_TXN = ['paid', 'partially_refunded', 'refunded'] as const;
+const REALIZED_BOOKING = ['confirmed', 'checked_in', 'completed'] as const;
+const PENDING_BOOKING = ['requested', 'awaiting_payment'] as const;
+const CANCELLED_BOOKING = ['declined', 'cancelled', 'no_show', 'expired'] as const;
+
 const T = {
   title: { ar: 'نظرة عامة', fr: "Vue d'ensemble", en: 'Overview' },
   subtitle: {
@@ -37,42 +63,58 @@ const T = {
     fr: 'Indicateurs de performance de la plateforme',
     en: 'Platform performance at a glance',
   },
+  collected: { ar: 'المدفوعات المُحصّلة', fr: 'Encaissé', en: 'Revenue collected' },
+  commission: { ar: 'عمولة المنصة', fr: 'Commission plateforme', en: 'Platform commission' },
+  refunds: { ar: 'إجمالي المُسترَد', fr: 'Total remboursé', en: 'Refunds' },
   bookings: { ar: 'الحجوزات', fr: 'Réservations', en: 'Bookings' },
-  gmv: { ar: 'إجمالي قيمة الحجوزات', fr: 'Volume brut (GMV)', en: 'Gross Booking Value' },
-  commission: { ar: 'عمولة المنصة', fr: 'Commission plateforme', en: 'Platform Commission' },
-  activeListings: { ar: 'إعلانات نشطة', fr: 'Annonces actives', en: 'Active Listings' },
-  newUsers: { ar: 'مستخدمون جدد', fr: 'Nouveaux utilisateurs', en: 'New Users' },
-  conversion: { ar: 'معدّل التحويل', fr: 'Taux de conversion', en: 'Conversion Rate' },
-  pending: { ar: 'بانتظار المراجعة', fr: 'En attente de modération', en: 'Pending moderation' },
-  completed: { ar: 'حجوزات مكتملة', fr: 'Réservations terminées', en: 'Completed bookings' },
+  paidRate: { ar: 'معدّل الدفع', fr: 'Taux payé', en: 'Paid rate' },
+  activeListings: { ar: 'إعلانات نشطة', fr: 'Annonces actives', en: 'Active listings' },
+  avgBooking: { ar: 'متوسّط قيمة الحجز', fr: 'Valeur moy. réservation', en: 'Avg booking value' },
+  netRevenue: { ar: 'صافي إيراد المنصة', fr: 'Revenu net plateforme', en: 'Net platform revenue' },
+  revenuePerDay: { ar: 'الإيراد يوميًا', fr: 'Revenu / jour', en: 'Revenue per day' },
   bookingsPerDay: { ar: 'الحجوزات يوميًا', fr: 'Réservations / jour', en: 'Bookings per day' },
-  gmvTrend: { ar: 'اتجاه قيمة الحجوزات', fr: 'Tendance du GMV', en: 'GMV trend' },
+  recentBookings: { ar: 'أحدث الحجوزات', fr: 'Réservations récentes', en: 'Recent bookings' },
   inRange: { ar: 'خلال الفترة', fr: 'sur la période', en: 'in range' },
-  openQueue: {
-    ar: 'فتح طابور المراجعة',
-    fr: 'Ouvrir la file',
-    en: 'Open queue',
-  },
+  confirmedSub: { ar: 'مؤكَّد', fr: 'confirmées', en: 'confirmed' },
+  pendingSub: { ar: 'معلّق', fr: 'en attente', en: 'pending' },
+  cancelledSub: { ar: 'ملغى', fr: 'annulées', en: 'cancelled' },
+  realizedSub: { ar: 'حجز مدفوع', fr: 'rés. payées', en: 'paid bookings' },
+  ofBookings: { ar: 'من الحجوزات', fr: 'des réservations', en: 'of bookings' },
+  pendingModeration: { ar: 'بانتظار المراجعة', fr: 'en modération', en: 'pending moderation' },
+  refundsSub: { ar: 'مُسترَد خلال الفترة', fr: 'remboursé sur la période', en: 'refunded in range' },
+  colCode: { ar: 'الرمز', fr: 'Code', en: 'Code' },
+  colProperty: { ar: 'العقار', fr: 'Logement', en: 'Property' },
+  colAmount: { ar: 'المبلغ', fr: 'Montant', en: 'Amount' },
+  colStatus: { ar: 'الحالة', fr: 'Statut', en: 'Status' },
+  colDate: { ar: 'التاريخ', fr: 'Date', en: 'Date' },
+  untitled: { ar: 'بدون عنوان', fr: 'Sans titre', en: 'Untitled' },
 } as const;
 
-interface DailyRow {
-  day: string | null;
-  bookings_count: number | null;
-  gmv_dzd: number | null;
-  commission_dzd: number | null;
-  new_users: number | null;
-  completed_bookings: number | null;
+interface TxnRow {
+  amount_dzd: number | null;
+  commission_amount_dzd: number | null;
+  refunded_dzd: number | null;
+  status: string;
+  paid_at: string | null;
 }
 
-interface FunnelRow {
-  booking_starts: number | null;
-  bookings_paid: number | null;
-  conversion_pct: number | null;
+interface BookingRow {
+  status: string;
+  created_at: string;
+}
+
+interface RecentBookingRow {
+  id: string;
+  code: string;
+  total_dzd: number | null;
+  status: string;
+  created_at: string;
+  properties: { title_ar: string | null; title_fr: string | null; title_en: string | null } | null;
 }
 
 /**
  * Period-over-period trend for the hero tiles: compares the second half of the
- * range to the first half (purely derived from the already-fetched daily rows —
+ * range to the first half (purely derived from an already-fetched daily series —
  * no extra query). Returns null when there isn't enough data to be meaningful.
  */
 function trendOf(values: number[], locale: Locale): { dir: TrendDir; text: string } | null {
@@ -101,88 +143,127 @@ export default async function AdminOverviewPage({
   const days = rangeDays(range);
   const since = new Date();
   since.setDate(since.getDate() - (days - 1));
-  const sinceDate = since.toISOString().slice(0, 10);
+  since.setHours(0, 0, 0, 0);
+  const sinceIso = since.toISOString();
 
-  // Daily metrics over the range (ordered ascending for charting).
-  const dailyQuery = adminSupabase
-    .from('mv_daily_metrics')
-    .select('day, bookings_count, gmv_dzd, commission_dzd, new_users, completed_bookings')
-    .gte('day', sinceDate)
-    .order('day', { ascending: true });
+  // ── Cash-truth: realized transactions paid within the window (bucket by paid_at).
+  const txnQuery = adminSupabase
+    .from('transactions')
+    .select('amount_dzd, commission_amount_dzd, refunded_dzd, status, paid_at')
+    .in('status', [...REALIZED_TXN])
+    .gte('paid_at', sinceIso)
+    .order('paid_at', { ascending: true });
 
-  // Conversion funnel over the same range (aggregate client-side).
-  const funnelQuery = adminSupabase
-    .from('mv_conversion_funnel')
-    .select('booking_starts, bookings_paid, conversion_pct')
-    .gte('day', sinceDate);
+  // ── Bookings created within the window (for counts + paid-rate + bookings/day).
+  const bookingsQuery = adminSupabase
+    .from('bookings')
+    .select('status, created_at')
+    .gte('created_at', sinceIso);
 
-  // Live count: currently-active (approved) listings.
+  // ── Recent bookings (latest 8, any status) joined to the property for a title.
+  const recentQuery = adminSupabase
+    .from('bookings')
+    .select('id, code, total_dzd, status, created_at, properties ( title_ar, title_fr, title_en )')
+    .order('created_at', { ascending: false })
+    .limit(8);
+
+  // ── Live count: currently-active (approved) listings + moderation queue size.
   const activeListingsQuery = adminSupabase
     .from('properties')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'approved');
-
-  // Live count: listings awaiting moderation.
-  const pendingQuery = adminSupabase
+  const pendingListingsQuery = adminSupabase
     .from('properties')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'pending');
 
-  const [dailyRes, funnelRes, activeRes, pendingRes] = await Promise.all([
-    dailyQuery,
-    funnelQuery,
+  const [txnRes, bookingsRes, recentRes, activeRes, pendingRes] = await Promise.all([
+    txnQuery,
+    bookingsQuery,
+    recentQuery,
     activeListingsQuery,
-    pendingQuery,
+    pendingListingsQuery,
   ]);
 
   const error =
-    dailyRes.error ?? funnelRes.error ?? activeRes.error ?? pendingRes.error ?? null;
+    txnRes.error ??
+    bookingsRes.error ??
+    recentRes.error ??
+    activeRes.error ??
+    pendingRes.error ??
+    null;
 
-  const daily = (dailyRes.data ?? []) as DailyRow[];
-  const funnel = (funnelRes.data ?? []) as FunnelRow[];
-
-  // Aggregate totals across the range.
-  const totals = daily.reduce(
-    (acc, r) => {
-      acc.bookings += r.bookings_count ?? 0;
-      acc.gmv += r.gmv_dzd ?? 0;
-      acc.commission += r.commission_dzd ?? 0;
-      acc.newUsers += r.new_users ?? 0;
-      acc.completed += r.completed_bookings ?? 0;
-      return acc;
-    },
-    { bookings: 0, gmv: 0, commission: 0, newUsers: 0, completed: 0 },
-  );
-
-  const funnelTotals = funnel.reduce(
-    (acc, r) => {
-      acc.starts += r.booking_starts ?? 0;
-      acc.paid += r.bookings_paid ?? 0;
-      return acc;
-    },
-    { starts: 0, paid: 0 },
-  );
-  const conversionPct = funnelTotals.starts > 0 ? (funnelTotals.paid / funnelTotals.starts) * 100 : 0;
-
+  const txns = (txnRes.data ?? []) as TxnRow[];
+  const bookings = (bookingsRes.data ?? []) as BookingRow[];
+  const recent = (recentRes.data ?? []) as unknown as RecentBookingRow[];
   const activeListings = activeRes.count ?? 0;
-  const pendingCount = pendingRes.count ?? 0;
+  const pendingListings = pendingRes.count ?? 0;
 
-  const dayLabel = (iso: string | null): string => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? '' : String(d.getUTCDate());
-  };
+  // ── Transaction totals (collected / commission / refunds).
+  const txnTotals = txns.reduce(
+    (acc, t) => {
+      acc.collected += t.amount_dzd ?? 0;
+      acc.commission += t.commission_amount_dzd ?? 0;
+      acc.refunds += t.refunded_dzd ?? 0;
+      return acc;
+    },
+    { collected: 0, commission: 0, refunds: 0 },
+  );
+  const netRevenue = txnTotals.commission - txnTotals.refunds;
 
-  const bookingsSeries = daily.map((r) => ({ label: dayLabel(r.day), value: r.bookings_count ?? 0 }));
-  const gmvSeries = daily.map((r) => ({ label: dayLabel(r.day), value: r.gmv_dzd ?? 0 }));
+  // ── Booking counts + paid-rate.
+  const bookingCounts = bookings.reduce(
+    (acc, b) => {
+      acc.total += 1;
+      if ((REALIZED_BOOKING as readonly string[]).includes(b.status)) acc.realized += 1;
+      else if ((PENDING_BOOKING as readonly string[]).includes(b.status)) acc.pending += 1;
+      else if ((CANCELLED_BOOKING as readonly string[]).includes(b.status)) acc.cancelled += 1;
+      return acc;
+    },
+    { total: 0, realized: 0, pending: 0, cancelled: 0 },
+  );
+  const paidRate = bookingCounts.total > 0 ? (bookingCounts.realized / bookingCounts.total) * 100 : 0;
+  const avgBookingValue = bookingCounts.realized > 0 ? txnTotals.collected / bookingCounts.realized : 0;
 
-  // Period-over-period trends (derived from the same daily rows).
-  const bookingsTrend = trendOf(daily.map((r) => r.bookings_count ?? 0), locale);
-  const gmvTrend = trendOf(daily.map((r) => r.gmv_dzd ?? 0), locale);
-  const commissionTrend = trendOf(daily.map((r) => r.commission_dzd ?? 0), locale);
-  const newUsersTrend = trendOf(daily.map((r) => r.new_users ?? 0), locale);
+  // ── Daily series: one bucket per day across the whole range so charts are dense
+  // even on zero-activity days. Keys are local-date ISO (YYYY-MM-DD).
+  const dayKeys: string[] = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(since);
+    d.setDate(d.getDate() + i);
+    dayKeys.push(d.toISOString().slice(0, 10));
+  }
+  const revenueByDay = new Map<string, number>(dayKeys.map((k) => [k, 0]));
+  const commissionByDay = new Map<string, number>(dayKeys.map((k) => [k, 0]));
+  const bookingsByDay = new Map<string, number>(dayKeys.map((k) => [k, 0]));
+
+  for (const t of txns) {
+    if (!t.paid_at) continue;
+    const key = new Date(t.paid_at).toISOString().slice(0, 10);
+    if (revenueByDay.has(key)) {
+      revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + (t.amount_dzd ?? 0));
+      commissionByDay.set(key, (commissionByDay.get(key) ?? 0) + (t.commission_amount_dzd ?? 0));
+    }
+  }
+  for (const b of bookings) {
+    const key = new Date(b.created_at).toISOString().slice(0, 10);
+    if (bookingsByDay.has(key)) bookingsByDay.set(key, (bookingsByDay.get(key) ?? 0) + 1);
+  }
+
+  const dayLabel = (iso: string): string => String(new Date(iso).getUTCDate());
+  const revenueSeries = dayKeys.map((k) => ({ label: dayLabel(k), value: revenueByDay.get(k) ?? 0 }));
+  const bookingsSeries = dayKeys.map((k) => ({ label: dayLabel(k), value: bookingsByDay.get(k) ?? 0 }));
+
+  // ── Trends (derived from the same daily series — no extra query).
+  const revenueTrend = trendOf(revenueSeries.map((p) => p.value), locale);
+  const commissionTrend = trendOf(dayKeys.map((k) => commissionByDay.get(k) ?? 0), locale);
+  const bookingsTrend = trendOf(bookingsSeries.map((p) => p.value), locale);
 
   const rangeSuffix = tl(T.inRange, locale);
+  const bookingsSub = `${formatInt(bookingCounts.realized, locale)} ${tl(T.confirmedSub, locale)} · ${formatInt(
+    bookingCounts.pending,
+    locale,
+  )} ${tl(T.pendingSub, locale)} · ${formatInt(bookingCounts.cancelled, locale)} ${tl(T.cancelledSub, locale)}`;
 
   return (
     <AdminAppShell locale={locale}>
@@ -202,37 +283,46 @@ export default async function AdminOverviewPage({
       {/* ── Hero KPI tiles ──────────────────────────────────────────────── */}
       <section className="grid grid-cols-1 gap-lg sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label={tl(T.bookings, locale)}
-          value={formatInt(totals.bookings, locale)}
-          sub={rangeSuffix}
-          icon={<BookingIcon className="h-5 w-5" />}
-          trend={bookingsTrend ?? undefined}
-        />
-        <StatCard
-          label={tl(T.gmv, locale)}
-          value={formatDZD(totals.gmv, locale)}
+          label={tl(T.collected, locale)}
+          value={formatDZD(txnTotals.collected, locale)}
           sub={rangeSuffix}
           accent
           icon={<PaymentIcon className="h-5 w-5" />}
-          trend={gmvTrend ?? undefined}
+          trend={revenueTrend ?? undefined}
         />
         <StatCard
           label={tl(T.commission, locale)}
-          value={formatDZD(totals.commission, locale)}
-          sub={rangeSuffix}
+          value={formatDZD(txnTotals.commission, locale)}
+          sub={`${tl(T.netRevenue, locale)}: ${formatDZD(netRevenue, locale)}`}
           icon={<TrendUpIcon className="h-5 w-5" />}
           trend={commissionTrend ?? undefined}
         />
         <StatCard
-          label={tl(T.conversion, locale)}
-          value={formatPct(conversionPct, locale)}
-          sub={`${formatInt(totals.completed, locale)} ${tl(T.completed, locale)}`}
+          label={tl(T.bookings, locale)}
+          value={formatInt(bookingCounts.total, locale)}
+          sub={bookingsSub}
+          icon={<BookingIcon className="h-5 w-5" />}
+          trend={bookingsTrend ?? undefined}
+        />
+        <StatCard
+          label={tl(T.paidRate, locale)}
+          value={formatPct(paidRate, locale)}
+          sub={`${formatInt(bookingCounts.realized, locale)} ${tl(T.realizedSub, locale)}`}
           icon={<ReviewIcon className="h-5 w-5" />}
         />
       </section>
 
       {/* ── Charts ──────────────────────────────────────────────────────── */}
       <section className="grid grid-cols-1 gap-lg lg:grid-cols-2">
+        <Card title={tl(T.revenuePerDay, locale)}>
+          {revenueSeries.length === 0 ? (
+            <p className="py-2xl text-center text-body-sm italic text-text-muted">
+              {tl(C.emptyBody, locale)}
+            </p>
+          ) : (
+            <LineChart points={revenueSeries} rtl={rtl} ariaLabel={tl(T.revenuePerDay, locale)} />
+          )}
+        </Card>
         <Card title={tl(T.bookingsPerDay, locale)}>
           {bookingsSeries.length === 0 ? (
             <p className="py-2xl text-center text-body-sm italic text-text-muted">
@@ -242,49 +332,87 @@ export default async function AdminOverviewPage({
             <BarChart points={bookingsSeries} rtl={rtl} ariaLabel={tl(T.bookingsPerDay, locale)} />
           )}
         </Card>
-        <Card title={tl(T.gmvTrend, locale)}>
-          {gmvSeries.length === 0 ? (
-            <p className="py-2xl text-center text-body-sm italic text-text-muted">
-              {tl(C.emptyBody, locale)}
-            </p>
-          ) : (
-            <LineChart points={gmvSeries} rtl={rtl} ariaLabel={tl(T.gmvTrend, locale)} />
-          )}
-        </Card>
       </section>
 
-      {/* ── Secondary KPIs + moderation shortcut ────────────────────────── */}
-      <section className="grid grid-cols-1 gap-lg sm:grid-cols-2 lg:grid-cols-3">
+      {/* ── Secondary KPIs ──────────────────────────────────────────────── */}
+      <section className="grid grid-cols-1 gap-lg sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label={tl(T.avgBooking, locale)}
+          value={formatDZD(avgBookingValue, locale)}
+          sub={`${formatInt(bookingCounts.realized, locale)} ${tl(T.realizedSub, locale)}`}
+          icon={<PaymentIcon className="h-5 w-5" />}
+        />
+        <StatCard
+          label={tl(T.refunds, locale)}
+          value={formatDZD(txnTotals.refunds, locale)}
+          sub={tl(T.refundsSub, locale)}
+          icon={<TrendUpIcon className="h-5 w-5" />}
+        />
         <StatCard
           label={tl(T.activeListings, locale)}
           value={formatInt(activeListings, locale)}
-          sub={`${formatInt(pendingCount, locale)} ${tl(T.pending, locale)}`}
+          sub={`${formatInt(pendingListings, locale)} ${tl(T.pendingModeration, locale)}`}
           icon={<ListingIcon className="h-5 w-5" />}
         />
         <StatCard
-          label={tl(T.newUsers, locale)}
-          value={formatInt(totals.newUsers, locale)}
-          sub={rangeSuffix}
-          icon={<UsersIcon className="h-5 w-5" />}
-          trend={newUsersTrend ?? undefined}
+          label={tl(T.netRevenue, locale)}
+          value={formatDZD(netRevenue, locale)}
+          sub={`${tl(T.commission, locale)} − ${tl(T.refunds, locale)}`}
+          icon={<TrendUpIcon className="h-5 w-5" />}
         />
-        <Card className="flex" bodyClassName="flex flex-1 flex-col justify-between gap-md">
-          <div className="flex items-start gap-md">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-accent/12 text-accent">
-              <ListingIcon className="h-5 w-5" />
-            </span>
-            <div>
-              <p className="font-display text-heading-3 font-semibold text-primary">
-                {formatInt(pendingCount, locale)} {tl(T.pending, locale)}
-              </p>
-              <p className="mt-xs text-caption text-text-muted">{tl(T.subtitle, locale)}</p>
+      </section>
+
+      {/* ── Recent bookings ─────────────────────────────────────────────── */}
+      <section>
+        <h2 className="mb-md font-display text-heading-2 font-semibold text-primary">
+          {tl(T.recentBookings, locale)}
+        </h2>
+        {recent.length === 0 ? (
+          <EmptyState locale={locale} />
+        ) : (
+          <TableShell>
+            <div className="hidden gap-md border-b border-border px-xl py-md md:grid md:grid-cols-[1fr_1.8fr_1fr_1fr_1fr]">
+              <Th>{tl(T.colCode, locale)}</Th>
+              <Th>{tl(T.colProperty, locale)}</Th>
+              <Th className="text-end">{tl(T.colAmount, locale)}</Th>
+              <Th className="text-end">{tl(T.colStatus, locale)}</Th>
+              <Th className="text-end">{tl(T.colDate, locale)}</Th>
             </div>
-          </div>
-          <LinkButton href="/moderation" variant="accent" size="sm" className="self-start">
-            {tl(T.openQueue, locale)}
-            <ArrowRightIcon className="h-4 w-4 rtl:-scale-x-100" />
-          </LinkButton>
-        </Card>
+            <ul>
+              {recent.map((b) => {
+                const title =
+                  (b.properties &&
+                    localized(
+                      { ar: b.properties.title_ar, fr: b.properties.title_fr, en: b.properties.title_en },
+                      locale,
+                    )) ||
+                  tl(T.untitled, locale);
+                return (
+                  <li
+                    key={b.id}
+                    className="grid grid-cols-1 items-center gap-xs border-b border-border px-xl py-md last:border-0 md:grid-cols-[1fr_1.8fr_1fr_1fr_1fr] md:gap-md"
+                  >
+                    <span className="text-body-sm font-semibold tabular-nums text-text-default" dir="ltr">
+                      <a href={`/bookings/${b.id}`} className="text-primary hover:underline">
+                        {b.code}
+                      </a>
+                    </span>
+                    <span className="truncate text-body-sm text-text-default">{title}</span>
+                    <span className="text-body-sm text-text-default md:text-end">
+                      <bdi className="tabular-nums font-semibold">{formatDZD(b.total_dzd ?? 0, locale)}</bdi>
+                    </span>
+                    <span className="md:text-end">
+                      <StatusPill {...statusOf(BOOKING_STATUS, b.status, locale)} />
+                    </span>
+                    <span className="text-body-sm tabular-nums text-text-muted md:text-end">
+                      {formatDate(b.created_at, locale)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </TableShell>
+        )}
       </section>
     </AdminAppShell>
   );
