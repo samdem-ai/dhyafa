@@ -80,6 +80,7 @@ interface PropertyDetail {
   created_at: string;
   host_profiles: {
     id: string;
+    owner_id: string | null;
     display_name: string | null;
     kind: string | null;
     identity_status: string | null;
@@ -138,7 +139,7 @@ export default async function ListingReviewPage({ params }: { params: { id: stri
        house_rules_ar, house_rules_fr, house_rules_en,
        checkin_time, checkout_time, cancellation_tier, instant_book,
        address_line, lat, lng, submitted_at, created_at,
-       host_profiles ( id, display_name, kind, identity_status ),
+       host_profiles ( id, owner_id, display_name, kind, identity_status ),
        wilayas ( name_ar, name_fr, name_en ),
        communes ( name_ar, name_fr, name_en ),
        property_types ( name_ar, name_fr, name_en ),
@@ -357,7 +358,13 @@ export default async function ListingReviewPage({ params }: { params: { id: stri
         {/* ── Side rail (sticky): decision, host, location, meta ──────────── */}
         <aside className="flex flex-col gap-xl lg:sticky lg:top-[88px]">
           {canDecide ? (
-            <DecisionPanel propertyId={p.id} locale={locale} />
+            <DecisionPanel
+              propertyId={p.id}
+              locale={locale}
+              hostOwnerId={p.host_profiles?.owner_id ?? null}
+              hostName={p.host_profiles?.display_name ?? null}
+              hostVerified={p.host_profiles?.identity_status === 'verified'}
+            />
           ) : (
             <Card title={tl(M.decision, locale)}>
               <div role="status" className="flex items-center gap-sm">

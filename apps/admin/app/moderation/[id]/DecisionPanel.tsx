@@ -21,7 +21,7 @@ import {
   Textarea,
   useToast,
 } from '@dyafa/ui';
-import { Check, X } from 'lucide-react';
+import { Check, X, ShieldCheck } from 'lucide-react';
 import { approveListing, rejectListing, type ModerationResult } from '../actions';
 import {
   M,
@@ -36,6 +36,8 @@ function errorMessage(result: Extract<ModerationResult, { ok: false }>, locale: 
   switch (result.code) {
     case 'not_authorized':
       return tl(M.errorNotAuthorized, locale);
+    case 'host_not_verified':
+      return tl(M.errorHostNotVerified, locale);
     case 'invalid_input':
       return tl(M.errorReasonRequired, locale);
     case 'not_found':
@@ -47,7 +49,19 @@ function errorMessage(result: Extract<ModerationResult, { ok: false }>, locale: 
   }
 }
 
-export function DecisionPanel({ propertyId, locale }: { propertyId: string; locale: Locale }) {
+export function DecisionPanel({
+  propertyId,
+  locale,
+  hostOwnerId,
+  hostName,
+  hostVerified,
+}: {
+  propertyId: string;
+  locale: Locale;
+  hostOwnerId: string | null;
+  hostName: string | null;
+  hostVerified: boolean;
+}) {
   const router = useRouter();
   const { toast } = useToast();
 
@@ -69,6 +83,10 @@ export function DecisionPanel({ propertyId, locale }: { propertyId: string; loca
       toast({ variant: 'error', title: errorMessage(result, locale) });
       if (result.code === 'not_authorized') {
         router.replace(`/sign-in?next=${encodeURIComponent(`/moderation/${propertyId}`)}`);
+      } else if (result.code === 'host_not_verified') {
+        // Send the admin straight to the host's verification page.
+        const owner = result.hostOwnerId ?? hostOwnerId;
+        if (owner) router.push(`/users/${owner}`);
       }
     }
   }
@@ -103,6 +121,28 @@ export function DecisionPanel({ propertyId, locale }: { propertyId: string; loca
     <Card title={tl(M.decision, locale)} padding="lg">
       {mode === 'idle' ? (
         <div className="flex flex-col gap-md">
+          {!hostVerified ? (
+            <div className="flex flex-col gap-sm rounded-md border border-warning bg-warning-bg p-md">
+              <span className="text-body-sm font-semibold text-warning">
+                {tl(M.hostUnverifiedTitle, locale)}
+              </span>
+              <span className="text-caption text-text-muted">
+                {tl(M.hostUnverifiedBody, locale)}
+                {hostName ? ` (${hostName})` : ''}
+              </span>
+              {hostOwnerId ? (
+                <Button
+                  variant="secondary"
+                  fullWidth
+                  iconStart={<ShieldCheck className="h-4 w-4" aria-hidden="true" />}
+                  onClick={() => router.push(`/users/${hostOwnerId}`)}
+                >
+                  {tl(M.verifyHost, locale)}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="flex flex-col gap-xs">
             <Button
               variant="success"

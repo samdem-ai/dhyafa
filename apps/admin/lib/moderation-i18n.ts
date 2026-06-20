@@ -170,6 +170,22 @@ export const M = {
   approved: { ar: 'تمت الموافقة على الإعلان', fr: 'Annonce approuvée', en: 'Listing approved' },
   rejected: { ar: 'تم رفض الإعلان', fr: 'Annonce rejetée', en: 'Listing rejected' },
   errorTitle: { ar: 'تعذّر إكمال العملية', fr: 'Échec de l’opération', en: 'Action failed' },
+  errorHostNotVerified: {
+    ar: 'لا يمكن الموافقة قبل التحقق من هوية المضيف. جارٍ تحويلك إلى صفحة التحقق…',
+    fr: "Approbation impossible tant que l'identité de l'hôte n'est pas vérifiée. Redirection vers la vérification…",
+    en: "Can't approve until the host's identity is verified. Taking you to verify…",
+  },
+  hostUnverifiedTitle: {
+    ar: 'هوية المضيف غير مُتحقَّق منها',
+    fr: "Identité de l'hôte non vérifiée",
+    en: 'Host identity not verified',
+  },
+  hostUnverifiedBody: {
+    ar: 'يجب التحقق من هوية المضيف قبل الموافقة على هذا الإعلان.',
+    fr: "Vous devez vérifier l'identité de l'hôte avant d'approuver cette annonce.",
+    en: 'You must verify this host before the listing can be approved.',
+  },
+  verifyHost: { ar: 'التحقق من المضيف', fr: "Vérifier l'hôte", en: 'Verify host' },
   errorNotAuthorized: {
     ar: 'انتهت الجلسة أو لا تملك صلاحية. يرجى تسجيل الدخول من جديد.',
     fr: 'Session expirée ou non autorisée. Veuillez vous reconnecter.',

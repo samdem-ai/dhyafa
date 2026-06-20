@@ -33,8 +33,17 @@ export type ModerationResult =
   | { ok: true; status: 'approved' | 'rejected' }
   | {
       ok: false;
-      code: 'not_authorized' | 'not_found' | 'invalid_input' | 'update_failed' | 'partial' | 'unknown';
+      code:
+        | 'not_authorized'
+        | 'not_found'
+        | 'invalid_input'
+        | 'update_failed'
+        | 'partial'
+        | 'host_not_verified'
+        | 'unknown';
       message?: string;
+      /** For host_not_verified: the host's owner user id, to link to verification. */
+      hostOwnerId?: string;
     };
 
 /** Minimal shape we read back before/after a decision for the audit snapshot. */
@@ -124,7 +133,16 @@ export async function approveListing(propertyId: string): Promise<ModerationResu
     .select('id')
     .maybeSingle();
 
-  if (updateError) return { ok: false, code: 'update_failed', message: updateError.message };
+  if (updateError) {
+    // The properties_guard_approval trigger blocks approval until the host's
+    // identity is verified — surface a dedicated code so the UI can offer a
+    // one-click redirect to that host's verification page.
+    if (/HOST_NOT_VERIFIED/i.test(updateError.message)) {
+      const ownerId = await hostOwnerId(before.host_profile_id);
+      return { ok: false, code: 'host_not_verified', hostOwnerId: ownerId ?? undefined };
+    }
+    return { ok: false, code: 'update_failed', message: updateError.message };
+  }
   if (!updated) return { ok: false, code: 'not_found' }; // already decided / not pending
 
   // 2. INSERT audit_log (append-only).
