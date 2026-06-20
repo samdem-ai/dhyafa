@@ -126,6 +126,12 @@ export interface DateRangePickerProps {
    * below becomes unreachable. With false, the parent scroll handles everything.
    */
   scroll?: boolean;
+  /**
+   * When true, days marked closed/booked in `dayMeta` are NON-selectable and a
+   * range may not span them (the guest booking picker). The host calendar leaves
+   * this false so the host can still tap closed days to UN-block them.
+   */
+  disableBlocked?: boolean;
 }
 
 /** Local 'YYYY-MM-DD' key for a Date (no TZ shift). */
@@ -145,6 +151,7 @@ export function DateRangePicker({
   monthsAhead = 12,
   dayMeta,
   scroll = true,
+  disableBlocked = false,
 }: DateRangePickerProps) {
   const today = startOfDay(new Date());
   const min = minDate ? startOfDay(minDate) : today;
@@ -158,8 +165,26 @@ export function DateRangePicker({
     return out;
   }, [min, monthsAhead]);
 
+  /** A day is blocked (guest cannot pick it) when disableBlocked + closed/booked. */
+  function blocked(day: Date): boolean {
+    if (!disableBlocked) return false;
+    const m = dayMeta ? dayMeta[dayKey(day)] : undefined;
+    return m?.closed === true || m?.booked === true;
+  }
+
+  /** Any blocked night in [start, end) — used to reject a range that spans one. */
+  function rangeSpansBlocked(start: Date, end: Date): boolean {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    while (d.getTime() < end.getTime()) {
+      if (blocked(d)) return true;
+      d.setDate(d.getDate() + 1);
+    }
+    return false;
+  }
+
   function onDayPress(day: Date) {
     if (day.getTime() < min.getTime()) return;
+    if (blocked(day)) return;
     // No selection yet, or a full range exists → start fresh with check-in.
     if (!checkIn || (checkIn && checkOut)) {
       onChange({ checkIn: day, checkOut: null });
@@ -167,6 +192,11 @@ export function DateRangePicker({
     }
     // Have check-in only.
     if (day.getTime() <= checkIn.getTime()) {
+      onChange({ checkIn: day, checkOut: null });
+      return;
+    }
+    // A stay must not span a blocked night → restart at the tapped day instead.
+    if (disableBlocked && rangeSpansBlocked(checkIn, day)) {
       onChange({ checkIn: day, checkOut: null });
       return;
     }
@@ -199,7 +229,7 @@ export function DateRangePicker({
           <View style={styles.grid}>
             {m.days.map((day, idx) => {
               if (!day) return <View key={idx} style={styles.cell} />;
-              const disabled = day.getTime() < min.getTime();
+              const disabled = day.getTime() < min.getTime() || blocked(day);
               const isStart = checkIn ? sameDay(day, checkIn) : false;
               const isEnd = checkOut ? sameDay(day, checkOut) : false;
               const inRange = checkIn && checkOut ? isBetween(day, checkIn, checkOut) : false;

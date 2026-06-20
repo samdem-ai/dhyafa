@@ -19,7 +19,7 @@
  *   out guests are sent to sign-in with a `next` back to this property.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, useWindowDimensions, I18nManager } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,6 +36,7 @@ import {
 } from 'lucide-react-native';
 import {
   getPropertyDetail,
+  getRoomAvailability,
   resolvePhotoUrl,
   propertyTitle,
   localizedName,
@@ -49,7 +50,7 @@ import { categoryAverage, overallAverage, REVIEW_CATEGORIES, type ReviewCategory
 import { startInquiry, InquiryError } from '@/lib/messaging';
 import { useSession } from '@/lib/auth';
 import { GuestStepperRow, InstantBookBadge } from '@/components/discovery';
-import { DateRangePicker } from '@/components/Calendar';
+import { DateRangePicker, type DayMeta } from '@/components/Calendar';
 import { ReviewItem } from '@/components/ReviewItem';
 import {
   Screen,
@@ -78,6 +79,14 @@ const CANCEL_COPY: Record<PropertyDetail['cancellation_tier'], LMessage> = {
   strict: L.cancelStrict,
 };
 
+/** Local 'YYYY-MM-DD' for a Date (no TZ shift), matching the calendar's dayKey. */
+function isoDay(d: Date): string {
+  const y = d.getFullYear();
+  const m = `${d.getMonth() + 1}`.padStart(2, '0');
+  const day = `${d.getDate()}`.padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 const REVIEW_CAT_LABEL: Record<ReviewCategory, keyof typeof L> = {
   cleanliness: 'reviewCleanliness',
   accuracy: 'reviewAccuracy',
@@ -105,6 +114,7 @@ export default function PropertyDetailScreen() {
   const [adults, setAdults] = useState<number>(searchState.adults ?? 1);
   const [children, setChildren] = useState<number>(searchState.children ?? 0);
   const [roomTypeId, setRoomTypeId] = useState<string | null>(null);
+  const [dayMeta, setDayMeta] = useState<Record<string, DayMeta>>({});
   const [sheet, setSheet] = useState<Sheet>(null);
   const [inquiryBody, setInquiryBody] = useState('');
   const [inquirySending, setInquirySending] = useState(false);
@@ -136,6 +146,34 @@ export default function PropertyDetailScreen() {
     if (!detail) return null;
     return detail.full_room_types.find((r) => r.id === roomTypeId) ?? detail.full_room_types[0] ?? null;
   }, [detail, roomTypeId]);
+
+  // Load host-blocked + sold-out nights for the selected room and feed the date
+  // picker so guests can't pick unavailable dates (the create_booking RPC stays
+  // the authority; this is a UX pre-filter). Window: today .. +12 months.
+  useEffect(() => {
+    const rt = selectedRoom?.id;
+    if (!rt) return;
+    let cancelled = false;
+    const from = new Date();
+    const to = new Date();
+    to.setDate(to.getDate() + 365);
+    void (async () => {
+      try {
+        const avail = await getRoomAvailability(rt, isoDay(from), isoDay(to));
+        if (cancelled) return;
+        const map: Record<string, DayMeta> = {};
+        for (const d of avail) {
+          if (d.isClosed || d.unitsLeft <= 0) map[d.date] = { closed: true };
+        }
+        setDayMeta(map);
+      } catch {
+        if (!cancelled) setDayMeta({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRoom?.id]);
 
   const guests = adults + children;
   const nights = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : 0;
@@ -421,6 +459,8 @@ export default function PropertyDetailScreen() {
             checkIn={checkIn}
             checkOut={checkOut}
             minDate={new Date()}
+            dayMeta={dayMeta}
+            disableBlocked
             onChange={({ checkIn: ci, checkOut: co }) => {
               setCheckIn(ci);
               setCheckOut(co);

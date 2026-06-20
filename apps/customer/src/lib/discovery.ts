@@ -225,6 +225,45 @@ export function coverUrl(p: Pick<PropertySummary, 'cover_photo_path' | 'photos'>
 }
 
 // ---------------------------------------------------------------------------
+// Guest availability (host-blocked + sold-out nights for the booking picker)
+// ---------------------------------------------------------------------------
+
+/** One night's availability for the guest date picker. `date` is YYYY-MM-DD. */
+export interface DayAvailability {
+  date: string;
+  isClosed: boolean;
+  unitsLeft: number;
+  priceOverrideDzd: number | null;
+}
+
+/**
+ * Per-night availability for a room type over an inclusive window, via the
+ * `get_property_availability` RPC (SECURITY DEFINER). It exposes host-blocked
+ * (isClosed) AND sold-out (unitsLeft <= 0) nights to guests without leaking
+ * other guests' bookings — a night is unavailable when `isClosed || unitsLeft<=0`.
+ * `from`/`to` are YYYY-MM-DD. The authoritative race-safe check stays in
+ * create_booking(); this only pre-filters the calendar UI.
+ */
+export async function getRoomAvailability(
+  roomTypeId: string,
+  from: string,
+  to: string,
+): Promise<DayAvailability[]> {
+  const { data, error } = await supabaseClient.rpc('get_property_availability', {
+    p_room_type_id: roomTypeId,
+    p_from: from,
+    p_to: to,
+  });
+  if (error) throw error;
+  return (data ?? []).map((r) => ({
+    date: r.date,
+    isClosed: r.is_closed,
+    unitsLeft: r.units_left,
+    priceOverrideDzd: r.price_override_dzd,
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Client-side filter + sort (applied after the base approved query)
 // ---------------------------------------------------------------------------
 

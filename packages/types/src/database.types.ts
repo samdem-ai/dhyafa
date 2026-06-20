@@ -2578,6 +2578,15 @@ export type Database = {
         Args: { p_booking_id: string }
         Returns: string
       }
+      get_property_availability: {
+        Args: { p_from: string; p_room_type_id: string; p_to: string }
+        Returns: {
+          date: string
+          is_closed: boolean
+          units_left: number
+          price_override_dzd: number | null
+        }[]
+      }
       grant_role: {
         Args: {
           p_role: Database["public"]["Enums"]["app_role"]
