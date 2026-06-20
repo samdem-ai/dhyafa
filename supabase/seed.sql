@@ -146,6 +146,16 @@ insert into public.communes (id, wilaya_code, name_ar, name_fr, name_en, post_co
   (1802, 18, 'زيامة منصورية',   'Ziama Mansouriah',  'Ziama Mansouriah',  '18230')
 on conflict (id) do nothing;
 
+-- Guarantee EVERY wilaya has at least one commune: add the chef-lieu (capital)
+-- commune — named after the wilaya, id = wilaya_code*100+1 — for any wilaya not
+-- already covered by the curated rows above. Data-driven so it stays correct if
+-- the wilaya list changes. (Runs after the wilayas insert at the top of seed.)
+insert into public.communes (id, wilaya_code, name_ar, name_fr, name_en)
+select w.code * 100 + 1, w.code, w.name_ar, w.name_fr, w.name_en
+from public.wilayas w
+where not exists (select 1 from public.communes c where c.wilaya_code = w.code)
+on conflict (id) do nothing;
+
 -- ---------------------------------------------------------------------------
 -- property_types — §4.3 canonical slugs
 -- ---------------------------------------------------------------------------
