@@ -1,14 +1,20 @@
 /**
  * Analytics.
  *
- * Server Component (RLS-scoped). Combines the host-performance materialized view
- * with computed-from-`bookings` series (the MVs don't carry per-host occupancy /
- * ADR / monthly revenue, so we derive those):
- *   • Occupancy %, ADR (KPI tiles)
- *   • Revenue over time (monthly net), Bookings over time
- *   • Views → bookings conversion (host-scoped: confirmed / requested+ )
- *   • Top room types (by bookings)
- *   • Review-rating trend
+ * Server Component (RLS-scoped). Everything is derived DIRECTLY from base tables
+ * the host owns — `mv_host_performance` is NOT used (it has no SELECT grant to
+ * `authenticated`, so reading it errored and silently blanked the tiles).
+ *
+ * From the host's bookings over the last 6 months (RLS scopes them via
+ * host_profile_id=my_host_id()):
+ *   • Net revenue (Σ host_payout_dzd) + Gross revenue (Σ total_dzd), realized
+ *   • Bookings count + Completed count
+ *   • Avg nightly = net revenue / room-nights
+ *   • Occupancy (approx) = booked room-nights / available room-nights, where
+ *     available = Σ(room_types.inventory_count) × days-in-window
+ *   • Revenue-over-time + bookings-over-time columns, top room types
+ *
+ * Query errors are SURFACED via <ErrorState> (no longer swallowed).
  *
  * Reception sees occupancy only (capability matrix); managers/owners see all.
  */
@@ -17,35 +23,32 @@ import { requireHost, canManage } from '../../../lib/auth';
 import { resolveLocale } from '../../../lib/i18n';
 import { createUserClient } from '../../../lib/supabase/userServer';
 import { formatDZD, formatNumber, type Locale } from '@dyafa/i18n';
-import { formatPercent, formatRating } from '../../../lib/format';
+import { formatPercent } from '../../../lib/format';
 import { T, tl, localizedField, monthLabel } from '../../../lib/dashboard-i18n';
-import { PageHeader, KpiCard, EmptyState } from '../../../components/ui';
-import { ChartCard, ColumnChart, BarList, LineChart, type BarDatum } from '../../../components/charts';
+import { PageHeader, KpiCard, EmptyState, ErrorState } from '../../../components/ui';
+import { ChartCard, ColumnChart, BarList, type BarDatum } from '../../../components/charts';
+import {
+  WalletIcon,
+  ChartIcon,
+  BookingIcon,
+  CheckCircleIcon,
+} from '../../../components/icons';
 
 export const dynamic = 'force-dynamic';
-
-interface HostPerfRow {
-  avg_rating: number | null;
-  bookings: number | null;
-  cancellation_rate: number | null;
-  gmv_dzd: number | null;
-  response_rate: number | null;
-  listings_active: number | null;
-}
 
 interface BookingAnalyticsRow {
   check_in: string;
   nights: number | null;
   units: number;
+  total_dzd: number;
   host_payout_dzd: number;
-  nightly_subtotal_dzd: number;
   status: string;
   room_type_id: string;
 }
 
 const MONTHS_BACK = 6;
 
-/** YYYY-MM key + month index for a date. */
+/** YYYY-MM key for a date. */
 function monthKey(iso: string): string {
   return iso.slice(0, 7);
 }
@@ -57,75 +60,87 @@ export default async function AnalyticsPage() {
   const manage = canManage(session);
 
   const now = new Date();
-  const windowStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (MONTHS_BACK - 1), 1));
+  const windowStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (MONTHS_BACK - 1), 1),
+  );
   const windowStartIso = windowStart.toISOString().slice(0, 10);
 
   // Build the ordered list of months in the window.
   const months: { key: string; label: string }[] = [];
   for (let i = 0; i < MONTHS_BACK; i++) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (MONTHS_BACK - 1) + i, 1));
+    const d = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (MONTHS_BACK - 1) + i, 1),
+    );
     months.push({ key: d.toISOString().slice(0, 7), label: monthLabel(d.getUTCMonth(), locale) });
   }
 
-  const [perfRes, bookingsRes, roomsRes, reviewsRes, inventoryRes] = await Promise.all([
-    supabase
-      .from('mv_host_performance')
-      .select('avg_rating, bookings, cancellation_rate, gmv_dzd, response_rate, listings_active')
-      .eq('host_profile_id', session.hostProfileId)
-      .maybeSingle(),
+  // ── Direct base-table reads (RLS-scoped to the host) ───────────────────────
+  const [bookingsRes, roomsRes, inventoryRes] = await Promise.all([
     supabase
       .from('bookings')
-      .select('check_in, nights, units, host_payout_dzd, nightly_subtotal_dzd, status, room_type_id')
+      .select('check_in, nights, units, total_dzd, host_payout_dzd, status, room_type_id')
       .gte('check_in', windowStartIso)
       .limit(2000),
     supabase.from('room_types').select('id, name_ar, name_fr, name_en'),
+    // Occupancy denominator: scope to the HOST'S OWN active rooms. room_types is
+    // public-read for every approved property, so without the host_profile_id
+    // filter this would sum the whole platform's inventory (occupancy → ~0%).
     supabase
-      .from('reviews')
-      .select('overall, created_at')
-      .eq('status', 'published')
-      .gte('created_at', windowStartIso)
-      .limit(2000),
-    supabase.from('room_types').select('inventory_count').eq('is_active', true),
+      .from('room_types')
+      .select('inventory_count, property:properties!inner(host_profile_id)')
+      .eq('is_active', true)
+      .eq('property.host_profile_id', session.hostProfileId),
   ]);
 
-  const perf = (perfRes.data ?? null) as HostPerfRow | null;
+  // Surface (don't swallow) any query error.
+  const queryError = bookingsRes.error ?? roomsRes.error ?? inventoryRes.error ?? null;
+  if (queryError) {
+    return (
+      <>
+        <PageHeader title={tl(T.anTitle, locale)} subtitle={tl(T.anSubtitle, locale)} />
+        <ErrorState title={tl(T.errorTitle, locale)} message={queryError.message} />
+      </>
+    );
+  }
+
   const bookings = (bookingsRes.data ?? []) as BookingAnalyticsRow[];
-
-  const revenueByMonth = new Map<string, number>();
-  const bookingsByMonth = new Map<string, number>();
-  const roomNightsByMonth = new Map<string, number>();
-  const adrNumeratorByMonth = new Map<string, number>(); // sum nightly_subtotal of realized
-  const adrRoomNights = new Map<string, number>();
-
-  let confirmedish = 0;
-  let totalStarts = 0;
-  const bookingsByRoom = new Map<string, number>();
 
   const revenueStatuses = new Set(['confirmed', 'checked_in', 'completed']);
 
+  const revenueByMonth = new Map<string, number>(); // net per month
+  const bookingsByMonth = new Map<string, number>();
+  const roomNightsByMonth = new Map<string, number>();
+  const bookingsByRoom = new Map<string, number>();
+
+  let netRevenue = 0;
+  let grossRevenue = 0;
+  let bookingsCount = 0;
+  let completedCount = 0;
+  let totalRoomNights = 0;
+
   for (const b of bookings) {
+    if (!revenueStatuses.has(b.status)) continue;
     const key = monthKey(b.check_in);
-    totalStarts += 1;
-    if (revenueStatuses.has(b.status)) {
-      confirmedish += 1;
-      revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + (b.host_payout_dzd ?? 0));
-      bookingsByMonth.set(key, (bookingsByMonth.get(key) ?? 0) + 1);
-      const rn = (b.nights ?? 0) * (b.units ?? 1);
-      roomNightsByMonth.set(key, (roomNightsByMonth.get(key) ?? 0) + rn);
-      adrNumeratorByMonth.set(
-        key,
-        (adrNumeratorByMonth.get(key) ?? 0) + (b.nightly_subtotal_dzd ?? 0),
-      );
-      adrRoomNights.set(key, (adrRoomNights.get(key) ?? 0) + rn);
-      bookingsByRoom.set(b.room_type_id, (bookingsByRoom.get(b.room_type_id) ?? 0) + 1);
-    }
+    const rn = (b.nights ?? 0) * (b.units ?? 1);
+
+    netRevenue += b.host_payout_dzd ?? 0;
+    grossRevenue += b.total_dzd ?? 0;
+    bookingsCount += 1;
+    if (b.status === 'completed') completedCount += 1;
+    totalRoomNights += rn;
+
+    revenueByMonth.set(key, (revenueByMonth.get(key) ?? 0) + (b.host_payout_dzd ?? 0));
+    bookingsByMonth.set(key, (bookingsByMonth.get(key) ?? 0) + 1);
+    roomNightsByMonth.set(key, (roomNightsByMonth.get(key) ?? 0) + rn);
+    bookingsByRoom.set(b.room_type_id, (bookingsByRoom.get(b.room_type_id) ?? 0) + 1);
   }
 
-  // Occupancy / ADR over the window.
+  // Avg nightly = net revenue / room-nights (best-effort, net basis).
+  const avgNightly = totalRoomNights > 0 ? Math.round(netRevenue / totalRoomNights) : 0;
+
+  // Occupancy (approx) = booked room-nights / available room-nights over window.
   const inventoryRows = (inventoryRes.data ?? []) as { inventory_count: number }[];
   const totalUnits = inventoryRows.reduce((sum, r) => sum + (r.inventory_count ?? 0), 0);
-  const totalRoomNights = Array.from(roomNightsByMonth.values()).reduce((a, b) => a + b, 0);
-  // Approx available nights = units * days in window.
   const daysInWindow = Math.max(
     1,
     Math.round((now.getTime() - windowStart.getTime()) / (1000 * 60 * 60 * 24)),
@@ -135,12 +150,6 @@ export default async function AnalyticsPage() {
     availableRoomNights > 0
       ? Math.min(100, Math.round((totalRoomNights / availableRoomNights) * 100))
       : 0;
-
-  const adrNumeratorTotal = Array.from(adrNumeratorByMonth.values()).reduce((a, b) => a + b, 0);
-  const adrRoomNightsTotal = Array.from(adrRoomNights.values()).reduce((a, b) => a + b, 0);
-  const adr = adrRoomNightsTotal > 0 ? Math.round(adrNumeratorTotal / adrRoomNightsTotal) : 0;
-
-  const conversionPct = totalStarts > 0 ? Math.round((confirmedish / totalStarts) * 100) : 0;
 
   // Chart series.
   const revenueSeries: BarDatum[] = months.map((m) => ({
@@ -154,7 +163,7 @@ export default async function AnalyticsPage() {
     display: formatNumber(bookingsByMonth.get(m.key) ?? 0, locale),
   }));
 
-  // Top room types.
+  // Top room types (by bookings).
   const roomName = new Map(
     (
       (roomsRes.data ?? []) as {
@@ -177,29 +186,18 @@ export default async function AnalyticsPage() {
     .sort((a, b) => b.value - a.value)
     .slice(0, 6);
 
-  // Review trend (avg overall per month).
-  const reviewSum = new Map<string, { sum: number; n: number }>();
-  for (const r of (reviewsRes.data ?? []) as { overall: number; created_at: string }[]) {
-    const key = monthKey(r.created_at);
-    const cur = reviewSum.get(key) ?? { sum: 0, n: 0 };
-    cur.sum += r.overall;
-    cur.n += 1;
-    reviewSum.set(key, cur);
-  }
-  const reviewPoints = months
-    .map((m) => {
-      const agg = reviewSum.get(m.key);
-      return agg && agg.n > 0 ? { label: m.label, value: agg.sum / agg.n } : null;
-    })
-    .filter((p): p is { label: string; value: number } => p !== null);
-
   // ── Reception: occupancy only ──────────────────────────────────────────────
   if (!manage) {
     return (
       <>
         <PageHeader title={tl(T.anTitle, locale)} subtitle={tl(T.anReceptionLimited, locale)} />
         <div className="grid grid-cols-1 gap-lg sm:grid-cols-2">
-          <KpiCard label={tl(T.anOccupancy, locale)} value={formatPercent(occupancyPct, locale)} />
+          <KpiCard
+            label={tl(T.anOccupancyApprox, locale)}
+            value={formatPercent(occupancyPct, locale)}
+            sub={tl(T.anWindowLabel, locale)}
+            icon={<ChartIcon size={18} />}
+          />
         </div>
       </>
     );
@@ -209,61 +207,64 @@ export default async function AnalyticsPage() {
     <>
       <PageHeader title={tl(T.anTitle, locale)} subtitle={tl(T.anSubtitle, locale)} />
 
-      {/* KPI tiles from MV + computed */}
-      <div className="grid grid-cols-2 gap-lg lg:grid-cols-4">
-        <KpiCard label={tl(T.anOccupancy, locale)} value={formatPercent(occupancyPct, locale)} />
-        <KpiCard label={tl(T.anAdr, locale)} value={formatDZD(adr, locale)} accent />
+      {/* Revenue KPIs — NET is the single accented (hero) figure. */}
+      <div className="grid grid-cols-1 gap-lg sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          label={tl(T.anConversion, locale)}
-          value={formatPercent(conversionPct, locale)}
+          label={tl(T.anNetRevenue, locale)}
+          value={formatDZD(netRevenue, locale)}
+          sub={tl(T.anNetRevenueSub, locale)}
+          accent
+          icon={<WalletIcon size={18} />}
         />
         <KpiCard
-          label={tl(T.anAvgRating, locale)}
-          value={perf?.avg_rating != null ? formatRating(perf.avg_rating, locale) : '—'}
-        />
-      </div>
-
-      {/* Secondary MV stats */}
-      <div className="grid grid-cols-2 gap-lg lg:grid-cols-4">
-        <KpiCard
-          label={tl(T.anGmv, locale)}
-          value={perf?.gmv_dzd != null ? formatDZD(perf.gmv_dzd, locale) : '—'}
+          label={tl(T.anGrossRevenue, locale)}
+          value={formatDZD(grossRevenue, locale)}
+          sub={tl(T.anWindowLabel, locale)}
+          icon={<ChartIcon size={18} />}
         />
         <KpiCard
           label={tl(T.anBookings, locale)}
-          value={perf?.bookings != null ? formatNumber(perf.bookings, locale) : '—'}
+          value={formatNumber(bookingsCount, locale)}
+          sub={tl(T.anWindowLabel, locale)}
+          icon={<BookingIcon size={18} />}
         />
         <KpiCard
-          label={tl(T.anResponseRate, locale)}
-          value={
-            perf?.response_rate != null ? formatPercent(perf.response_rate * 100, locale) : '—'
-          }
-        />
-        <KpiCard
-          label={tl(T.anCancelRate, locale)}
-          value={
-            perf?.cancellation_rate != null
-              ? formatPercent(perf.cancellation_rate * 100, locale)
-              : '—'
-          }
+          label={tl(T.anCompleted, locale)}
+          value={formatNumber(completedCount, locale)}
+          icon={<CheckCircleIcon size={18} />}
         />
       </div>
 
-      {bookings.length === 0 ? (
+      {/* Operating KPIs — derived rates. */}
+      <div className="grid grid-cols-1 gap-lg sm:grid-cols-2">
+        <KpiCard
+          label={tl(T.anAdr, locale)}
+          value={formatDZD(avgNightly, locale)}
+          sub={tl(T.anNetRevenueSub, locale)}
+        />
+        <KpiCard
+          label={tl(T.anOccupancyApprox, locale)}
+          value={formatPercent(occupancyPct, locale)}
+          sub={tl(T.anWindowLabel, locale)}
+        />
+      </div>
+
+      {bookingsCount === 0 ? (
         <EmptyState title={tl(T.anTitle, locale)} body={tl(T.anNoData, locale)} />
       ) : (
         <div className="grid grid-cols-1 gap-lg lg:grid-cols-2">
           <ChartCard title={tl(T.anRevenueOverTime, locale)}>
-            <ColumnChart data={revenueSeries} emptyLabel={tl(T.anNoData, locale)} barClass="bg-accent" />
+            <ColumnChart
+              data={revenueSeries}
+              emptyLabel={tl(T.anNoData, locale)}
+              barClass="bg-accent"
+            />
           </ChartCard>
           <ChartCard title={tl(T.anBookings, locale)}>
             <ColumnChart data={bookingsSeries} emptyLabel={tl(T.anNoData, locale)} />
           </ChartCard>
           <ChartCard title={tl(T.anTopRoomTypes, locale)}>
             <BarList data={topRooms} emptyLabel={tl(T.anNoData, locale)} />
-          </ChartCard>
-          <ChartCard title={tl(T.anReviewTrend, locale)}>
-            <LineChart points={reviewPoints} emptyLabel={tl(T.anNoData, locale)} min={0} max={5} />
           </ChartCard>
         </div>
       )}

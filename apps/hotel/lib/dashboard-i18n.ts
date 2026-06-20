@@ -240,6 +240,19 @@ export const T = {
     fr: 'Aucune réservation à venir.',
     en: 'No upcoming reservations.',
   },
+  // Enriched revenue KPIs (overview)
+  ovGmv: { ar: 'إجمالي المبيعات (هذا الشهر)', fr: 'Volume brut (ce mois)', en: 'Gross GMV (this month)' },
+  ovGmvSub: { ar: 'إجمالي قيمة الحجوزات', fr: 'valeur brute des réservations', en: 'gross booking value' },
+  ovNetEarnings: { ar: 'الصافي (هذا الشهر)', fr: 'Net (ce mois)', en: 'Net earnings (this month)' },
+  ovNetEarningsSub: { ar: 'صافي بعد العمولة', fr: 'net après commission', en: 'net after commission' },
+  ovUpcomingCount: { ar: 'حجوزات قادمة', fr: 'Réservations à venir', en: 'Upcoming bookings' },
+  ovUpcomingCountSub: { ar: 'مؤكدة لم تبدأ بعد', fr: 'confirmées non commencées', en: 'confirmed, not started' },
+  ovUpcomingPayout: { ar: 'مستحقات قادمة (تقديري)', fr: 'Virement à venir (est.)', en: 'Upcoming payout (est.)' },
+  ovUpcomingPayoutSub: {
+    ar: 'صافي مستحق من حجوزات قادمة',
+    fr: 'net dû des réservations à venir',
+    en: 'net due from upcoming stays',
+  },
 
   // ── Properties ───────────────────────────────────────────────────────────
   propTitle: { ar: 'العقارات', fr: 'Propriétés', en: 'Properties' },
@@ -490,6 +503,16 @@ export const T = {
     fr: 'Le rôle réception ne voit que l’occupation.',
     en: 'Reception role sees occupancy only.',
   },
+  anNetRevenue: { ar: 'الإيرادات الصافية', fr: 'Revenus nets', en: 'Net revenue' },
+  anNetRevenueSub: { ar: 'صافي بعد العمولة', fr: 'net après commission', en: 'net after commission' },
+  anGrossRevenue: { ar: 'الإيرادات الإجمالية', fr: 'Revenus bruts', en: 'Gross revenue' },
+  anCompleted: { ar: 'حجوزات مكتملة', fr: 'Réservations terminées', en: 'Completed bookings' },
+  anOccupancyApprox: {
+    ar: 'الإشغال (تقديري)',
+    fr: 'Occupation (approx.)',
+    en: 'Occupancy (approx.)',
+  },
+  anWindowLabel: { ar: 'آخر 6 أشهر', fr: '6 derniers mois', en: 'Last 6 months' },
 
   // ── Payouts ──────────────────────────────────────────────────────────────
   poTitle: { ar: 'المدفوعات', fr: 'Virements', en: 'Payouts' },
@@ -509,6 +532,19 @@ export const T = {
   poRib: { ar: 'الحساب البنكي', fr: 'RIB', en: 'Bank account' },
   poTotalNet: { ar: 'إجمالي الصافي المدفوع', fr: 'Total net versé', en: 'Total net paid' },
   poTotalPending: { ar: 'قيد الانتظار', fr: 'En attente', en: 'Pending' },
+  poUpcomingTitle: { ar: 'مستحق قادم (تقديري)', fr: 'Virement à venir (est.)', en: 'Upcoming payout (estimate)' },
+  poUpcomingSub: {
+    ar: 'صافي الحجوزات المنتهية غير المُدرجة في كشف بعد',
+    fr: 'net des séjours terminés non encore inclus dans un virement',
+    en: 'net of completed stays not yet included in a payout',
+  },
+  poUpcomingNote: {
+    ar: 'تقدير قبل تأكيد الكشف الرسمي من الإدارة.',
+    fr: 'Estimation avant l’émission du relevé officiel.',
+    en: 'Estimate, before the official statement is issued.',
+  },
+  poUpcomingBookings: { ar: 'حجوزات مؤهَّلة', fr: 'réservations éligibles', en: 'eligible bookings' },
+  poHistoryTitle: { ar: 'سجلّ المدفوعات', fr: 'Historique des virements', en: 'Payout history' },
   psPending: { ar: 'قيد الانتظار', fr: 'En attente', en: 'Pending' },
   psProcessing: { ar: 'قيد المعالجة', fr: 'En cours', en: 'Processing' },
   psPaid: { ar: 'مدفوع', fr: 'Payé', en: 'Paid' },

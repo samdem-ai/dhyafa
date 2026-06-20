@@ -38,6 +38,7 @@ import {
   LogoutIcon,
   ChartIcon,
   WalletIcon,
+  BookingIcon,
   BellIcon,
   CheckCircleIcon,
   ChevronRightIcon,
@@ -92,6 +93,7 @@ export default async function OverviewPage() {
     requestsRes,
     monthBookingsRes,
     upcomingRes,
+    upcomingRealizedRes,
     inventoryRes,
     convoRes,
   ] = await Promise.all([
@@ -112,10 +114,10 @@ export default async function OverviewPage() {
       .from('bookings')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'requested'),
-    // This month's bookings contributing to revenue + occupancy
+    // This month's bookings contributing to revenue (net + gross) + occupancy
     supabase
       .from('bookings')
-      .select('id, nights, host_payout_dzd, status, check_in, units')
+      .select('id, nights, total_dzd, host_payout_dzd, status, check_in, units')
       .gte('check_in', monthStart)
       .lte('check_in', monthEnd)
       .in('status', ['confirmed', 'checked_in', 'completed']),
@@ -129,8 +131,22 @@ export default async function OverviewPage() {
       .in('status', ['confirmed', 'checked_in', 'requested', 'awaiting_payment'])
       .order('check_in', { ascending: true })
       .limit(6),
-    // Total active inventory across room types (for occupancy denominator)
-    supabase.from('room_types').select('inventory_count').eq('is_active', true),
+    // Upcoming realized bookings (confirmed/checked-in, future arrivals): drives
+    // the upcoming-bookings count and the upcoming-payout estimate.
+    supabase
+      .from('bookings')
+      .select('host_payout_dzd, status')
+      .gte('check_in', today)
+      .in('status', ['confirmed', 'checked_in']),
+    // Total active inventory across the HOST'S OWN room types (occupancy
+    // denominator). room_types_public_read exposes every approved property's
+    // rooms, so we MUST scope to this host via the property's host_profile_id —
+    // otherwise the denominator is the whole platform and occupancy reads ~0%.
+    supabase
+      .from('room_types')
+      .select('inventory_count, property:properties!inner(host_profile_id)')
+      .eq('is_active', true)
+      .eq('property.host_profile_id', session.hostProfileId),
     // Conversations to compute unread guest messages
     supabase.from('conversations').select('id').limit(500),
   ]);
@@ -139,13 +155,25 @@ export default async function OverviewPage() {
   const checkoutsToday = checkoutsRes.count ?? 0;
   const pendingRequests = requestsRes.count ?? 0;
 
-  // Revenue (net host payout) this month
+  // Revenue this month: NET (host payout, after commission) + GROSS GMV (total).
   const monthRows = (monthBookingsRes.data ?? []) as {
     nights: number | null;
+    total_dzd: number;
     host_payout_dzd: number;
     units: number;
   }[];
   const monthRevenue = monthRows.reduce((sum, r) => sum + (r.host_payout_dzd ?? 0), 0);
+  const monthGmv = monthRows.reduce((sum, r) => sum + (r.total_dzd ?? 0), 0);
+
+  // Upcoming (future, confirmed/checked-in): count + estimated net payout.
+  const upcomingRealizedRows = (upcomingRealizedRes.data ?? []) as {
+    host_payout_dzd: number;
+  }[];
+  const upcomingBookingsCount = upcomingRealizedRows.length;
+  const upcomingPayoutEstimate = upcomingRealizedRows.reduce(
+    (sum, r) => sum + (r.host_payout_dzd ?? 0),
+    0,
+  );
 
   // Occupancy = booked room-nights / available room-nights this month
   const bookedRoomNights = monthRows.reduce(
@@ -232,8 +260,38 @@ export default async function OverviewPage() {
     <>
       <PageHeader title={tl(T.ovTitle, locale)} subtitle={tl(T.dashboardLabel, locale)} />
 
-      {/* Hero KPI tiles */}
+      {/* Revenue KPI row — NET earnings is the single accented (hero) figure;
+          GROSS GMV, upcoming bookings count and upcoming-payout estimate complete it. */}
       <div className="grid grid-cols-1 gap-lg sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          label={tl(T.ovNetEarnings, locale)}
+          value={formatDZD(monthRevenue, locale)}
+          sub={tl(T.ovNetEarningsSub, locale)}
+          accent
+          icon={<WalletIcon size={18} />}
+        />
+        <KpiCard
+          label={tl(T.ovGmv, locale)}
+          value={formatDZD(monthGmv, locale)}
+          sub={tl(T.ovGmvSub, locale)}
+          icon={<ChartIcon size={18} />}
+        />
+        <KpiCard
+          label={tl(T.ovUpcomingCount, locale)}
+          value={String(upcomingBookingsCount)}
+          sub={tl(T.ovUpcomingCountSub, locale)}
+          icon={<BookingIcon size={18} />}
+        />
+        <KpiCard
+          label={tl(T.ovUpcomingPayout, locale)}
+          value={formatDZD(upcomingPayoutEstimate, locale)}
+          sub={tl(T.ovUpcomingPayoutSub, locale)}
+          icon={<WalletIcon size={18} />}
+        />
+      </div>
+
+      {/* Operational KPI row — today's movements + occupancy. */}
+      <div className="grid grid-cols-1 gap-lg sm:grid-cols-3">
         <KpiCard
           label={tl(T.ovCheckinsToday, locale)}
           value={String(checkinsToday)}
@@ -250,13 +308,6 @@ export default async function OverviewPage() {
           label={tl(T.ovOccupancy, locale)}
           value={formatPercent(occupancyPct, locale)}
           icon={<ChartIcon size={18} />}
-        />
-        <KpiCard
-          label={tl(T.ovRevenue, locale)}
-          value={formatDZD(monthRevenue, locale)}
-          sub={tl(T.ovRevenueSub, locale)}
-          accent
-          icon={<WalletIcon size={18} />}
         />
       </div>
 
@@ -336,7 +387,7 @@ export default async function OverviewPage() {
                       <Price
                         amount={b.total_dzd}
                         locale={locale}
-                        className="text-body font-semibold text-accent-hover"
+                        className="text-body font-semibold text-text-default"
                       />
                       <StatusPill
                         label={bookingStatusLabel(b.status, locale)}
