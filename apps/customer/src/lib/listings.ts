@@ -418,9 +418,13 @@ export async function uploadPhoto(input: UploadPhotoInput): Promise<PropertyPhot
 
   const bytes = base64ToBytes(input.base64);
 
+  // Upload the underlying ArrayBuffer, NOT the Uint8Array view. This is the
+  // Expo/supabase-documented binary-upload body; React Native (Hermes) fetch can
+  // serialize a bare typed-array view to an empty/corrupt request body, which
+  // surfaces to the host as "upload failed / can't add images".
   const { error: uploadError } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(path, bytes, { contentType, upsert: false });
+    .upload(path, bytes.buffer as ArrayBuffer, { contentType, upsert: false });
   if (uploadError) throw uploadError;
 
   const { data, error } = await supabase

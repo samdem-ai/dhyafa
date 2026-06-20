@@ -128,7 +128,8 @@ export default function StepPhotos() {
       let propertyId: string;
       try {
         propertyId = draft.propertyId ?? (await ensureDraft());
-      } catch {
+      } catch (e) {
+        if (__DEV__) console.warn('[photos] ensureDraft failed:', e);
         setActionError(pick(COPY.authError, locale));
         return;
       }
@@ -153,8 +154,10 @@ export default function StepPhotos() {
         setPhotos(current);
       }
       haptics.success();
-    } catch {
-      setActionError(pick(COPY.uploadError, locale));
+    } catch (e) {
+      if (__DEV__) console.warn('[photos] upload failed:', e);
+      const detail = e instanceof Error && e.message ? e.message : '';
+      setActionError(pick(COPY.uploadError, locale) + (detail ? `\n(${detail})` : ''));
     } finally {
       setBusy(false);
     }
