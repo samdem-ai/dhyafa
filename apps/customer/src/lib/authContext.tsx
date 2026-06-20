@@ -29,7 +29,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Locale } from '@dyafa/i18n';
 import { supabaseClient } from './supabase';
 import { L, pick } from './copy';
-import { useToast } from '@/ui';
+// Import directly from the module (NOT the '@/ui' barrel) to avoid a require
+// cycle: auth -> authContext -> @/ui/index -> WishlistHeart -> auth, which can
+// leave barrel exports uninitialized at module-load time.
+import { useToast } from '@/ui/Toast';
 
 export interface AuthState {
   /** True until the initial getSession() resolves. */

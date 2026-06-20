@@ -19,7 +19,7 @@ import { Luggage, Heart, Globe, Home, type LucideProps } from 'lucide-react-nati
 import type { Locale } from '@dyafa/i18n';
 import { useSession, signOut } from '@/lib/auth';
 import { ensureHostAndRefresh } from '@/lib/listings';
-import { Heading, Text, Button, ListItem, Avatar } from '@/ui';
+import { Heading, Text, Button, ListItem, Avatar, useToast } from '@/ui';
 import { L, pick } from '@/lib/copy';
 import { theme } from '@/theme';
 
@@ -39,6 +39,7 @@ export default function ProfileScreen() {
 
   const [hosting, setHosting] = useState(false);
   const [hostError, setHostError] = useState<string | null>(null);
+  const toast = useToast();
 
   async function onSwitchToHosting() {
     if (!user) {
@@ -51,10 +52,13 @@ export default function ProfileScreen() {
       // become_host (non-hosts only) + refreshSession so the host_id JWT claim
       // is minted before /host runs any host write (otherwise RLS-blocked).
       await ensureHostAndRefresh();
+      setHosting(false);
       router.push('/host');
-    } catch {
+    } catch (e) {
+      // Surface the failure visibly (toast) — the inline error is easy to miss.
+      const msg = e instanceof Error && e.message ? e.message : pick(L.hostSwitchFailed, locale);
       setHostError(pick(L.hostSwitchFailed, locale));
-    } finally {
+      toast.show({ message: msg, tone: 'error' });
       setHosting(false);
     }
   }
