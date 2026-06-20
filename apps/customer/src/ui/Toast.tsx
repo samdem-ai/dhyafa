@@ -2,17 +2,25 @@
  * Toast — bottom snackbar (above the tab bar), with a live region for screen
  * readers. ToastProvider mounts at the root and exposes `useToast().show(...)`.
  *
- * Tones map to status colors. Auto-dismisses after a few seconds; an optional
- * action runs and dismisses. Entrance animation is gated by reduce-motion.
+ * Uses RN's core Animated (NOT Reanimated) for the fade so it renders reliably
+ * in Expo Go even if Reanimated's worklet runtime misbehaves. Tones map to
+ * status colors. Auto-dismisses after a few seconds; an optional action runs and
+ * dismisses.
  */
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { StyleSheet, Pressable, AccessibilityInfo, View } from 'react-native';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { StyleSheet, Pressable, AccessibilityInfo, View, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { theme } from '@/theme';
 import { Text } from './Text';
-import { useReducedMotion } from './motion';
 import type { Tone } from './StatusPill';
 
 export interface ToastOptions {
@@ -42,28 +50,43 @@ const TONE_BG: Record<Tone, string> = {
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastOptions | null>(null);
   const insets = useSafeAreaInsets();
-  const reduced = useReducedMotion();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const opacity = useRef(new Animated.Value(0)).current;
 
   const hide = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    setToast(null);
-  }, []);
+    Animated.timing(opacity, {
+      toValue: 0,
+      duration: 160,
+      easing: Easing.in(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => setToast(null));
+  }, [opacity]);
 
   const show = useCallback(
     (opts: ToastOptions) => {
       if (timer.current) clearTimeout(timer.current);
       setToast(opts);
       AccessibilityInfo.announceForAccessibility(opts.message);
-      timer.current = setTimeout(() => setToast(null), opts.duration ?? 3500);
+      opacity.setValue(0);
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 200,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+      timer.current = setTimeout(() => hide(), opts.duration ?? 3500);
+    },
+    [opacity, hide],
+  );
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
     },
     [],
   );
-
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
 
   return (
     <ToastContext.Provider value={{ show, hide }}>
@@ -71,10 +94,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {toast ? (
         <Animated.View
           pointerEvents="box-none"
-          entering={reduced ? undefined : FadeInDown.duration(theme.motion.duration.base)}
-          exiting={reduced ? undefined : FadeOutDown.duration(theme.motion.duration.fast)}
-          // Sit above the tab bar (~64dp) + bottom inset.
-          style={[styles.wrap, { bottom: insets.bottom + 76 }]}
+          style={[styles.wrap, { bottom: insets.bottom + 76, opacity }]}
         >
           <View
             accessibilityLiveRegion="polite"

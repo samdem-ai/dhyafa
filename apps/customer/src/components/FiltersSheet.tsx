@@ -8,8 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
+import { View, ScrollView, StyleSheet } from 'react-native';
 import { formatNumber, type Locale } from '@dyafa/i18n';
 import { Zap, Star } from 'lucide-react-native';
 import {
@@ -191,7 +190,7 @@ export function FiltersSheet({ visible, onClose, state, locale, onApply }: Filte
         />
       </View>
 
-      <BottomSheetScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* Price range */}
         <Section title={pick(L.priceRange, locale)}>
           <View style={styles.priceRow}>
@@ -202,7 +201,6 @@ export function FiltersSheet({ visible, onClose, state, locale, onApply }: Filte
                 onChangeText={setMinPrice}
                 keyboardType="number-pad"
                 placeholder="0"
-                inputComponent={BottomSheetTextInput}
               />
             </View>
             <View style={styles.priceField}>
@@ -212,7 +210,6 @@ export function FiltersSheet({ visible, onClose, state, locale, onApply }: Filte
                 onChangeText={setMaxPrice}
                 keyboardType="number-pad"
                 placeholder="∞"
-                inputComponent={BottomSheetTextInput}
               />
             </View>
           </View>
@@ -287,7 +284,7 @@ export function FiltersSheet({ visible, onClose, state, locale, onApply }: Filte
           );
         })}
         <View style={styles.bottomPad} />
-      </BottomSheetScrollView>
+      </ScrollView>
 
       <View style={styles.footer}>
         <Button

@@ -1,32 +1,38 @@
 /**
- * BottomSheet — the interaction backbone, built on @gorhom/bottom-sheet v5.
+ * BottomSheet — a bottom-anchored modal panel.
  *
- * Declarative wrapper: a `visible` prop drives the underlying imperative
- * BottomSheetModal so callers manage open/close with plain state. Renders the
- * teal scrim backdrop (tap-to-close), rounded sheet top, drag handle, and pads
- * the bottom safe-area inset inside the content.
+ * Rebuilt on React Native's core `Modal` (NOT @gorhom/bottom-sheet). The
+ * @gorhom sheet depends on Reanimated worklets + gesture-handler running under
+ * the New Architecture, which proved unreliable in Expo Go (sheets silently
+ * never presented). RN `Modal` always works in Expo Go, and plain RN
+ * ScrollView/TextInput inside it behave normally (no pan-gesture conflict), so
+ * callers don't need any special BottomSheet* child components.
  *
- * Requires <BottomSheetModalProvider> mounted at the root (see app/_layout.tsx).
+ * API is unchanged: a `visible` prop drives it; `snapPoints` first entry sets a
+ * fixed height ('85%' or a dp number), otherwise the sheet sizes to content
+ * (capped). Tapping the scrim (when `dismissible`) or Android back closes it.
  */
 
-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { ReactNode } from 'react';
 import {
-  BottomSheetModal,
-  BottomSheetView,
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-} from '@gorhom/bottom-sheet';
+  Modal,
+  View,
+  Pressable,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  useWindowDimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '@/theme';
 
 export interface BottomSheetProps {
   visible: boolean;
   onClose: () => void;
   children: ReactNode;
-  /** Snap points (numbers in dp or `%` strings). Omit to size to content. */
+  /** First entry sets the sheet height ('85%' of screen, or a dp number). Omit to size to content. */
   snapPoints?: (number | string)[];
-  /** Allow drag-down to dismiss. Default true. */
+  /** Allow scrim-tap / back-button dismiss. Default true. */
   dismissible?: boolean;
   testID?: string;
 }
@@ -39,66 +45,76 @@ export function BottomSheet({
   dismissible = true,
   testID,
 }: BottomSheetProps) {
-  const ref = useRef<BottomSheetModal>(null);
   const insets = useSafeAreaInsets();
+  const { height: screenH } = useWindowDimensions();
 
-  useEffect(() => {
-    if (visible) ref.current?.present();
-    else ref.current?.dismiss();
-  }, [visible]);
+  const maxH = Math.round(screenH * 0.92);
+  const sp = snapPoints?.[0];
+  let height: number | undefined;
+  if (typeof sp === 'string' && sp.trim().endsWith('%')) {
+    height = Math.min(maxH, Math.round((parseFloat(sp) / 100) * screenH));
+  } else if (typeof sp === 'number') {
+    height = Math.min(maxH, sp);
+  }
 
-  const handleDismiss = useCallback(() => {
-    // Fires on drag-down or backdrop tap — keep parent state in sync.
-    onClose();
-  }, [onClose]);
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        pressBehavior={dismissible ? 'close' : 'none'}
-        opacity={0.55}
-      />
-    ),
-    [dismissible],
-  );
+  const close = () => {
+    if (dismissible) onClose();
+  };
 
   return (
-    <BottomSheetModal
-      ref={ref}
-      snapPoints={snapPoints}
-      enableDynamicSizing={!snapPoints}
-      enablePanDownToClose={dismissible}
-      onDismiss={handleDismiss}
-      backdropComponent={renderBackdrop}
-      handleIndicatorStyle={styles.handle}
-      backgroundStyle={styles.background}
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={close}
     >
-      <BottomSheetView
-        testID={testID}
-        style={[styles.content, { paddingBottom: Math.max(insets.bottom, theme.space.lg) }]}
+      <KeyboardAvoidingView
+        style={styles.fill}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {children}
-      </BottomSheetView>
-    </BottomSheetModal>
+        <View style={styles.root}>
+          <Pressable
+            style={styles.backdrop}
+            onPress={close}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          />
+          <View
+            testID={testID}
+            style={[
+              styles.sheet,
+              height ? { height } : { maxHeight: maxH },
+              { paddingBottom: insets.bottom + theme.space.lg },
+            ]}
+          >
+            <View style={styles.handle} />
+            {children}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
+  fill: { flex: 1 },
+  root: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.color.overlay },
+  sheet: {
     backgroundColor: theme.color.surface,
     borderTopLeftRadius: theme.radius.sheet,
     borderTopRightRadius: theme.radius.sheet,
+    paddingHorizontal: theme.space.xl,
+    paddingTop: theme.space.sm,
     ...theme.shadow.sheet,
   },
   handle: {
-    backgroundColor: theme.color.borderStrong,
+    alignSelf: 'center',
     width: 40,
-  },
-  content: {
-    paddingHorizontal: theme.space.xl,
-    paddingTop: theme.space.sm,
+    height: 4,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.borderStrong,
+    marginBottom: theme.space.md,
   },
 });

@@ -21,7 +21,6 @@
 
 import { useCallback, useState } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
-import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
@@ -528,7 +527,6 @@ function ReservationRow({
             onChangeText={setReason}
             placeholder={pick(L.hostDeclineReasonHint, locale)}
             multiline
-            inputComponent={BottomSheetTextInput}
           />
           <View style={styles.sheetActions}>
             <Button

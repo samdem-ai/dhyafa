@@ -8,8 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
-import { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
+import { View, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, Check, MapPin } from 'lucide-react-native';
@@ -327,9 +326,8 @@ export default function StepLocation() {
           value={wilayaQuery}
           onChangeText={setWilayaQuery}
           placeholder={pickL(L.wizardSearchWilaya, locale)}
-          inputComponent={BottomSheetTextInput}
         />
-        <BottomSheetScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
           {filteredWilayas.length === 0 ? (
             <Text variant="body" color="textMuted" center style={styles.noMatch}>
               {pickL(L.wizardNoWilaya, locale)}
@@ -356,7 +354,7 @@ export default function StepLocation() {
               );
             })
           )}
-        </BottomSheetScrollView>
+        </ScrollView>
       </BottomSheet>
 
       {/* Commune search sheet */}
@@ -368,9 +366,8 @@ export default function StepLocation() {
           value={communeQuery}
           onChangeText={setCommuneQuery}
           placeholder={pickL(L.wizardSearchWilaya, locale)}
-          inputComponent={BottomSheetTextInput}
         />
-        <BottomSheetScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled">
           {filteredCommunes.map((c) => {
             const active = draft.communeId === c.id;
             return (
@@ -391,7 +388,7 @@ export default function StepLocation() {
               </Pressable>
             );
           })}
-        </BottomSheetScrollView>
+        </ScrollView>
       </BottomSheet>
     </WizardChrome>
   );

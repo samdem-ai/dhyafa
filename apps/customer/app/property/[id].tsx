@@ -21,7 +21,6 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, useWindowDimensions, I18nManager } from 'react-native';
-import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -474,7 +473,6 @@ export default function PropertyDetailScreen() {
             onChangeText={setInquiryBody}
             placeholder={pick(L.inquiryPlaceholder, locale)}
             multiline
-            inputComponent={BottomSheetTextInput}
             error={inquiryError ?? undefined}
             autoCapitalize="sentences"
           />
