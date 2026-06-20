@@ -17,6 +17,7 @@
 import type { ComponentType } from 'react';
 import { useCallback, useState } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
@@ -366,7 +367,7 @@ function EarningBookingCard({
         </View>
       ) : null}
 
-      <BottomSheet visible={sheet} onClose={() => setSheet(false)} dismissible={!cancelling}>
+      <BottomSheet visible={sheet} onClose={() => setSheet(false)} dismissible={!cancelling} snapPoints={['60%']}>
         <View style={styles.sheetBody}>
           <Text variant="title" weight="bold">
             {pick(L.hostCancelTitle, locale)}
@@ -388,6 +389,7 @@ function EarningBookingCard({
             onChangeText={setReason}
             placeholder={pick(L.hostCancelReasonHint, locale)}
             multiline
+            inputComponent={BottomSheetTextInput}
           />
 
           {error ? (

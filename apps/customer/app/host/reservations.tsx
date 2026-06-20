@@ -21,6 +21,7 @@
 
 import { useCallback, useState } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { router, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
@@ -517,7 +518,7 @@ function ReservationRow({
       ) : null}
 
       {/* Decline-with-reason sheet */}
-      <BottomSheet visible={declineSheet} onClose={() => setDeclineSheet(false)} dismissible={busy === null}>
+      <BottomSheet visible={declineSheet} onClose={() => setDeclineSheet(false)} dismissible={busy === null} snapPoints={['55%']}>
         <View style={styles.sheetBody}>
           <Heading level={3}>{pick(L.hostDeclineTitle, locale)}</Heading>
           <TextField
@@ -527,6 +528,7 @@ function ReservationRow({
             onChangeText={setReason}
             placeholder={pick(L.hostDeclineReasonHint, locale)}
             multiline
+            inputComponent={BottomSheetTextInput}
           />
           <View style={styles.sheetActions}>
             <Button

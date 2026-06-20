@@ -20,6 +20,7 @@ import {
   localizedName,
   type WilayaLite,
 } from '@/lib/discovery';
+import { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { DateRangePicker } from '@/components/Calendar';
 import { GuestStepperRow } from '@/components/discovery';
 import {
@@ -214,8 +215,9 @@ export default function SearchEntryScreen() {
           onChangeText={setWilayaQuery}
           placeholder={pick(L.searchWilayaPlaceholder, locale)}
           clearLabel={pick(L.clear, locale)}
+          inputComponent={BottomSheetTextInput}
         />
-        <ScrollView style={styles.wilayaList} keyboardShouldPersistTaps="handled">
+        <BottomSheetScrollView style={styles.wilayaList} keyboardShouldPersistTaps="handled">
           <Pressable
             accessibilityRole="button"
             onPress={() => pickWilaya(null)}
@@ -248,7 +250,7 @@ export default function SearchEntryScreen() {
               {pick(L.searchNoMatches, locale)}
             </Text>
           ) : null}
-        </ScrollView>
+        </BottomSheetScrollView>
       </BottomSheet>
 
       {/* Dates sheet */}
@@ -271,7 +273,7 @@ export default function SearchEntryScreen() {
       </BottomSheet>
 
       {/* Guests sheet */}
-      <BottomSheet visible={sheet === 'guests'} onClose={() => setSheet(null)}>
+      <BottomSheet visible={sheet === 'guests'} onClose={() => setSheet(null)} snapPoints={['55%']}>
         <Heading level={3} style={styles.sheetTitle}>
           {pick(L.guests, locale)}
         </Heading>

@@ -21,6 +21,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, useWindowDimensions, I18nManager } from 'react-native';
+import { BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -431,7 +432,7 @@ export default function PropertyDetailScreen() {
       </BottomSheet>
 
       {/* Guests sheet — occupancy guard on adults+children combined */}
-      <BottomSheet visible={sheet === 'guests'} onClose={() => setSheet(null)}>
+      <BottomSheet visible={sheet === 'guests'} onClose={() => setSheet(null)} snapPoints={['55%']}>
         <Heading level={3} style={styles.sheetTitle}>
           {pick(L.guests, locale)}
         </Heading>
@@ -473,6 +474,7 @@ export default function PropertyDetailScreen() {
             onChangeText={setInquiryBody}
             placeholder={pick(L.inquiryPlaceholder, locale)}
             multiline
+            inputComponent={BottomSheetTextInput}
             error={inquiryError ?? undefined}
             autoCapitalize="sentences"
           />

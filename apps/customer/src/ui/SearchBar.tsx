@@ -4,7 +4,15 @@
  * the search flow, or a live input (onChangeText).
  */
 
-import { View, TextInput, Pressable, StyleSheet, I18nManager } from 'react-native';
+import type { ComponentType } from 'react';
+import {
+  View,
+  TextInput,
+  Pressable,
+  StyleSheet,
+  I18nManager,
+  type TextInputProps,
+} from 'react-native';
 import { Search, X } from 'lucide-react-native';
 import { theme } from '@/theme';
 import { RN_FONTS } from '@/lib/fonts';
@@ -18,6 +26,13 @@ export interface SearchBarProps {
   /** Read-only mode: the whole bar is a button (e.g. Explore hero → search flow). */
   onPress?: () => void;
   clearLabel?: string;
+  /**
+   * Input component to render (defaults to RN TextInput). Pass
+   * `BottomSheetTextInput` from @gorhom/bottom-sheet when the SearchBar lives
+   * inside a bottom sheet, otherwise the sheet's pan gesture swallows focus and
+   * keystrokes.
+   */
+  inputComponent?: ComponentType<TextInputProps>;
   testID?: string;
 }
 
@@ -28,6 +43,7 @@ export function SearchBar({
   onSubmit,
   onPress,
   clearLabel = 'Clear',
+  inputComponent: Input = TextInput,
   testID,
 }: SearchBarProps) {
   if (onPress) {
@@ -50,7 +66,7 @@ export function SearchBar({
   return (
     <View testID={testID} style={styles.bar}>
       <Search size={20} color={theme.color.textMuted} />
-      <TextInput
+      <Input
         style={[styles.input, { textAlign: I18nManager.isRTL ? 'right' : 'left', writingDirection: I18nManager.isRTL ? 'rtl' : 'ltr' }]}
         value={value}
         onChangeText={onChangeText}

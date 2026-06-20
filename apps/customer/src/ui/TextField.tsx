@@ -7,7 +7,7 @@
  * keyboard/autocomplete props. Superset-compatible with the legacy field API.
  */
 
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import {
   View,
   TextInput,
@@ -40,6 +40,12 @@ export interface TextFieldProps {
   editable?: boolean;
   leading?: ReactNode;
   trailing?: ReactNode;
+  /**
+   * Input component to render (defaults to RN TextInput). Pass
+   * `BottomSheetTextInput` from @gorhom/bottom-sheet when this field lives inside
+   * a bottom sheet, otherwise the sheet's pan gesture swallows focus/keystrokes.
+   */
+  inputComponent?: ComponentType<TextInputProps>;
   testID?: string;
 }
 
@@ -61,6 +67,7 @@ export function TextField({
   editable = true,
   leading,
   trailing,
+  inputComponent: Input = TextInput,
   testID,
 }: TextFieldProps) {
   const dir = I18nManager.isRTL ? 'rtl' : 'ltr';
@@ -78,7 +85,7 @@ export function TextField({
         ]}
       >
         {leading ? <View style={styles.affix}>{leading}</View> : null}
-        <TextInput
+        <Input
           testID={testID}
           style={[
             styles.input,
