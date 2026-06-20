@@ -33,6 +33,14 @@ export interface HeaderProps {
   rightSlot?: ReactNode;
   /** Transparent bar over media; renders a scrim chip behind the back button. */
   transparent?: boolean;
+  /**
+   * Apply the top safe-area inset as padding. Default FALSE: the Header normally
+   * sits inside a <Screen edges={['top']}> which already provides the inset, so
+   * adding it here too would double-pad. Set TRUE only when the Header is the
+   * top-most element WITHOUT a Screen wrapper (e.g. the transparent gallery
+   * header on property detail).
+   */
+  topInset?: boolean;
   testID?: string;
 }
 
@@ -43,6 +51,7 @@ export function Header({
   backLabel,
   rightSlot,
   transparent = false,
+  topInset = false,
   testID,
 }: HeaderProps) {
   const insets = useSafeAreaInsets();
@@ -63,7 +72,7 @@ export function Header({
       testID={testID}
       style={[
         styles.wrap,
-        { paddingTop: insets.top },
+        { paddingTop: topInset ? insets.top : 0 },
         transparent ? styles.transparent : styles.solid,
       ]}
     >

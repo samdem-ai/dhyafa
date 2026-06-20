@@ -56,7 +56,7 @@ export function EmptyState({ title, subtitle, icon = Inbox, action, testID }: Em
       ) : null}
       {action ? (
         <View style={styles.action}>
-          <Button label={action.label} onPress={action.onPress} fullWidth={false} />
+          <Button label={action.label} onPress={action.onPress} fullWidth={false} style={styles.actionBtn} />
         </View>
       ) : null}
     </View>
@@ -94,7 +94,7 @@ export function ErrorState({
       </Text>
       {onRetry ? (
         <View style={styles.action}>
-          <Button label={retryLabel ?? 'Retry'} variant="secondary" onPress={onRetry} fullWidth={false} />
+          <Button label={retryLabel ?? 'Retry'} variant="secondary" onPress={onRetry} fullWidth={false} style={styles.actionBtn} />
         </View>
       ) : null}
     </View>
@@ -117,5 +117,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: theme.space.sm,
   },
-  action: { marginTop: theme.space.md, minWidth: 160 },
+  action: { marginTop: theme.space.md, minWidth: 160, alignItems: 'center' },
+  // Override Button's default alignSelf:'flex-start' so the CTA centers under
+  // the title/subtitle instead of hugging the start edge.
+  actionBtn: { alignSelf: 'center' },
 });

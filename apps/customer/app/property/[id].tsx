@@ -526,6 +526,7 @@ function Gallery({
       <View style={styles.headerOverlay} pointerEvents="box-none">
         <Header
           transparent
+          topInset
           title=""
           onBack={() => router.back()}
           rightSlot={

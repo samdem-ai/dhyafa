@@ -91,6 +91,11 @@ export function createI18n(initialLocale: Locale = DEFAULT_LOCALE): i18n {
     lng: initialLocale,
     fallbackLng: ['en', 'fr'],
     supportedLngs: ['en', 'ar', 'fr'],
+    // React Native (Hermes) does not reliably ship Intl.PluralRules, which
+    // i18next v4 JSON format requires — without this it logs a pluralResolver
+    // error on every init. v3 uses i18next's built-in suffix plural rules and
+    // needs no Intl API. Our JSON resources use the v3 plural key style.
+    compatibilityJSON: 'v3',
     ns: ['common', 'auth', 'booking'],
     defaultNS: 'common',
     resources,
