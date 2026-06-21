@@ -418,17 +418,17 @@ export async function uploadPhoto(input: UploadPhotoInput): Promise<PropertyPhot
   const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const path = `${input.hostProfileId}/${input.propertyId}/${filename}`;
 
-  // Build the upload body. Prefer the file URI: fetch it into a Blob backed by
-  // the file so only ONE image is in memory at a time (avoids the all-at-once
-  // base64 spike that made the picker crash/reload the app on hot devices). Stamp
-  // the right content-type via slice (no data copy). Fall back to base64 →
-  // ArrayBuffer for legacy callers (Hermes fetch can't send a bare Uint8Array).
-  let body: Blob | ArrayBuffer;
+  // Build the upload body. Prefer the file URI via a multipart FormData: React
+  // Native streams the actual file bytes from disk (one image in memory at a
+  // time — avoids the all-at-once base64 spike that crashed the picker on hot
+  // devices). NOTE: fetch(uri).blob() returns a 0-BYTE blob in RN/Expo, which
+  // stored empty files that rendered blank — FormData reads the real bytes.
+  // Fall back to base64 → ArrayBuffer for legacy callers.
+  let body: FormData | ArrayBuffer;
   if (input.uri) {
-    const res = await fetch(input.uri);
-    let blob = await res.blob();
-    if (contentType && blob.type !== contentType) blob = blob.slice(0, blob.size, contentType);
-    body = blob;
+    const form = new FormData();
+    form.append('file', { uri: input.uri, name: filename, type: contentType } as unknown as Blob);
+    body = form;
   } else if (input.base64) {
     body = base64ToBytes(input.base64).buffer as ArrayBuffer;
   } else {
