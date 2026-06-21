@@ -1,4 +1,4 @@
-# Dyafa (دافة) — Algerian vacation-rental & hotel booking platform
+# Dhyafa (ضيافة) — Algerian vacation-rental & hotel booking platform
 
 > Working brand name **Dyafa** ("hospitality") is a placeholder — rename freely; the spec uses `{{PLATFORM_NAME}}`.
 
