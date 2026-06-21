@@ -127,7 +127,10 @@ export default function SearchEntryScreen() {
       children: anyGuests ? undefined : children,
       guests: anyGuests ? null : guestsTotal,
     };
-    router.push({ pathname: '/search/results', params: toParams(state) });
+    // REPLACE (not push) so the search-form modal dismisses when you hit Search —
+    // it slides away to reveal results, and Back from results returns to Explore
+    // instead of the leftover search form.
+    router.replace({ pathname: '/search/results', params: toParams(state) });
   }
 
   function onClear() {
